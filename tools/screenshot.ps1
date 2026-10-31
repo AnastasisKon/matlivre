@@ -105,7 +105,7 @@ try {
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.CopyFromScreen($r.L, $r.T, 0, 0, (New-Object System.Drawing.Size $w, $hh))
     $g.Dispose()
-    $outPath = [IO.Path]::GetFullPath((Join-Path (Get-Location) $Out))
+    $outPath = if ([IO.Path]::IsPathRooted($Out)) { $Out } else { [IO.Path]::GetFullPath((Join-Path (Get-Location) $Out)) }
     $bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
     $bmp.Dispose()
     "saved $outPath ($w x $hh)"

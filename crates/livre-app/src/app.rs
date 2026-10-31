@@ -257,6 +257,77 @@ pub struct App {
     figures: Vec<(Figure, bool)>,
     /// The save-changes dialog, while it is up.
     confirm: Option<Confirm>,
+    /// The layout last written to the settings file.
+    saved_layout: SavedLayout,
+}
+
+/// The window layout remembered between runs (`%APPDATA%\matlivre\settings.txt`, one
+/// `key=value` per line). A first launch starts with the Files drawer closed.
+#[derive(Clone, PartialEq)]
+struct SavedLayout {
+    files_open: bool,
+    cmd_open: bool,
+    ws_open: bool,
+    files_w: f32,
+    ws_w: f32,
+    cmd_h: f32,
+    output_right: bool,
+    dark: bool,
+}
+
+impl Default for SavedLayout {
+    fn default() -> Self {
+        SavedLayout { files_open: false, cmd_open: true, ws_open: true, files_w: 248.0, ws_w: 300.0, cmd_h: 150.0, output_right: false, dark: false }
+    }
+}
+
+impl SavedLayout {
+    fn path() -> Option<PathBuf> {
+        app_dir().map(|d| d.join("settings.txt"))
+    }
+
+    /// The saved layout; unknown or malformed entries keep their defaults.
+    fn load() -> SavedLayout {
+        let mut l = SavedLayout::default();
+        let Some(text) = SavedLayout::path().and_then(|p| std::fs::read_to_string(p).ok()) else { return l };
+        for line in text.lines() {
+            let Some((k, v)) = line.split_once('=') else { continue };
+            let (k, v) = (k.trim(), v.trim());
+            let flag = v == "true";
+            let size = v.parse::<f32>().ok().filter(|x| x.is_finite() && *x > 0.0);
+            match k {
+                "files_open" => l.files_open = flag,
+                "command_open" => l.cmd_open = flag,
+                "workspace_open" => l.ws_open = flag,
+                "files_width" => l.files_w = size.unwrap_or(l.files_w),
+                "workspace_width" => l.ws_w = size.unwrap_or(l.ws_w),
+                "command_height" => l.cmd_h = size.unwrap_or(l.cmd_h),
+                "output" => l.output_right = v == "right",
+                "theme" => l.dark = v == "dark",
+                _ => {}
+            }
+        }
+        l
+    }
+
+    fn save(&self) {
+        let Some(path) = SavedLayout::path() else { return };
+        let text = format!(
+            "files_open={}\ncommand_open={}\nworkspace_open={}\nfiles_width={}\nworkspace_width={}\ncommand_height={}\noutput={}\ntheme={}\n",
+            self.files_open,
+            self.cmd_open,
+            self.ws_open,
+            self.files_w.round(),
+            self.ws_w.round(),
+            self.cmd_h.round(),
+            if self.output_right { "right" } else { "inline" },
+            if self.dark { "dark" } else { "light" },
+        );
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(path, text);
+    }
 }
 
 /// A tab with unsaved changes the app asks about before closing it.
@@ -289,6 +360,7 @@ impl App {
         if let Ok(dir) = std::env::current_dir() {
             tree.reveal(&dir);
         }
+        let layout = SavedLayout::load();
         let mut app = Self {
             skin,
             tabs: Vec::new(),
@@ -300,7 +372,7 @@ impl App {
             running_block: None,
             pending: None,
             workspace: Vec::new(),
-            output_right: false,
+            output_right: layout.output_right,
             last_run: None,
             last_error: None,
             notice: None,
@@ -309,12 +381,12 @@ impl App {
             rounded,
             incoming,
             tab_row: Rect::NOTHING,
-            files_open: true,
-            cmd_open: true,
-            ws_open: true,
-            files_w: 248.0,
-            ws_w: 300.0,
-            cmd_h: 150.0,
+            files_open: layout.files_open,
+            cmd_open: layout.cmd_open,
+            ws_open: layout.ws_open,
+            files_w: layout.files_w,
+            ws_w: layout.ws_w,
+            cmd_h: layout.cmd_h,
             tree,
             hist: Vec::new(),
             cmd_input: String::new(),
@@ -329,7 +401,11 @@ impl App {
             control_edit: None,
             figures: Vec::new(),
             confirm: None,
+            saved_layout: layout.clone(),
         };
+        if layout.dark {
+            app.set_dark(&cc.egui_ctx, true);
+        }
         match launch {
             // Getting started opens once; later launches start with an empty live script (it
             // stays in the … menu).
@@ -345,6 +421,31 @@ impl App {
             app.new_doc(Kind::Live);
         }
         app
+    }
+
+    fn layout(&self) -> SavedLayout {
+        SavedLayout {
+            files_open: self.files_open,
+            cmd_open: self.cmd_open,
+            ws_open: self.ws_open,
+            files_w: self.files_w,
+            ws_w: self.ws_w,
+            cmd_h: self.cmd_h,
+            output_right: self.output_right,
+            dark: self.skin.dark,
+        }
+    }
+
+    /// Writes the layout when a panel was toggled or resized (once the drag has ended).
+    fn remember_layout(&mut self, ctx: &egui::Context) {
+        if ctx.input(|i| i.pointer.any_down()) {
+            return;
+        }
+        let now = self.layout();
+        if now != self.saved_layout {
+            now.save();
+            self.saved_layout = now;
+        }
     }
 
     fn set_dark(&mut self, ctx: &egui::Context, dark: bool) {
@@ -1945,6 +2046,7 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.remember_layout(ctx);
         let received: Vec<PathBuf> = self.incoming.as_ref().map(|rx| rx.try_iter().collect()).unwrap_or_default();
         for m in received {
             self.receive(&m);
@@ -1993,12 +2095,17 @@ fn rgb(c: Color32) -> [u8; 3] {
 
 /// True on the user's first launch of MatLivre, which a marker file in the per-user app data
 /// folder (`%APPDATA%\matlivre`) then records.
-fn first_launch() -> bool {
+/// The per-user app data folder (`%APPDATA%\matlivre`).
+fn app_dir() -> Option<PathBuf> {
     let base = std::env::var_os("APPDATA")
         .or_else(|| std::env::var_os("XDG_CONFIG_HOME"))
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")));
-    let Some(dir) = base.map(|b| b.join("matlivre")) else { return true };
+    base.map(|b| b.join("matlivre"))
+}
+
+fn first_launch() -> bool {
+    let Some(dir) = app_dir() else { return true };
     let marker = dir.join("welcomed");
     if marker.exists() {
         return false;
@@ -2854,4 +2961,23 @@ fn info_bar(ui: &mut Ui, skin: &Skin, msg: &str, error: bool) -> bool {
             });
         });
     closed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SavedLayout;
+
+    /// A first launch starts with the Files drawer closed; a saved layout comes back as saved.
+    #[test]
+    fn layout_defaults_and_round_trip() {
+        let dir = std::env::temp_dir().join(format!("matlivre-layout-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("APPDATA", &dir);
+        let first = SavedLayout::load();
+        assert!(!first.files_open && first.cmd_open && first.ws_open && !first.output_right && !first.dark);
+        let mine = SavedLayout { files_open: true, cmd_open: false, ws_open: true, files_w: 300.0, ws_w: 280.0, cmd_h: 210.0, output_right: true, dark: true };
+        mine.save();
+        assert!(SavedLayout::load() == mine);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
