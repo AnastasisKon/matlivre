@@ -25,7 +25,7 @@ pub const NAMES: &[&str] = &[
 // ---- shared helpers ----------------------------------------------------------------------
 
 /// First output of `f(args…)`.
-fn call1(it: &mut Interpreter, f: &Value, args: Vec<Value>) -> R<Value> {
+pub(crate) fn call1(it: &mut Interpreter, f: &Value, args: Vec<Value>) -> R<Value> {
     it.call_func_value(f, args, 1)?.into_iter().next().ok_or_else(|| LangError::new("Function returned no output.", 0))
 }
 
@@ -43,7 +43,7 @@ fn fcall_scalar(it: &mut Interpreter, f: &Value, x: Value, extra: &[Value]) -> R
     Ok(m.data[0])
 }
 
-fn func_text(it: &mut Interpreter, f: &Value) -> String {
+pub(crate) fn func_text(it: &mut Interpreter, f: &Value) -> String {
     if f.is_text() {
         return f.text().unwrap_or_default();
     }
@@ -54,20 +54,20 @@ fn func_text(it: &mut Interpreter, f: &Value) -> String {
         .unwrap_or_default()
 }
 
-fn is_func(v: &Value) -> bool {
+pub(crate) fn is_func(v: &Value) -> bool {
     matches!(v, Value::Func(_)) || v.is_text()
 }
 
-fn col(v: Vec<f64>) -> Value {
+pub(crate) fn col(v: Vec<f64>) -> Value {
     Value::Num(Matrix::col(v))
 }
 
-fn row(v: Vec<f64>) -> Value {
+pub(crate) fn row(v: Vec<f64>) -> Value {
     Value::Num(Matrix::row(v))
 }
 
 /// Matrix with `rows` rows from row vectors.
-fn rows_to_matrix(rows: &[Vec<f64>], ncols: usize) -> Value {
+pub(crate) fn rows_to_matrix(rows: &[Vec<f64>], ncols: usize) -> Value {
     let n = rows.len();
     let mut data = vec![0.0; n * ncols];
     for (i, r) in rows.iter().enumerate() {
@@ -79,16 +79,16 @@ fn rows_to_matrix(rows: &[Vec<f64>], ncols: usize) -> Value {
 }
 
 /// Matrix whose columns are the given vectors.
-fn cols_to_matrix(cols: &[Vec<f64>], nrows: usize) -> Value {
+pub(crate) fn cols_to_matrix(cols: &[Vec<f64>], nrows: usize) -> Value {
     let data: Vec<f64> = cols.iter().flat_map(|c| c.iter().copied()).collect();
     Value::Num(Matrix::new(nrows, cols.len(), data))
 }
 
-fn warn(it: &mut Interpreter, msg: impl Into<String>) {
+pub(crate) fn warn(it: &mut Interpreter, msg: impl Into<String>) {
     it.emit(OutputKind::Warning(msg.into()));
 }
 
-fn fmt(f: &str, vals: &[f64]) -> String {
+pub(crate) fn fmt(f: &str, vals: &[f64]) -> String {
     sprintf(f, &vals.iter().map(|&v| Value::num(v)).collect::<Vec<_>>()).unwrap_or_default()
 }
 
@@ -105,13 +105,13 @@ fn pairs(a: &[Value], from: usize) -> R<Vec<(String, Value)>> {
 
 const OPTIM_FIELDS: &[&str] = &["Display", "FunValCheck", "MaxFunEvals", "MaxIter", "OutputFcn", "PlotFcns", "TolFun", "TolX"];
 
-const ODE_FIELDS: &[&str] = &[
+pub(crate) const ODE_FIELDS: &[&str] = &[
     "AbsTol", "BDF", "Events", "InitialStep", "Jacobian", "JConstant", "JPattern", "Mass", "MassSingular", "MaxOrder", "MaxStep", "NonNegative",
     "NormControl", "OutputFcn", "OutputSel", "Refine", "RelTol", "Stats", "Vectorized", "MStateDependence", "MvPattern", "InitialSlope",
 ];
 
 /// The canonical field a (case-insensitive, possibly abbreviated) option name refers to.
-fn match_field(fields: &[&'static str], name: &str, what: &str) -> R<&'static str> {
+pub(crate) fn match_field(fields: &[&'static str], name: &str, what: &str) -> R<&'static str> {
     let lower = name.to_lowercase();
     if let Some(f) = fields.iter().find(|f| f.to_lowercase() == lower) {
         return Ok(f);
@@ -124,7 +124,7 @@ fn match_field(fields: &[&'static str], name: &str, what: &str) -> R<&'static st
     }
 }
 
-fn blank_options(fields: &[&str]) -> StructArray {
+pub(crate) fn blank_options(fields: &[&str]) -> StructArray {
     let mut s = StructArray::scalar();
     for f in fields {
         s.set(f, Value::empty());
@@ -133,7 +133,7 @@ fn blank_options(fields: &[&str]) -> StructArray {
 }
 
 /// optimset/odeset: merge old structures and name-value pairs into a full options structure.
-fn make_options(a: &[Value], fields: &[&'static str], what: &str) -> R<StructArray> {
+pub(crate) fn make_options(a: &[Value], fields: &[&'static str], what: &str) -> R<StructArray> {
     let mut out = blank_options(fields);
     let mut i = 0;
     let absorb = |out: &mut StructArray, s: &StructArray| -> R<()> {
@@ -167,7 +167,7 @@ fn make_options(a: &[Value], fields: &[&'static str], what: &str) -> R<StructArr
     Ok(out)
 }
 
-trait EmptyCheck {
+pub(crate) trait EmptyCheck {
     fn is_empty_value(&self) -> bool;
 }
 
@@ -183,14 +183,14 @@ impl EmptyCheck for Value {
 }
 
 /// A non-empty option field, by case-insensitive name.
-fn opt<'a>(o: Option<&'a StructArray>, name: &str) -> Option<&'a Value> {
+pub(crate) fn opt<'a>(o: Option<&'a StructArray>, name: &str) -> Option<&'a Value> {
     let s = o?;
     let k = s.fields.iter().position(|f| f.eq_ignore_ascii_case(name))?;
     let v = &s.elems.first()?[k];
     (!v.is_empty_value()).then_some(v)
 }
 
-fn opt_num(o: Option<&StructArray>, name: &str, default: f64) -> R<f64> {
+pub(crate) fn opt_num(o: Option<&StructArray>, name: &str, default: f64) -> R<f64> {
     match opt(o, name) {
         Some(v) if v.is_text() => Ok(default),
         Some(v) => v.scalar(),
@@ -198,14 +198,14 @@ fn opt_num(o: Option<&StructArray>, name: &str, default: f64) -> R<f64> {
     }
 }
 
-fn opt_text(o: Option<&StructArray>, name: &str, default: &str) -> R<String> {
+pub(crate) fn opt_text(o: Option<&StructArray>, name: &str, default: &str) -> R<String> {
     match opt(o, name) {
         Some(v) => Ok(v.text()?.to_lowercase()),
         None => Ok(default.into()),
     }
 }
 
-fn options_arg(v: Option<&Value>) -> R<Option<&StructArray>> {
+pub(crate) fn options_arg(v: Option<&Value>) -> R<Option<&StructArray>> {
     match v {
         None => Ok(None),
         Some(Value::Struct(s)) => Ok(Some(s)),
@@ -277,7 +277,7 @@ fn optimset(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
     one(Value::Struct(make_options(a, OPTIM_FIELDS, "parameter")?))
 }
 
-fn optget(a: &[Value], fields: &[&'static str], what: &str) -> Ret {
+pub(crate) fn optget(a: &[Value], fields: &[&'static str], what: &str) -> Ret {
     let name = arg(a, 1, "optimget")?.text()?;
     let default = a.get(2).cloned().unwrap_or_else(Value::empty);
     let f = match_field(fields, &name, what)?;
@@ -1216,7 +1216,7 @@ fn quadstep(it: &mut Interpreter, q: &mut Quad, a: f64, b: f64, fa: &[f64], fc: 
     Ok((qac.iter().zip(&qcb).map(|(x, y)| x + y).collect(), wa.max(wb)))
 }
 
-fn eps_of(x: f64) -> f64 {
+pub(crate) fn eps_of(x: f64) -> f64 {
     let x = x.abs();
     if x == 0.0 { f64::from_bits(1) } else { 2f64.powf(x.log2().floor() - 52.0) }
 }
@@ -1889,7 +1889,7 @@ fn deval(a: &[Value], nargout: usize) -> Ret {
         _ => return rt("DEVAL requires a solution structure."),
     };
     let solver = sol.get("solver").map(|v| v.text()).transpose()?.unwrap_or_default();
-    let Some(m) = method(&solver) else { return rt(format!("Solution structure from {solver} is not supported.")) };
+    let Some(m) = method(&solver) else { return crate::builtins_ode::deval_hermite(sol, &xint, a.get(2), nargout) };
     let x = sol.get("x").ok_or_else(|| LangError::new("Invalid solution structure.", 0))?.to_matrix()?.data;
     let ym = sol.get("y").ok_or_else(|| LangError::new("Invalid solution structure.", 0))?.to_matrix()?;
     let f3d = match sol.get("idata") {

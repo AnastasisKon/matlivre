@@ -523,6 +523,19 @@ pub fn disp_value(v: &Value, f: NumFormat) -> String {
             if m.is_scalar() && (m.kind == Kind::Logical || m.kind.is_int()) {
                 return format!("   {}", fmt_elem(m, 0, f));
             }
+            // A non-integer scalar is right-aligned the way MATLAB pads it (exponent forms wider).
+            if m.is_scalar() && !m.is_complex() && m.kind != Kind::Char {
+                let text = fmt_elem(m, 0, f);
+                let w = match (text.contains('e'), f == NumFormat::Long) {
+                    (true, false) => 13,
+                    (true, true) => 26,
+                    (false, false) => 10,
+                    (false, true) => 20,
+                };
+                if text.contains('e') || (m.data[0].is_finite() && !is_int(m.data[0])) {
+                    return format!("{text:>w$}");
+                }
+            }
             matrix_body(m, f, "ans").trim_end_matches('\n').to_string()
         }
         Value::Str(s) => {

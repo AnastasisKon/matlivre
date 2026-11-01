@@ -53,6 +53,7 @@ pub mod sym;
 pub mod table;
 pub mod table_ops;
 pub mod builtins_sparse;
+pub mod builtins_ode;
 pub mod time;
 pub mod value;
 
