@@ -22,13 +22,22 @@ use crate::value::*;
 
 type R<T> = Result<T, LangError>;
 
-pub const NAMES: &[&str] = &["griddedInterpolant", "scatteredInterpolant", "triangulation", "delaunayTriangulation", "alphaShape", "boundary", "matlivre_polyfun_method"];
+pub const NAMES: &[&str] = &[
+    "griddedInterpolant", "scatteredInterpolant", "triangulation", "delaunayTriangulation", "alphaShape", "boundary", "TriRep", "DelaunayTri", "triplot",
+    "trimesh", "trisurf", "tetramesh", "stlread", "stlwrite", "matlivre_polyfun_method",
+];
 
 const TRI_METHODS: &[&str] = &[
     "barycentricToCartesian", "cartesianToBarycentric", "circumcenter", "edgeAttachments", "edges", "faceNormal", "featureEdges", "freeBoundary", "incenter",
     "isConnected", "nearestNeighbor", "neighbors", "pointLocation", "size", "vertexAttachments", "vertexNormal",
 ];
 const DT_METHODS: &[&str] = &["convexHull", "voronoiDiagram", "isInterior"];
+/// The legacy `TriRep` and `DelaunayTri` classes and their method names.
+const LEGACY_TRI_METHODS: &[&str] = &[
+    "baryToCart", "cartToBary", "circumcenters", "incenters", "faceNormals", "edges", "edgeAttachments", "vertexAttachments", "featureEdges", "freeBoundary",
+    "neighbors", "size", "isEdge",
+];
+const LEGACY_DT_METHODS: &[&str] = &["inOutStatus", "convexHull", "voronoiDiagram", "nearestNeighbor", "pointLocation"];
 const ALPHA_METHODS: &[&str] = &[
     "alphaSpectrum", "criticalAlpha", "numRegions", "inShape", "alphaTriangulation", "boundaryFacets", "perimeter", "area", "surfaceArea", "volume", "nearestNeighbor",
 ];
@@ -39,6 +48,8 @@ fn props_of(class: &str) -> &'static [&'static str] {
         "scatteredInterpolant" => &["Points", "Values", "Method", "ExtrapolationMethod"],
         "triangulation" => &["Points", "ConnectivityList"],
         "delaunayTriangulation" => &["Points", "ConnectivityList", "Constraints"],
+        "TriRep" => &["X", "Triangulation"],
+        "DelaunayTri" => &["X", "Triangulation", "Constraints"],
         _ => &["Points", "Alpha", "HoleThreshold", "RegionThreshold"],
     }
 }
@@ -48,6 +59,8 @@ fn methods_of(class: &str) -> Vec<&'static str> {
         "triangulation" => TRI_METHODS.to_vec(),
         "delaunayTriangulation" => TRI_METHODS.iter().chain(DT_METHODS).copied().collect(),
         "alphaShape" => ALPHA_METHODS.to_vec(),
+        "TriRep" => LEGACY_TRI_METHODS.to_vec(),
+        "DelaunayTri" => LEGACY_TRI_METHODS.iter().chain(LEGACY_DT_METHODS).copied().collect(),
         _ => vec!["subsref"],
     }
 }
@@ -389,7 +402,9 @@ struct Tri {
 
 impl Tri {
     fn of(o: &Object) -> R<Tri> {
-        Ok(Tri { pts: geom::rows(&prop_m(o, "Points")?), t: index_rows(&prop_m(o, "ConnectivityList")?) })
+        let legacy = matches!(o.class.name.as_str(), "TriRep" | "DelaunayTri");
+        let (p, t) = if legacy { ("X", "Triangulation") } else { ("Points", "ConnectivityList") };
+        Ok(Tri { pts: geom::rows(&prop_m(o, p)?), t: index_rows(&prop_m(o, t)?) })
     }
 
     fn dim(&self) -> usize {
@@ -429,8 +444,10 @@ impl Tri {
         let fm = self.facet_map();
         let simplex = self.t.first().map(|s| s.len()).unwrap_or(0);
         let mut out = Vec::new();
+        // Triangle edges in cyclic order (s1,s2), (s2,s3), (s3,s1), as MATLAB lists them.
+        let order: Vec<usize> = if simplex == 3 { vec![2, 0, 1] } else { (0..simplex).collect() };
         for s in &self.t {
-            for skip in 0..s.len() {
+            for &skip in &order {
                 let mut key: Vec<usize> = s.iter().enumerate().filter(|&(i, _)| i != skip).map(|(_, &v)| v).collect();
                 key.sort_unstable();
                 if fm[&key].len() != 1 {
@@ -1365,18 +1382,223 @@ fn method_call(it: &mut Interpreter, a: &[Value]) -> Ret {
     let out = match class {
         _ if m == "subsref" => subsref(it, o, rest)?,
         "alphaShape" => alpha_method(m, o, rest, nargout)?,
-        _ => tri_method(m, o, rest, nargout)?,
+        _ => {
+            // Legacy method names of TriRep and DelaunayTri.
+            let m = match m {
+                "baryToCart" => "barycentricToCartesian",
+                "cartToBary" => "cartesianToBarycentric",
+                "circumcenters" => "circumcenter",
+                "incenters" => "incenter",
+                "faceNormals" => "faceNormal",
+                "isEdge" => "isConnected",
+                "inOutStatus" => "isInterior",
+                other => other,
+            };
+            tri_method(m, o, rest, nargout)?
+        }
     }
     .unwrap_or_default();
     one(Value::Cell(CellArray::row(out)))
 }
 
-pub fn call(it: &mut Interpreter, name: &str, a: &[Value], _nargout: usize) -> Ret {
+// ---- triangulation plots and STL files -----------------------------------------------------
+
+/// (connectivity, points) of a triangulation object or of (T, x, y[, z]) arguments, and the
+/// index of the first remaining argument.
+fn mesh_args(a: &[Value], name: &str) -> R<(Vec<Vec<usize>>, Vec<Vec<f64>>, usize)> {
+    if let Some(Value::Object(o)) = a.first() {
+        let tri = Tri::of(o)?;
+        return Ok((tri.t, tri.pts, 1));
+    }
+    let t = index_rows(&m_arg(a, 0, name)?);
+    let mut coords = Vec::new();
+    let mut i = 1;
+    let need = if name == "triplot" { 2 } else { 3 };
+    while i < a.len() && !a[i].is_text() && coords.len() < need {
+        coords.push(a[i].to_matrix()?);
+        i += 1;
+    }
+    if name == "tetramesh" && coords.len() == 1 {
+        return Ok((t, geom::rows(&coords[0]), i));
+    }
+    if coords.len() < need {
+        return rt("Not enough input arguments.");
+    }
+    Ok((t, geom::points_from(&coords)?, i))
+}
+
+/// `triplot` (edges as one line), `trimesh` and `trisurf` (triangles as patches) and
+/// `tetramesh` (the faces of each tetrahedron, colored by tetrahedron).
+fn tri_plot(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Ret {
+    let (t, pts, next) = mesh_args(a, name)?;
+    let rest: Vec<Value> = a[next..].to_vec();
+    if name == "triplot" {
+        // The unique edges in sorted order, as edges(TR) lists them.
+        let mut e: Vec<(usize, usize)> = t.iter().flat_map(|s| (0..s.len()).map(move |k| (s[k].min(s[(k + 1) % s.len()]), s[k].max(s[(k + 1) % s.len()])))).collect();
+        e.sort_unstable();
+        e.dedup();
+        let (mut x, mut y) = (Vec::new(), Vec::new());
+        for (p, q) in e {
+            x.extend([pts[p][0], pts[q][0], f64::NAN]);
+            y.extend([pts[p][1], pts[q][1], f64::NAN]);
+        }
+        let mut args = vec![col(x), col(y)];
+        args.extend(rest);
+        let h = it.call_function("plot", args, 1)?;
+        return Ok(Some(if nargout > 0 { h } else { Vec::new() }));
+    }
+    // Faces as columns of X, Y, Z and the color data.
+    let faces: Vec<(Vec<usize>, f64)> = if name == "tetramesh" {
+        t.iter().enumerate().flat_map(|(k, s)| [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]].into_iter().map(move |f| (f.iter().map(|&i| s[i]).collect(), (k + 1) as f64))).collect()
+    } else {
+        t.iter().map(|s| (s.clone(), 0.0)).collect()
+    };
+    let n = faces.len();
+    let coord = |c: usize| -> Value {
+        let mut m = vec![0.0; 3 * n];
+        for (j, (f, _)) in faces.iter().enumerate() {
+            for (i, &v) in f.iter().take(3).enumerate() {
+                m[j * 3 + i] = *pts[v].get(c).unwrap_or(&0.0);
+            }
+        }
+        Value::Num(Matrix::new(3, n, m))
+    };
+    let (x, y, z) = (coord(0), coord(1), coord(2));
+    let color = match name {
+        "trimesh" => Value::chars("w"),
+        "tetramesh" => Value::Num(Matrix::row(faces.iter().map(|f| f.1).collect())),
+        _ => z.clone(),
+    };
+    let mut args = vec![x, y, z, color];
+    args.extend(rest);
+    let h = it.call_function("fill3", args, 1)?;
+    Ok(Some(if nargout > 0 { h } else { Vec::new() }))
+}
+
+/// `stlread(file)`: a triangulation of an ASCII or binary STL file (shared vertices merged).
+fn stlread(a: &[Value]) -> Ret {
+    let path = crate::builtins::arg(a, 0, "stlread")?.text()?;
+    let bytes = std::fs::read(&path).map_err(|e| LangError::new(format!("Unable to open file '{path}': {e}"), 0))?;
+    let mut tris: Vec<[[f64; 3]; 3]> = Vec::new();
+    let text = String::from_utf8_lossy(&bytes);
+    let is_ascii = text.trim_start().starts_with("solid") && text.contains("facet");
+    if is_ascii {
+        let mut cur = Vec::new();
+        for line in text.lines() {
+            let mut it2 = line.split_whitespace();
+            if it2.next() == Some("vertex") {
+                let v: Vec<f64> = it2.filter_map(|s| s.parse().ok()).collect();
+                if v.len() == 3 {
+                    cur.push([v[0], v[1], v[2]]);
+                }
+                if cur.len() == 3 {
+                    tris.push([cur[0], cur[1], cur[2]]);
+                    cur.clear();
+                }
+            }
+        }
+    } else {
+        if bytes.len() < 84 {
+            return rt("The file is not a valid STL file.");
+        }
+        let count = u32::from_le_bytes([bytes[80], bytes[81], bytes[82], bytes[83]]) as usize;
+        if bytes.len() < 84 + count * 50 {
+            return rt("The file is not a valid STL file.");
+        }
+        let f = |o: usize| f32::from_le_bytes([bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]]) as f64;
+        for k in 0..count {
+            let base = 84 + k * 50 + 12;
+            tris.push([0, 1, 2].map(|v| [f(base + v * 12), f(base + v * 12 + 4), f(base + v * 12 + 8)]));
+        }
+    }
+    let mut index: HashMap<[u64; 3], usize> = HashMap::new();
+    let mut pts: Vec<Vec<f64>> = Vec::new();
+    let mut conn = Vec::new();
+    for t in &tris {
+        let mut row = Vec::new();
+        for v in t {
+            let key = v.map(f64::to_bits);
+            let k = *index.entry(key).or_insert_with(|| {
+                pts.push(v.to_vec());
+                pts.len() - 1
+            });
+            row.push(k);
+        }
+        conn.push(row);
+    }
+    one(make("triangulation", vec![Value::Num(points_matrix(&pts)), Value::Num(index_matrix(&conn, 3))]))
+}
+
+/// `stlwrite(TR, file)` and `stlwrite(TR, file, 'text')`: binary by default.
+fn stlwrite(a: &[Value]) -> Ret {
+    let Some(Value::Object(o)) = a.first() else { return rt("The first input must be a triangulation object.") };
+    let tri = Tri::of(o)?;
+    let path = crate::builtins::arg(a, 1, "stlwrite")?.text()?;
+    let text_mode = a.get(2).map(|v| v.text()).transpose()?.is_some_and(|t| t.eq_ignore_ascii_case("text"));
+    let get = |p: &[f64]| [p[0], *p.get(1).unwrap_or(&0.0), *p.get(2).unwrap_or(&0.0)];
+    let normal = |s: &[usize]| {
+        let (p, q, r) = (get(&tri.pts[s[0]]), get(&tri.pts[s[1]]), get(&tri.pts[s[2]]));
+        let (u, v) = ([q[0] - p[0], q[1] - p[1], q[2] - p[2]], [r[0] - p[0], r[1] - p[1], r[2] - p[2]]);
+        let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        let l = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        if l > 0.0 { n.map(|c| c / l) } else { n }
+    };
+    let out: Vec<u8> = if text_mode {
+        let mut s = String::from("solid MatLivre
+");
+        for t in &tri.t {
+            let n = normal(t);
+            s.push_str(&format!("facet normal {:e} {:e} {:e}
+outer loop
+", n[0], n[1], n[2]));
+            for &v in t.iter().take(3) {
+                let p = get(&tri.pts[v]);
+                s.push_str(&format!("vertex {:e} {:e} {:e}
+", p[0], p[1], p[2]));
+            }
+            s.push_str("endloop
+endfacet
+");
+        }
+        s.push_str("endsolid MatLivre
+");
+        s.into_bytes()
+    } else {
+        let mut b = vec![0u8; 80];
+        b[..8].copy_from_slice(b"MatLivre");
+        b.extend((tri.t.len() as u32).to_le_bytes());
+        for t in &tri.t {
+            for c in normal(t) {
+                b.extend((c as f32).to_le_bytes());
+            }
+            for &v in t.iter().take(3) {
+                for c in get(&tri.pts[v]) {
+                    b.extend((c as f32).to_le_bytes());
+                }
+            }
+            b.extend([0u8, 0u8]);
+        }
+        b
+    };
+    std::fs::write(&path, out).map_err(|e| LangError::new(format!("Unable to write file '{path}': {e}"), 0))?;
+    Ok(Some(Vec::new()))
+}
+
+pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Ret {
     match name {
         "griddedInterpolant" => new_gridded(a),
         "scatteredInterpolant" => new_scattered(a),
         "triangulation" => new_triangulation(it, a, false),
         "delaunayTriangulation" => new_triangulation(it, a, true),
+        "TriRep" | "DelaunayTri" => {
+            let modern = new_triangulation(it, a, name == "DelaunayTri")?.and_then(|mut v| v.pop());
+            let Some(Value::Object(o)) = modern else { return rt("Invalid triangulation.") };
+            let values = o.props.borrow().clone();
+            one(make(name, values))
+        }
+        "triplot" | "trimesh" | "trisurf" | "tetramesh" => tri_plot(it, name, a, nargout),
+        "stlread" => stlread(a),
+        "stlwrite" => stlwrite(a),
         "alphaShape" => new_alpha(a),
         "boundary" => boundary(a),
         "matlivre_polyfun_method" => method_call(it, a),
