@@ -16,6 +16,14 @@ pub struct Table {
     pub nrows: usize,
     pub row_names: Option<Vec<String>>,
     pub description: String,
+    /// Row times (a datetime or duration column): set for a timetable.
+    pub row_times: Option<Value>,
+    /// `Properties.DimensionNames`.
+    pub dim_names: [String; 2],
+}
+
+fn default_dims() -> [String; 2] {
+    ["Row".to_string(), "Variables".to_string()]
 }
 
 fn rows_of(v: &Value) -> usize {
@@ -49,14 +57,30 @@ impl Table {
                 return rt(format!("Duplicate table variable name: '{n}'."));
             }
         }
-        Ok(Table { names, vars, nrows, row_names: None, description: String::new() })
+        Ok(Table { names, vars, nrows, row_names: None, description: String::new(), row_times: None, dim_names: default_dims() })
     }
 
     pub fn var(&self, name: &str) -> Option<&Value> {
+        if let Some(rt) = &self.row_times {
+            if name == self.dim_names[0] {
+                return Some(rt);
+            }
+        }
         self.names.iter().position(|n| n == name).map(|i| &self.vars[i])
     }
 
+    pub fn is_timetable(&self) -> bool {
+        self.row_times.is_some()
+    }
+
     pub fn set_var(&mut self, name: &str, v: Value) -> R<()> {
+        if self.row_times.is_some() && name == self.dim_names[0] {
+            if !matches!(&v, Value::Time(t) if t.kind != crate::time::TimeKind::CalDuration) || v.numel() != self.nrows {
+                return rt(format!("Row times must be a datetime or duration vector with one element per row ({}).", self.nrows));
+            }
+            self.row_times = Some(v);
+            return Ok(());
+        }
         let v = if self.vars.is_empty() || rows_of(&v) == self.nrows {
             v
         } else if v.numel() == 1 && self.nrows > 0 {
@@ -80,13 +104,31 @@ impl Table {
 
     pub fn properties(&self) -> Value {
         let mut s = StructArray::scalar();
+        let dims = Value::Cell(CellArray::row(self.dim_names.iter().map(|n| Value::chars(n)).collect()));
+        let names = Value::Cell(CellArray::row(self.names.iter().map(|n| Value::chars(n)).collect()));
+        if let Some(times) = &self.row_times {
+            let step = crate::timetable::regular_step(times);
+            s.set("Description", Value::chars(&self.description));
+            s.set("UserData", Value::empty());
+            s.set("DimensionNames", dims);
+            s.set("VariableNames", names);
+            s.set("VariableDescriptions", Value::Cell(CellArray::from_dims(vec![0, 0], Vec::new())));
+            s.set("VariableUnits", Value::Cell(CellArray::from_dims(vec![0, 0], Vec::new())));
+            s.set("VariableContinuity", Value::empty());
+            s.set("RowTimes", times.clone());
+            s.set("StartTime", if self.nrows > 0 { indexing::index(times, &[IndexArg::scalar(0)]).unwrap_or_else(|_| Value::empty()) } else { Value::empty() });
+            s.set("SampleRate", Value::num(step.map(|d| 1000.0 / d).unwrap_or(f64::NAN)));
+            s.set("TimeStep", crate::timetable::step_value(times, step.unwrap_or(f64::NAN)));
+            s.set("Events", Value::empty());
+            return Value::Struct(s);
+        }
         s.set("Description", Value::chars(&self.description));
-        s.set("VariableNames", Value::Cell(CellArray::row(self.names.iter().map(|n| Value::chars(n)).collect())));
+        s.set("VariableNames", names);
         s.set("RowNames", Value::Cell(match &self.row_names {
             Some(r) => CellArray::col(r.iter().map(|n| Value::chars(n)).collect()),
             None => CellArray::from_dims(vec![0, 0], Vec::new()),
         }));
-        s.set("DimensionNames", Value::Cell(CellArray::row(vec![Value::chars("Row"), Value::chars("Variables")])));
+        s.set("DimensionNames", dims);
         Value::Struct(s)
     }
 
@@ -106,11 +148,41 @@ impl Table {
         if let Some(d) = s.get("Description") {
             self.description = d.text()?;
         }
+        if let Some(d) = s.get("DimensionNames") {
+            let names = cellstr_names(d)?;
+            if names.len() != 2 {
+                return rt("The DimensionNames property must contain two names.");
+            }
+            self.dim_names = [names[0].clone(), names[1].clone()];
+        }
+        if let Some(times) = self.row_times.clone() {
+            if let Some(new) = s.get("RowTimes") {
+                if &times != new {
+                    let name = self.dim_names[0].clone();
+                    self.set_var(&name, new.clone())?;
+                }
+            }
+            if let (Some(st), true) = (s.get("StartTime"), self.nrows > 0) {
+                let times = self.row_times.clone().unwrap();
+                let first = indexing::index(&times, &[IndexArg::scalar(0)])?;
+                if &first != st {
+                    let shift = crate::ops::binary(crate::ast::BinOp::Sub, st, &first)?;
+                    self.row_times = Some(crate::ops::binary(crate::ast::BinOp::Add, &times, &shift)?);
+                }
+            }
+        }
         Ok(())
     }
 
-    /// Row subscript: numbers, logical mask, ':', or row names.
+    /// Row subscript: numbers, logical mask, ':', or row names (and row times, `timerange`
+    /// and `withtol` for a timetable).
     fn row_arg(&self, v: &Value) -> R<IndexArg> {
+        if let Some(times) = &self.row_times {
+            if let Some(ix) = crate::timetable::time_rows(times, v)? {
+                let n = ix.len();
+                return Ok(IndexArg::List { ix, dims: vec![n, 1], from_mask: false });
+            }
+        }
         if v.is_text() || matches!(v, Value::Cell(_) | Value::Str(_)) {
             if v.text().map(|t| t == ":").unwrap_or(false) {
                 return Ok(IndexArg::All);
@@ -125,7 +197,10 @@ impl Table {
     }
 
     /// Variable subscript: numbers, logical mask, ':', or names.
-    fn var_positions(&self, v: &Value) -> R<Vec<usize>> {
+    pub fn var_positions(&self, v: &Value) -> R<Vec<usize>> {
+        if let Some(ty) = crate::timetable::vartype_of(v) {
+            return Ok((0..self.vars.len()).filter(|&k| crate::timetable::matches_type(&self.vars[k], &ty)).collect());
+        }
         if v.is_text() || matches!(v, Value::Cell(_) | Value::Str(_)) {
             if v.text().map(|t| t == ":").unwrap_or(false) {
                 return Ok((0..self.vars.len()).collect());
@@ -156,7 +231,7 @@ impl Table {
     /// `T(rows, vars)`.
     pub fn paren(&self, args: &[Value]) -> R<Table> {
         let (rows, vars) = self.subscripts(args)?;
-        let mut out = Table { names: Vec::new(), vars: Vec::new(), nrows: 0, row_names: None, description: self.description.clone() };
+        let mut out = Table { names: Vec::new(), vars: Vec::new(), nrows: 0, row_names: None, description: self.description.clone(), row_times: None, dim_names: self.dim_names.clone() };
         for &k in &vars {
             out.names.push(self.names[k].clone());
             out.vars.push(take_rows(&self.vars[k], &rows)?);
@@ -170,6 +245,9 @@ impl Table {
                 ix.len()
             }
         };
+        if let Some(times) = &self.row_times {
+            out.row_times = Some(take_rows(times, &rows)?);
+        }
         if let Some(rn) = &self.row_names {
             out.row_names = Some(match &rows {
                 IndexArg::All => rn.clone(),
@@ -339,6 +417,9 @@ impl Table {
     /// under its name.
     pub fn body(&self, f: NumFormat) -> String {
         let mut cols: Vec<(String, Vec<String>)> = Vec::new();
+        if let Some(times) = &self.row_times {
+            cols.push((self.dim_names[0].clone(), Table::column_block(times, self.nrows, f)));
+        }
         if let Some(rn) = &self.row_names {
             let w = rn.iter().map(|s| s.chars().count()).max().unwrap_or(0);
             cols.push((String::new(), rn.iter().map(|s| format!("{s:<w$}")).collect()));
@@ -367,10 +448,11 @@ impl Table {
     }
 
     pub fn display(&self, name: &str, f: NumFormat) -> String {
-        if self.vars.is_empty() {
-            return format!("{name} =\n\n  {}×0 empty table", self.nrows);
+        let word = if self.is_timetable() { "timetable" } else { "table" };
+        if self.vars.is_empty() && !self.is_timetable() {
+            return format!("{name} =\n\n  {}×0 empty {word}", self.nrows);
         }
-        format!("{name} = {}×{} table\n\n{}", self.nrows, self.vars.len(), self.body(f))
+        format!("{name} = {}×{} {word}\n\n{}", self.nrows, self.vars.len(), self.body(f))
     }
 }
 
@@ -393,6 +475,11 @@ pub fn concat(items: Vec<Value>, dim: usize) -> R<Value> {
             for (k, n) in out.names.clone().iter().enumerate() {
                 let j = t.names.iter().position(|m| m == n).ok_or_else(|| LangError::new(format!("All tables being vertically concatenated must have the same variable names (missing '{n}')."), 0))?;
                 out.vars[k] = indexing::vconcat(vec![out.vars[k].clone(), t.vars[j].clone()])?;
+            }
+            match (&out.row_times, &t.row_times) {
+                (Some(a), Some(b)) => out.row_times = Some(indexing::vconcat(vec![a.clone(), b.clone()])?),
+                (None, None) => {}
+                _ => return rt("Concatenating a timetable with a table is not supported."),
             }
             out.nrows += t.nrows;
             out.row_names = None;
@@ -568,7 +655,7 @@ pub fn call(it_arg_names: &[Option<String>], name: &str, args: &[Value], _nargou
         }
         "height" => one(Value::num(table_arg(args, name)?.nrows as f64)),
         "width" => one(Value::num(table_arg(args, name)?.vars.len() as f64)),
-        "istable" => one(Value::bool(matches!(args.first(), Some(Value::Table(_))))),
+        "istable" => one(Value::bool(matches!(args.first(), Some(Value::Table(t)) if !t.is_timetable()))),
         "head" | "tail" => {
             let k = match args.get(1) {
                 Some(v) => v.as_usize()?,
@@ -596,6 +683,12 @@ pub fn call(it_arg_names: &[Option<String>], name: &str, args: &[Value], _nargou
             let mut keys: Vec<(usize, bool)> = Vec::new();
             let descend_all = args.iter().skip(1).any(|v| v.text().map(|s| s.eq_ignore_ascii_case("descend")).unwrap_or(false));
             match args.get(1) {
+                // A timetable sorts by its row times by default (or when they are named).
+                _ if t.is_timetable()
+                    && args.get(1).is_none_or(|v| v.text().is_ok_and(|s| s == t.dim_names[0] || s.eq_ignore_ascii_case("descend") || s.eq_ignore_ascii_case("ascend"))) =>
+                {
+                    keys.push((usize::MAX, descend_all));
+                }
                 Some(v) if !(v.text().map(|s| s.eq_ignore_ascii_case("descend") || s.eq_ignore_ascii_case("ascend")).unwrap_or(false)) => {
                     if let Ok(m) = v.to_matrix() {
                         if m.kind != Kind::Char {
@@ -613,7 +706,7 @@ pub fn call(it_arg_names: &[Option<String>], name: &str, args: &[Value], _nargou
                 }
                 _ => keys = (0..t.vars.len()).map(|k| (k, descend_all)).collect(),
             }
-            let key_vals: Vec<Vec<SortKey>> = keys.iter().map(|&(k, _)| sort_keys(&t.vars[k], t.nrows)).collect::<R<_>>()?;
+            let key_vals: Vec<Vec<SortKey>> = keys.iter().map(|&(k, _)| sort_keys(if k == usize::MAX { t.row_times.as_ref().unwrap() } else { &t.vars[k] }, t.nrows)).collect::<R<_>>()?;
             let mut order: Vec<usize> = (0..t.nrows).collect();
             order.sort_by(|&a, &b| {
                 for (j, &(_, desc)) in keys.iter().enumerate() {

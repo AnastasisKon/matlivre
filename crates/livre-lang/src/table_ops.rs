@@ -22,7 +22,7 @@ pub const NAMES: &[&str] = &[
 
 /// Functions whose default output names come from the names of their input variables.
 pub fn wants_arg_names(name: &str) -> bool {
-    matches!(name, "addvars" | "outerjoin")
+    matches!(name, "addvars" | "outerjoin" | "timetable" | "synchronize")
 }
 
 fn table_at<'a>(a: &'a [Value], i: usize, fname: &str) -> R<&'a Table> {
