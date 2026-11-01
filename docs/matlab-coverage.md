@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1424 |
+| Implemented | 1435 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **598** |
+| **To implement** | **587** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -542,20 +542,15 @@ Implemented: `blkdiag`, `cat`, `circshift`, `colon`, `ctranspose`, `diag`, `eye`
 
 ## MATLAB > Language Fundamentals > Operators and Elementary Operations
 
-Implemented: 60. To implement: 2. In a branch: 0. Out of scope: 0.
+Implemented: 62. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `ismembertol`
-- [ ] `uniquetol`
-
-Implemented: `&amp;`, `&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `'`, `*`, `+`, `-`, `.'`, `.*`, `./`, `.\`, `.^`, `/`, `==`, `\`, `^`, `all`, `any`, `bitand`, `bitcmp`, `bitget`, `bitor`, `bitset`, `bitshift`, `bitxor`, `bsxfun`, `ceil`, `cumprod`, `cumsum`, `diff`, `find`, `fix`, `floor`, `idivide`, `isequal`, `isequaln`, `isequalwithequalnans`, `logical`, `mod`, `movsum`, `pagectranspose`, `pagemldivide`, `pagemrdivide`, `pagemtimes`, `pagetranspose`, `prod`, `rem`, `round`, `Short-Circuit &amp;&amp;`, `Short-Circuit ||`, `swapbytes`, `tensorprod`, `uminus`, `uplus`, `xor`, `|`, `~`, `~=`
+Implemented: `&amp;`, `&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `'`, `*`, `+`, `-`, `.'`, `.*`, `./`, `.\`, `.^`, `/`, `==`, `\`, `^`, `all`, `any`, `bitand`, `bitcmp`, `bitget`, `bitor`, `bitset`, `bitshift`, `bitxor`, `bsxfun`, `ceil`, `cumprod`, `cumsum`, `diff`, `find`, `fix`, `floor`, `idivide`, `isequal`, `isequaln`, `isequalwithequalnans`, `ismembertol`, `logical`, `mod`, `movsum`, `pagectranspose`, `pagemldivide`, `pagemrdivide`, `pagemtimes`, `pagetranspose`, `prod`, `rem`, `round`, `Short-Circuit &amp;&amp;`, `Short-Circuit ||`, `swapbytes`, `tensorprod`, `uminus`, `uniquetol`, `uplus`, `xor`, `|`, `~`, `~=`
 
 ## MATLAB > Mathematics > Computational Geometry
 
 Implemented: 84. To implement: 0. In a branch: 0. Out of scope: 0.
 
-Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isinterior`, `isInterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
+Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isInterior`, `isinterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
 
 ## MATLAB > Mathematics > Elementary Math
 
@@ -675,37 +670,29 @@ Implemented: `bicg`, `bicgstab`, `bicgstabl`, `cgs`, `colperm`, `etree`, `etreep
 
 ## MATLAB > Programming > Classes
 
-Implemented: 13. To implement: 23. In a branch: 0. Out of scope: 0.
+Implemented: 21. To implement: 15. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `addlistener`
 - [ ] `clone`
 - [ ] `details`
 - [ ] `empty`
-- [ ] `enumeration`
-- [ ] `event.hasListener`
-- [ ] `events`
 - [ ] `isDone`
 - [ ] `isLocked`
-- [ ] `listener`
 - [ ] `listLength`
 - [ ] `loadobj`
 - [ ] `meta.abstractDetails`
-- [ ] `meta.class.fromName`
 - [ ] `meta.package.fromName`
 - [ ] `meta.package.getAllPackages`
-- [ ] `notify`
 - [ ] `release`
 - [ ] `saveobj`
 - [ ] `setup`
 - [ ] `step`
-- [ ] `superclasses`
 - [ ] `sysobjupdate`
 
 Language keywords to check: `classdef`
 
-Implemented: `builtin`, `eq`, `import`, `ismethod`, `isprop`, `metaclass`, `methods`, `numArgumentsFromSubscript`, `properties`, `subsasgn`, `subsindex`, `subsref`, `substruct`
+Implemented: `addlistener`, `builtin`, `enumeration`, `eq`, `event.hasListener`, `events`, `import`, `ismethod`, `isprop`, `listener`, `meta.class.fromName`, `metaclass`, `methods`, `notify`, `numArgumentsFromSubscript`, `properties`, `subsasgn`, `subsindex`, `subsref`, `substruct`, `superclasses`
 
 ## MATLAB > Programming > Files and Folders
 
@@ -1316,15 +1303,14 @@ Implemented: `matlabFunction`, `poly2sym`, `subs`, `sym2poly`, `vpa`
 
 ## Symbolic Math Toolbox > Symbolic Computations in MATLAB > Operators and Elementary Operations
 
-Implemented: 16. To implement: 3. In a branch: 0. Out of scope: 0.
+Implemented: 17. To implement: 2. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `in`
-- [ ] `powermod`
 - [ ] `quorem`
 
-Implemented: `and`, `ge`, `gt`, `isAlways`, `ldivide`, `le`, `lt`, `minus`, `ne`, `not`, `or`, `power`, `rdivide`, `symfalse`, `symtrue`, `times`
+Implemented: `and`, `ge`, `gt`, `isAlways`, `ldivide`, `le`, `lt`, `minus`, `ne`, `not`, `or`, `power`, `powermod`, `rdivide`, `symfalse`, `symtrue`, `times`
 
 ## Symbolic Math Toolbox > Symbolic Computations in MATLAB > Symbolic Variables, Expressions, Functions, and Preferences
 
