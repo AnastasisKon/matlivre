@@ -148,3 +148,17 @@ fn polar_axes_match_matlab() {
     assert_eq!(cells(&it, "rl2"), ["0.5", "1.5"]);
     assert_eq!(text(&it, "cpx"), "matlab.graphics.axis.PolarAxes");
 }
+
+#[test]
+fn rotate_matches_matlab() {
+    let it = run(concat!(
+        "h = plot([0 1], [0 0]); rotate(h, [0 0 1], 90, [0 0 0]); x = get(h, 'XData'); y = get(h, 'YData');\n",
+        "s = surf([0 1; 0 1], [0 0; 1 1], zeros(2)); rotate(s, [0 90], 180, [0 0 0]); xs = get(s, 'XData'); ys = get(s, 'YData');\n",
+        "p = rotate(polyshape([0 1 1 0], [0 0 1 1]), 90); v = p.Vertices;\n",
+    ));
+    close(&nums(&it, "x"), &[0.0, 0.0]);
+    close(&nums(&it, "y"), &[0.0, 1.0]);
+    close(&nums(&it, "xs"), &[0.0, 0.0, -1.0, -1.0]);
+    close(&nums(&it, "ys"), &[0.0, -1.0, 0.0, -1.0]);
+    close(&nums(&it, "v"), &[0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0]);
+}

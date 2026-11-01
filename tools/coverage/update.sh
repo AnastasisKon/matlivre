@@ -18,6 +18,13 @@ cli="$root/target/release/matlivre-cli.exe"
 awk '{gsub(/\x27/, "\x27\x27"); printf "if ~exist(\x27%s\x27), disp(\x27%s\x27); end\n", $0, $0}' "$tmp/names.txt" > "$tmp/check.m"
 "$cli" "$tmp/check.m" | tr -d '\r' | grep -v '^Error' | sort -u > "$tmp/missing.txt" || true
 
+# Methods of built-in classes (exist() is 0 for them in MATLAB too): the *METHODS lists.
+for f in "$root"/crates/livre-lang/src/*.rs; do
+  awk '/const [A-Z_]*METHODS: &\[&str\] = &\[/,/\];/' "$f"
+done | { grep -oE '"[A-Za-z0-9_]+"' || true; } | tr -d '"' | sort -u > "$tmp/methods.txt"
+grep -vxFf "$tmp/methods.txt" "$tmp/missing.txt" > "$tmp/missing2.txt" || true
+mv "$tmp/missing2.txt" "$tmp/missing.txt"
+
 # Names provided by branches not merged into the current HEAD.
 for b in $(git -C "$root" for-each-ref --format='%(refname)' 'refs/heads/claude/*'); do
   git -C "$root" merge-base --is-ancestor "$b" HEAD && continue

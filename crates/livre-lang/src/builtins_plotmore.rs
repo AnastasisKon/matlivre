@@ -20,7 +20,7 @@ pub const NAMES: &[&str] = &[
     "orderedcolors", "fill3", "pie", "bar3", "bar3h", "hist", "pareto", "feather", "waterfall", "ribbon", "comet", "comet3", "newplot", "shg", "refresh", "gco",
     "gcbo", "gcbf", "brighten", "makehgtform", "viewmtx", "pbaspect", "texlabel", "rgbplot", "polarplot", "polarscatter", "polarhistogram",
     "polaraxes", "rlim", "thetalim", "rticks", "thetaticks", "rticklabels", "thetaticklabels", "rtickformat", "thetatickformat", "rtickangle",
-    "compass", "rose", "polar", "ezpolar",
+    "compass", "rose", "polar", "ezpolar", "rotate",
 ];
 
 fn is_textlike(v: &Value) -> bool {
@@ -1492,6 +1492,68 @@ fn ezpolar(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
     polar_grid_lines(it, vec![(x, y)], None, nargout)
 }
 
+/// `rotate(h, direction, alpha, origin)`: rotates the data of graphics objects about an axis
+/// through `origin` (default: the center of the plot box). `direction` is [azimuth elevation]
+/// in degrees or an axis vector.
+fn rotate(it: &mut Interpreter, a: &[Value]) -> Ret {
+    let h = arg(a, 0, "rotate")?.clone();
+    if !gfx::is_gfx(&h) {
+        return Ok(None);
+    }
+    let dir = arg(a, 1, "rotate")?.to_matrix()?.data;
+    let alpha = arg(a, 2, "rotate")?.scalar()?.to_radians();
+    let mut u = match dir.len() {
+        2 => {
+            let (th, ph) = (dir[0].to_radians(), dir[1].to_radians());
+            [ph.cos() * th.cos(), ph.cos() * th.sin(), ph.sin()]
+        }
+        3 => [dir[0], dir[1], dir[2]],
+        _ => return rt("Direction must be [azimuth elevation] or a 3-element vector."),
+    };
+    let len = (u[0] * u[0] + u[1] * u[1] + u[2] * u[2]).sqrt();
+    if len == 0.0 {
+        return rt("Direction must be nonzero.");
+    }
+    u.iter_mut().for_each(|x| *x /= len);
+    let get = |it: &mut Interpreter, obj: &Value, p: &str| -> R<Value> { Ok(it.call_function("get", vec![obj.clone(), Value::chars(p)], 1)?.remove(0)) };
+    let handles: Vec<Value> = (0..h.numel()).map(|k| crate::indexing::index(&h, &[crate::nd::IndexArg::scalar(k)])).collect::<R<_>>()?;
+    for obj in handles {
+        let origin = match a.get(3) {
+            Some(o) => {
+                let o = o.to_matrix()?.data;
+                [o[0], *o.get(1).unwrap_or(&0.0), *o.get(2).unwrap_or(&0.0)]
+            }
+            None => {
+                let ax = get(it, &obj, "Parent")?;
+                let mid = |it: &mut Interpreter, p: &str| -> R<f64> {
+                    let l = get(it, &ax, p)?.to_matrix()?.data;
+                    Ok(0.5 * (l[0] + l[1]))
+                };
+                [mid(it, "XLim")?, mid(it, "YLim")?, mid(it, "ZLim")?]
+            }
+        };
+        let x = get(it, &obj, "XData")?.to_matrix()?;
+        let y = get(it, &obj, "YData")?.to_matrix()?;
+        let zv = get(it, &obj, "ZData")?.to_matrix()?;
+        let n = x.numel();
+        let z = if zv.numel() == n { zv.data.clone() } else { vec![0.0; n] };
+        let (c, s) = (alpha.cos(), alpha.sin());
+        let (mut xs, mut ys, mut zs) = (x.clone(), y.clone(), Matrix::from_dims(x.dims.clone(), vec![0.0; n]));
+        for k in 0..n {
+            let p = [x.data[k] - origin[0], y.data[k] - origin[1], z[k] - origin[2]];
+            let dot = u[0] * p[0] + u[1] * p[1] + u[2] * p[2];
+            let cross = [u[1] * p[2] - u[2] * p[1], u[2] * p[0] - u[0] * p[2], u[0] * p[1] - u[1] * p[0]];
+            // Rodrigues' rotation formula.
+            let r: Vec<f64> = (0..3).map(|i| p[i] * c + cross[i] * s + u[i] * dot * (1.0 - c) + origin[i]).collect();
+            xs.data[k] = r[0];
+            ys.data[k] = r[1];
+            zs.data[k] = r[2];
+        }
+        it.call_function("set", vec![obj, Value::chars("XData"), Value::Num(xs), Value::chars("YData"), Value::Num(ys), Value::chars("ZData"), Value::Num(zs)], 0)?;
+    }
+    none()
+}
+
 pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Ret {
     match name {
         "polarplot" => polar_series(it, a, false, nargout),
@@ -1504,6 +1566,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         "rose" => rose(it, a, nargout),
         "polar" => polar(it, a, nargout),
         "ezpolar" => ezpolar(it, a, nargout),
+        "rotate" => rotate(it, a),
         "tiledlayout" => tiledlayout(it, a, nargout),
         "nexttile" => nexttile(it, a, nargout),
         "tilenum" => {
