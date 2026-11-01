@@ -1862,7 +1862,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("matlivre-more-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let p = |n: &str| dir.join(n).display().to_string().replace('\'', "''");
-        let names = ["tiles.png", "lit.png", "charts.png", "polar.png"];
+        let names = ["tiles.png", "lit.png", "charts.png", "polar.png", "graphs.png"];
         let src = format!(
             concat!(
                 "t = tiledlayout(2, 2); nexttile; pie([1 2 3 4]); nexttile; bar3(magic(3)); nexttile; hist(randn(1, 500)); nexttile; rectangle('Position', [0 0 2 1], 'Curvature', 0.4, 'FaceColor', 'y'); axis equal;\n",
@@ -1871,11 +1871,13 @@ mod tests {
                 "figure; colororder('dye'); subplot(1, 2, 1); plot(magic(4)); subplot(1, 2, 2); ribbon(peaks(8)); saveas(gcf, '{c}');\n",
                 "figure; tiledlayout(1, 3); nexttile; th = linspace(0, 2*pi, 200); polarplot(th, 1 + 0.5*sin(3*th), 'LineWidth', 1.5); hold on; polarscatter(th(1:20:end), ones(1, 10));\n",
                 "nexttile; polarhistogram(randn(1, 500) + pi/2, 12); nexttile; compass([1 2 -1], [1 -1 0.5]); saveas(gcf, '{d}');\n",
+                "figure; subplot(1, 2, 1); plot(graph([1 1 2 3 3 4 5], [2 3 3 4 5 5 6])); subplot(1, 2, 2); plot(digraph([1 1 2 3 4], [2 3 4 4 5])); saveas(gcf, '{e}');\n",
             ),
             a = p(names[0]),
             b = p(names[1]),
             c = p(names[2]),
             d = p(names[3]),
+            e = p(names[4]),
         );
         it.run_source(&src).unwrap();
         for n in names {

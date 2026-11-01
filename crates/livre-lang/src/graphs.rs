@@ -365,7 +365,7 @@ impl Gr {
         let mut stack = Vec::new();
         let mut found: Vec<Vec<usize>> = Vec::new();
         let mut counter = 0;
-        fn strong(
+        fn tarjan(
             u: usize, adj: &[Vec<(usize, usize)>], index: &mut [usize], low: &mut [usize], on: &mut [bool], stack: &mut Vec<usize>, found: &mut Vec<Vec<usize>>,
             counter: &mut usize,
         ) {
@@ -376,7 +376,7 @@ impl Gr {
             on[u] = true;
             for &(v, _) in &adj[u] {
                 if index[v] == usize::MAX {
-                    strong(v, adj, index, low, on, stack, found, counter);
+                    tarjan(v, adj, index, low, on, stack, found, counter);
                     low[u] = low[u].min(low[v]);
                 } else if on[v] {
                     low[u] = low[u].min(index[v]);
@@ -396,7 +396,7 @@ impl Gr {
         }
         for s in 0..n {
             if index[s] == usize::MAX {
-                strong(s, &adj, &mut index, &mut low, &mut on, &mut stack, &mut found, &mut counter);
+                tarjan(s, &adj, &mut index, &mut low, &mut on, &mut stack, &mut found, &mut counter);
             }
         }
         let mut comp = vec![0; n];
@@ -1375,6 +1375,10 @@ fn plot(it: &mut Interpreter, g: &Gr, a: &[Value], nargout: usize) -> Ret {
     let n = g.n;
     let layout = a.windows(2).find(|p| p[0].text().map(|t| t.eq_ignore_ascii_case("Layout")).unwrap_or(false)).map(|p| p[1].text()).transpose()?.unwrap_or_else(|| "auto".into()).to_lowercase();
     let pos = layout_nodes(g, &layout);
+    // Arrowheads and padding scale with the drawing.
+    let (x0, x1) = pos.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |a, p| (a.0.min(p.0), a.1.max(p.0)));
+    let (y0, y1) = pos.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |a, p| (a.0.min(p.1), a.1.max(p.1)));
+    let span = (x1 - x0).max(y1 - y0).max(1.0);
     let (mut ex, mut ey) = (Vec::new(), Vec::new());
     for &(s, t) in &g.edges {
         let (p, q) = (pos[s], pos[t]);
@@ -1384,10 +1388,11 @@ fn plot(it: &mut Interpreter, g: &Gr, a: &[Value], nargout: usize) -> Ret {
             let (dx, dy) = (q.0 - p.0, q.1 - p.1);
             let len = dx.hypot(dy).max(1e-9);
             let (ux, uy) = (dx / len, dy / len);
-            let tip = (q.0 - ux * 0.06, q.1 - uy * 0.06);
+            let tip = (q.0 - ux * 0.02 * span, q.1 - uy * 0.02 * span);
             for side in [-1.0, 1.0] {
-                let ang: f64 = 0.45 * side;
-                let (bx, by) = (-(ux * ang.cos() - uy * ang.sin()) * 0.12, -(ux * ang.sin() + uy * ang.cos()) * 0.12);
+                let ang: f64 = 0.4 * side;
+                let head = 0.045 * span;
+                let (bx, by) = (-(ux * ang.cos() - uy * ang.sin()) * head, -(ux * ang.sin() + uy * ang.cos()) * head);
                 ex.extend([tip.0, tip.0 + bx, f64::NAN]);
                 ey.extend([tip.1, tip.1 + by, f64::NAN]);
             }
@@ -1396,17 +1401,17 @@ fn plot(it: &mut Interpreter, g: &Gr, a: &[Value], nargout: usize) -> Ret {
     use crate::graphics::{LineStyle, Marker, Series, SeriesKind, XAxisKind};
     let mut edges = Series::new(SeriesKind::Line, ex, ey);
     edges.line_width = 0.5;
-    let mut nodes = Series::new(SeriesKind::Line, pos.iter().map(|p| p.0).collect(), pos.iter().map(|p| p.1).collect());
+    let mut nodes = Series::new(SeriesKind::Scatter, pos.iter().map(|p| p.0).collect(), pos.iter().map(|p| p.1).collect());
     nodes.line_style = LineStyle::None;
     nodes.marker = Some(Marker::Circle);
-    nodes.marker_size = 4.0;
+    nodes.marker_size = 5.0;
     nodes.class_hint = Some("matlab.graphics.chart.primitive.GraphPlot");
     let color = Some([0, 0x72, 0xBD]);
     edges.color = color;
     nodes.color = color;
     let mut series = vec![nodes, edges];
     for (k, p) in pos.iter().enumerate() {
-        let mut t = Series::new(SeriesKind::Text, vec![p.0 + 0.04], vec![p.1 + 0.04]);
+        let mut t = Series::new(SeriesKind::Text, vec![p.0 + 0.02 * span], vec![p.1 + 0.03 * span]);
         t.label = match &g.names {
             Some(nm) => nm[k].clone(),
             None => num2str_scalar((k + 1) as f64),
@@ -1415,6 +1420,10 @@ fn plot(it: &mut Interpreter, g: &Gr, a: &[Value], nargout: usize) -> Ret {
         series.push(t);
     }
     let ids = it.add_series(series, XAxisKind::Numeric);
+    let pad = 0.1 * span;
+    let ax = it.current_figure().axes_mut();
+    ax.xlim = Some((x0 - pad, x1 + pad));
+    ax.ylim = Some((y0 - pad, y1 + pad));
     let _ = n;
     crate::builtins_plot::handles_out(it, &ids[..1], nargout)
 }
