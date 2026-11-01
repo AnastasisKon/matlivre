@@ -1301,6 +1301,8 @@ fn meta_class_def(name: &str, props: &[&str]) -> Rc<ClassDef> {
         methods: HashMap::new(),
         statics: HashSet::new(),
         ctor: None,
+        events: Vec::new(),
+        enums: Vec::new(),
     })
 }
 
@@ -1322,13 +1324,18 @@ fn metaclass(it: &mut Interpreter, v: &Value) -> Value {
         Value::Object(o) => Some(o.class.clone()),
         _ => None,
     };
-    let name = v.class_name();
+    metaclass_for(it, class, &v.class_name())
+}
+
+/// The meta.class object of a class (or of a built-in type named `name`).
+pub(crate) fn metaclass_for(it: &mut Interpreter, class: Option<Rc<ClassDef>>, name: &str) -> Value {
     let empty_cell = || Value::Cell(CellArray::from_dims(vec![0, 1], Vec::new()));
     let props = match &class {
         Some(c) => struct_list(
             &["Name", "Description", "DetailedDescription", "GetAccess", "SetAccess", "Dependent", "Constant", "Abstract", "Transient", "Hidden", "HasDefault", "DefiningClass"],
             c.props
                 .iter()
+                .filter(|p| p.name != crate::class::ENUM_PROP)
                 .map(|p| {
                     vec![
                         Value::chars(&p.name),
@@ -1393,13 +1400,13 @@ fn metaclass(it: &mut Interpreter, v: &Value) -> Value {
     };
     let handle = class.as_ref().is_some_and(|c| c.is_handle);
     let values = vec![
-        Value::chars(&name),
+        Value::chars(name),
         Value::chars(""),
         Value::chars(""),
         Value::bool(false),
         Value::bool(false),
         Value::bool(false),
-        Value::bool(false),
+        Value::bool(class.as_ref().is_some_and(|c| !c.enums.is_empty())),
         Value::bool(false),
         Value::bool(handle),
         empty_cell(),
@@ -1408,8 +1415,8 @@ fn metaclass(it: &mut Interpreter, v: &Value) -> Value {
         Value::bool(false),
         props,
         methods,
-        struct_list(&["Name"], Vec::new()),
-        struct_list(&["Name"], Vec::new()),
+        struct_list(&["Name"], class.as_ref().map(|c| crate::lang_more::event_list(c).into_iter().map(|e| vec![Value::chars(&e)]).collect()).unwrap_or_default()),
+        struct_list(&["Name"], class.as_ref().map(|c| c.enums.iter().map(|(e, _)| vec![Value::chars(e)]).collect()).unwrap_or_default()),
         supers,
     ];
     Value::Object(Object { class: meta_class_def("meta.class", CLASS_PROPS), props: Rc::new(RefCell::new(values)) })

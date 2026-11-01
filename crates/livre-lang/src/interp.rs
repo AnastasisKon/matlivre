@@ -107,6 +107,8 @@ pub struct Interpreter {
     /// The last error and warning (message, identifier), for `lasterr` and `lastwarn`.
     pub(crate) last_error: (String, String),
     pub(crate) last_warning: (String, String),
+    /// Event listeners of handle objects (addlistener, listener).
+    pub(crate) listeners: Vec<crate::lang_more::Listener>,
     jit: Option<crate::jit::Jit>,
     jit_enabled: bool,
     /// Compiled kernels by (statement address, variable types); `None` = not compilable.
@@ -157,6 +159,7 @@ impl Interpreter {
             arg_names: Vec::new(),
             last_error: (String::new(), String::new()),
             last_warning: (String::new(), String::new()),
+            listeners: Vec::new(),
             jit: None,
             jit_enabled: std::env::var_os("MATLIVRE_NOJIT").is_none(),
             jit_cache: HashMap::new(),
@@ -482,6 +485,10 @@ impl Interpreter {
         if let Some(c) = self.classes.get(name) {
             return Some(c.clone());
         }
+        if let Some(c) = crate::lang_more::builtin_class(name) {
+            self.classes.insert(name.to_string(), c.clone());
+            return Some(c);
+        }
         if self.not_on_path.contains(name) || self.path_functions.contains_key(name) {
             return None;
         }
@@ -660,6 +667,14 @@ impl Interpreter {
             if let Some(f) = o.class.method("disp").cloned() {
                 self.emit(OutputKind::Text(format!("{name} = \n")));
                 self.call_method(&f, &o.class.clone(), vec![v.clone()], 0)?;
+                return Ok(());
+            }
+            if let Some(m) = crate::class::enum_name(o) {
+                let text = format!("{name} = 
+  {} enumeration
+
+    {m}", o.class.name);
+                self.emit(OutputKind::Value { name: name.to_string(), text });
                 return Ok(());
             }
             let values = self.object_values(o)?;
@@ -1335,6 +1350,9 @@ impl Interpreter {
                 if let Some(v) = crate::gfx::compare(op == BinOp::Eq, &l, &r) {
                     return Ok(v);
                 }
+                if let Some(v) = crate::lang_more::enum_compare(op, &l, &r)? {
+                    return Ok(v);
+                }
             }
             if let (Value::Object(a), Value::Object(b)) = (&l, &r) {
                 if a.class.is_handle && matches!(op, BinOp::Eq | BinOp::Ne) {
@@ -1808,7 +1826,27 @@ impl Interpreter {
         r
     }
 
+    /// An enumeration member: the constructor run with the member's arguments.
+    pub(crate) fn enum_member(&mut self, c: &Rc<ClassDef>, member: &str) -> R<Value> {
+        let Some((_, args)) = c.enums.iter().find(|(m, _)| m == member).cloned() else {
+            return rt(format!("'{member}' is not a member of enumeration class '{}'.", c.name));
+        };
+        let argv = match args {
+            Some(e) => match self.eval_in_class_scope(&e)? {
+                Value::Cell(cc) => cc.data,
+                v => vec![v],
+            },
+            None => Vec::new(),
+        };
+        let obj = self.construct(c, argv)?;
+        let Value::Object(o) = obj else { return rt("Enumeration constructor did not return an object.") };
+        Ok(Value::Object(o.set(crate::class::ENUM_PROP, Value::chars(member))?))
+    }
+
     fn static_call(&mut self, c: &Rc<ClassDef>, member: &str, args: Vec<Value>, nargout: usize) -> R<Vec<Value>> {
+        if c.enums.iter().any(|(m, _)| m == member) {
+            return Ok(vec![self.enum_member(c, member)?]);
+        }
         if let Some(i) = c.prop_index(member) {
             if c.props[i].constant {
                 if let Some(d) = c.props[i].default.clone() {

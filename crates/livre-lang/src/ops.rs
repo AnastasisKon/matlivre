@@ -96,6 +96,11 @@ pub fn binary(op: BinOp, a: &Value, b: &Value) -> R<Value> {
 }
 
 fn binary_dense(op: BinOp, a: &Value, b: &Value) -> R<Value> {
+    if matches!(a, Value::Object(_)) || matches!(b, Value::Object(_)) {
+        if let Some(r) = crate::lang_more::enum_compare(op, a, b)? {
+            return Ok(r);
+        }
+    }
     if matches!(a, Value::Sym(_)) || matches!(b, Value::Sym(_)) {
         return crate::sym::binary(op, a, b);
     }

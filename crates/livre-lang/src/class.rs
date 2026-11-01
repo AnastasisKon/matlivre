@@ -34,7 +34,13 @@ pub struct ClassAst {
     pub supers: Vec<String>,
     pub props: Vec<PropDef>,
     pub methods: Vec<MethodDef>,
+    pub events: Vec<String>,
+    /// Enumeration members and their constructor arguments (a cell expression).
+    pub enums: Vec<(String, Option<Expr>)>,
 }
+
+/// The hidden property holding an enumeration member's name.
+pub const ENUM_PROP: &str = "MatlivreEnumMember";
 
 /// A loaded class with inherited members merged in.
 #[derive(Debug)]
@@ -50,6 +56,9 @@ pub struct ClassDef {
     pub statics: HashSet<String>,
     /// The class's own constructor (not inherited).
     pub ctor: Option<Rc<Function>>,
+    /// Events, inherited ones included.
+    pub events: Vec<String>,
+    pub enums: Vec<(String, Option<Expr>)>,
 }
 
 impl ClassDef {
@@ -72,8 +81,14 @@ impl ClassDef {
         let mut statics = HashSet::new();
         let mut ancestors = Vec::new();
         let mut is_handle = false;
+        let mut events: Vec<String> = Vec::new();
         for s in supers {
             is_handle |= s.is_handle;
+            for e in &s.events {
+                if !events.contains(e) {
+                    events.push(e.clone());
+                }
+            }
             for a in std::iter::once(&s.name).chain(s.ancestors.iter()) {
                 if !ancestors.contains(a) {
                     ancestors.push(a.clone());
@@ -103,6 +118,14 @@ impl ClassDef {
                 None => props.push(p),
             }
         }
+        for e in ast.events {
+            if !events.contains(&e) {
+                events.push(e);
+            }
+        }
+        if !ast.enums.is_empty() && !props.iter().any(|p| p.name == ENUM_PROP) {
+            props.push(PropDef { name: ENUM_PROP.into(), default: None, constant: false, dependent: false, hidden: true });
+        }
         let mut ctor = None;
         for m in ast.methods {
             let name = m.func.name.clone();
@@ -115,7 +138,7 @@ impl ClassDef {
             }
             methods.insert(name, (m.func, ast.name.clone()));
         }
-        ClassDef { name: ast.name, supers: ast.supers, ancestors, is_handle, props, methods, statics, ctor }
+        ClassDef { name: ast.name, supers: ast.supers, ancestors, is_handle, props, methods, statics, ctor, events, enums: ast.enums }
     }
 }
 
@@ -135,6 +158,14 @@ impl PartialEq for Object {
             self.class.name == other.class.name && *self.props.borrow() == *other.props.borrow()
         }
     }
+}
+
+/// The member name of an enumeration value.
+pub fn enum_name(o: &Object) -> Option<String> {
+    if o.class.enums.is_empty() {
+        return None;
+    }
+    o.get(ENUM_PROP).and_then(|v| v.text().ok()).filter(|s| !s.is_empty())
 }
 
 impl Object {
@@ -179,6 +210,9 @@ pub fn format_object(name: &str, o: &Object, values: &[Value], f: NumFormat) -> 
 }
 
 pub fn display_object(name: &str, o: &Object, f: NumFormat) -> String {
+    if let Some(m) = enum_name(o) {
+        return format!("{name} = \n  {} enumeration\n\n    {m}", o.class.name);
+    }
     let values = o.props.borrow().clone();
     format_object(name, o, &values, f)
 }
@@ -243,7 +277,8 @@ enum Block {
     Classdef,
     Properties,
     Methods,
-    Skip,
+    Events,
+    Enumeration,
     Other,
 }
 
@@ -311,7 +346,8 @@ pub fn parse_classdef(src: &str) -> R<ClassAst> {
                 let kind = match s.as_str() {
                     "properties" => Block::Properties,
                     "methods" => Block::Methods,
-                    "events" | "enumeration" => Block::Skip,
+                    "events" => Block::Events,
+                    "enumeration" => Block::Enumeration,
                     _ => return Err(err(format!("Unexpected '{s}' in classdef body."), t.line)),
                 };
                 stack.push((kind, t.line));
@@ -325,7 +361,7 @@ pub fn parse_classdef(src: &str) -> R<ClassAst> {
             }
             Tok::Kw(Kw::End) if depth == 0 => {
                 let (kind, start) = stack.pop().ok_or_else(|| err("Unexpected 'end'.", t.line))?;
-                if matches!(kind, Block::Properties | Block::Methods) {
+                if matches!(kind, Block::Properties | Block::Methods | Block::Events | Block::Enumeration) {
                     blocks.push((kind, start, t.line));
                 }
                 if kind == Block::Classdef {
@@ -345,6 +381,8 @@ pub fn parse_classdef(src: &str) -> R<ClassAst> {
     }
     let mut props = Vec::new();
     let mut methods = Vec::new();
+    let mut events = Vec::new();
+    let mut enums = Vec::new();
     for (kind, start, end) in blocks {
         let attrs = attrs_of(line_text(start));
         match kind {
@@ -390,10 +428,66 @@ pub fn parse_classdef(src: &str) -> R<ClassAst> {
                     methods.push(MethodDef { func: f, is_static });
                 }
             }
+            Block::Events => {
+                for l in start + 1..end {
+                    for e in line_text(l).split([',', ';']) {
+                        let e = e.trim();
+                        if !e.is_empty() {
+                            events.push(e.to_string());
+                        }
+                    }
+                }
+            }
+            Block::Enumeration => {
+                // Members, each optionally with constructor arguments: Red (1, 0, 0), Green
+                let text: String = (start + 1..end).map(|l| line_text(l).trim().trim_end_matches("...").to_string()).collect::<Vec<_>>().join(" ");
+                let chars: Vec<char> = text.chars().collect();
+                let mut i = 0;
+                while i < chars.len() {
+                    while i < chars.len() && (chars[i].is_whitespace() || chars[i] == ',' || chars[i] == ';') {
+                        i += 1;
+                    }
+                    let s = i;
+                    while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                        i += 1;
+                    }
+                    if s == i {
+                        if i < chars.len() {
+                            return Err(err(format!("Invalid enumeration member near '{}'.", chars[i..].iter().collect::<String>()), start));
+                        }
+                        break;
+                    }
+                    let member: String = chars[s..i].iter().collect();
+                    while i < chars.len() && chars[i].is_whitespace() {
+                        i += 1;
+                    }
+                    let mut args = None;
+                    if i < chars.len() && chars[i] == '(' {
+                        let (open, mut depth) = (i, 0);
+                        while i < chars.len() {
+                            match chars[i] {
+                                '(' => depth += 1,
+                                ')' => {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        break;
+                                    }
+                                }
+                                _ => {}
+                            }
+                            i += 1;
+                        }
+                        let inner: String = chars[open + 1..i.min(chars.len())].iter().collect();
+                        i += 1;
+                        args = Some(crate::parser::parse_expr(&format!("{{{inner}}}")).map_err(|e| err(e.message, start))?);
+                    }
+                    enums.push((member, args));
+                }
+            }
             _ => {}
         }
     }
-    Ok(ClassAst { name, supers, props, methods })
+    Ok(ClassAst { name, supers, props, methods, events, enums })
 }
 
 /// Position of a top-level `=` that is not part of `==`, `<=`, `>=`, `~=`.
