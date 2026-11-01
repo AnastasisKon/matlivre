@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1113 |
+| Implemented | 1130 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **909** |
+| **To implement** | **892** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -270,7 +270,7 @@ Out of scope: `addFields` (External Language Interfaces), `callSoapService` (Ext
 
 ## MATLAB > Graphics > 2-D and 3-D Plots
 
-Implemented: 51. To implement: 97. In a branch: 0. Out of scope: 0.
+Implemented: 68. To implement: 80. In a branch: 0. Out of scope: 0.
 
 To implement:
 
@@ -286,7 +286,6 @@ To implement:
 - [ ] `bubblelim`
 - [ ] `bubblesize`
 - [ ] `clearpoints`
-- [ ] `compass`
 - [ ] `coneplot`
 - [ ] `contourslice`
 - [ ] `curl`
@@ -298,7 +297,6 @@ To implement:
 - [ ] `ezmeshc`
 - [ ] `ezplot`
 - [ ] `ezplot3`
-- [ ] `ezpolar`
 - [ ] `ezsurf`
 - [ ] `ezsurfc`
 - [ ] `fewerbins`
@@ -330,22 +328,11 @@ To implement:
 - [ ] `pie3`
 - [ ] `piechart`
 - [ ] `plotmatrix`
-- [ ] `polar`
-- [ ] `polaraxes`
 - [ ] `polarbubblechart`
-- [ ] `polarhistogram`
-- [ ] `polarplot`
-- [ ] `polarscatter`
 - [ ] `reducepatch`
 - [ ] `reducevolume`
 - [ ] `refreshdata`
 - [ ] `removeToolbarMapButton`
-- [ ] `rlim`
-- [ ] `rose`
-- [ ] `rtickangle`
-- [ ] `rtickformat`
-- [ ] `rticklabels`
-- [ ] `rticks`
 - [ ] `scatterhistogram`
 - [ ] `shrinkfaces`
 - [ ] `slice`
@@ -365,14 +352,10 @@ To implement:
 - [ ] `surfnorm`
 - [ ] `swarmchart`
 - [ ] `swarmchart3`
-- [ ] `thetalim`
-- [ ] `thetatickformat`
-- [ ] `thetaticklabels`
-- [ ] `thetaticks`
 - [ ] `volumebounds`
 - [ ] `wordcloud`
 
-Implemented: `bar`, `bar3`, `bar3h`, `barh`, `clabel`, `comet`, `comet3`, `contour`, `contour3`, `contourc`, `contourf`, `cylinder`, `drawnow`, `ellipsoid`, `errorbar`, `fcontour`, `feather`, `fill`, `fill3`, `fmesh`, `fplot`, `fplot3`, `fsurf`, `hidden`, `hist`, `histc`, `histogram`, `loglog`, `mesh`, `meshc`, `meshz`, `pareto`, `pcolor`, `peaks`, `pie`, `plot3`, `quiver`, `quiver3`, `ribbon`, `scatter`, `scatter3`, `semilogx`, `semilogy`, `sphere`, `stairs`, `stem`, `stem3`, `surf`, `surface`, `surfc`, `waterfall`
+Implemented: `bar`, `bar3`, `bar3h`, `barh`, `clabel`, `comet`, `comet3`, `compass`, `contour`, `contour3`, `contourc`, `contourf`, `cylinder`, `drawnow`, `ellipsoid`, `errorbar`, `ezpolar`, `fcontour`, `feather`, `fill`, `fill3`, `fmesh`, `fplot`, `fplot3`, `fsurf`, `hidden`, `hist`, `histc`, `histogram`, `loglog`, `mesh`, `meshc`, `meshz`, `pareto`, `pcolor`, `peaks`, `pie`, `plot3`, `polar`, `polaraxes`, `polarhistogram`, `polarplot`, `polarscatter`, `quiver`, `quiver3`, `ribbon`, `rlim`, `rose`, `rtickangle`, `rtickformat`, `rticklabels`, `rticks`, `scatter`, `scatter3`, `semilogx`, `semilogy`, `sphere`, `stairs`, `stem`, `stem3`, `surf`, `surface`, `surfc`, `thetalim`, `thetatickformat`, `thetaticklabels`, `thetaticks`, `waterfall`
 
 ## MATLAB > Graphics > Formatting and Annotation
 
