@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1235 |
+| Implemented | 1276 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **787** |
+| **To implement** | **746** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -805,57 +805,18 @@ Implemented: `randi`, `randn`, `randperm`, `rng`
 
 ## MATLAB > Mathematics > Sparse Matrices
 
-Implemented: 1. To implement: 45. In a branch: 0. Out of scope: 0.
+Implemented: 40. To implement: 6. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `amd`
-- [ ] `bicg`
-- [ ] `bicgstab`
-- [ ] `bicgstabl`
-- [ ] `cgs`
 - [ ] `colamd`
-- [ ] `colperm`
 - [ ] `dissect`
 - [ ] `dmperm`
 - [ ] `equilibrate`
-- [ ] `etree`
-- [ ] `etreeplot`
-- [ ] `full`
-- [ ] `gmres`
-- [ ] `gplot`
-- [ ] `ichol`
-- [ ] `ilu`
-- [ ] `lsqr`
-- [ ] `minres`
-- [ ] `nonzeros`
-- [ ] `nzmax`
-- [ ] `pcg`
-- [ ] `qmr`
-- [ ] `spalloc`
-- [ ] `sparse`
-- [ ] `spaugment`
-- [ ] `spconvert`
-- [ ] `spdiags`
-- [ ] `speye`
-- [ ] `spfun`
-- [ ] `spones`
-- [ ] `spparms`
-- [ ] `sprand`
-- [ ] `sprandn`
-- [ ] `sprandsym`
-- [ ] `sprank`
-- [ ] `spy`
 - [ ] `symamd`
-- [ ] `symbfact`
-- [ ] `symmlq`
-- [ ] `symrcm`
-- [ ] `tfqmr`
-- [ ] `treelayout`
-- [ ] `treeplot`
-- [ ] `unmesh`
 
-Implemented: `nnz`
+Implemented: `bicg`, `bicgstab`, `bicgstabl`, `cgs`, `colperm`, `etree`, `etreeplot`, `full`, `gmres`, `gplot`, `ichol`, `ilu`, `lsqr`, `minres`, `nnz`, `nonzeros`, `nzmax`, `pcg`, `qmr`, `spalloc`, `sparse`, `spaugment`, `spconvert`, `spdiags`, `speye`, `spfun`, `spones`, `spparms`, `sprand`, `sprandn`, `sprandsym`, `sprank`, `spy`, `symbfact`, `symmlq`, `symrcm`, `tfqmr`, `treelayout`, `treeplot`, `unmesh`
 
 ## MATLAB > Programming > Classes
 
@@ -1218,14 +1179,14 @@ Out of scope: `defaultItemHitCallback` (internal helper, not a user function), `
 
 ## Not in the function reference > matlab/sparfun
 
-Implemented: 0. To implement: 4. In a branch: 0. Out of scope: 0.
+Implemented: 2. To implement: 2. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `delsq`
 - [ ] `nested`
-- [ ] `numgrid`
 - [ ] `rjr`
+
+Implemented: `delsq`, `numgrid`
 
 ## Not in the function reference > matlab/specgraph
 
