@@ -47,6 +47,9 @@ my %device = map { $_ => 1 } qw(audioplayer audiorecorder audiodevinfo audiodevr
     mmreader avifile addframe);
 my %keyword = map { $_ => 1 } qw(ans arguments break case catch classdef continue else elseif end for function global if otherwise parfor
     persistent return switch try while varargin varargout nargin nargout spmd);
+# Operators are syntax, not functions exist() can see; the language tests cover them.
+my %operator = map { $_ => 1 } ('&', '&amp;', '>', '&gt;', '>=', '&gt;=', '<', '&lt;', '<=', '&lt;=', "'", '*', '+', '-', ".'", '.*', '.^', '==', '^',
+    'Short-Circuit &&', 'Short-Circuit &amp;&amp;', 'Short-Circuit ||', '|', '~', '~=', 'try, catch');
 
 my %entry;    # name => [category, status, reason]
 sub out_reason {
@@ -82,6 +85,7 @@ for my $name (keys %entry) {
     my $e = $entry{$name};
     if ($e->[2]) { $e->[1] = 'out' }
     elsif ($keyword{$name}) { $e->[1] = $missing{$name} ? 'keyword' : 'done' }
+    elsif ($operator{$name}) { $e->[1] = 'done' }
     elsif (!$missing{$name}) { $e->[1] = 'done' }
     elsif ($branch{$name}) { $e->[1] = 'branch' }
     else { $e->[1] = 'todo' }
