@@ -136,25 +136,35 @@ impl Kind {
 
 /// An N-D numeric array (column-major), optionally complex. Logical and char arrays share
 /// the representation and differ only in [`Kind`].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Matrix {
     pub dims: Dims,
     pub data: Vec<f64>,
     /// Imaginary parts; `None` for real arrays.
     pub im: Option<Vec<f64>>,
     pub kind: Kind,
+    /// MATLAB's sparse attribute: the values are stored densely, but the array displays,
+    /// reports `issparse` and propagates through operations as a sparse matrix.
+    pub sparse: bool,
+}
+
+/// Equality of values (sparse and full arrays with the same elements are equal).
+impl PartialEq for Matrix {
+    fn eq(&self, o: &Self) -> bool {
+        self.dims == o.dims && self.data == o.data && self.im == o.im && self.kind == o.kind
+    }
 }
 
 impl Matrix {
     pub fn new(rows: usize, cols: usize, data: Vec<f64>) -> Self {
         debug_assert_eq!(rows * cols, data.len());
-        Self { dims: vec![rows, cols], data, im: None, kind: Kind::Double }
+        Self { dims: vec![rows, cols], data, im: None, kind: Kind::Double, sparse: false }
     }
 
     pub fn from_dims(dims: Dims, data: Vec<f64>) -> Self {
         let dims = nd::normalize(dims);
         debug_assert_eq!(nd::numel(&dims), data.len());
-        Self { dims, data, im: None, kind: Kind::Double }
+        Self { dims, data, im: None, kind: Kind::Double, sparse: false }
     }
 
     pub fn complex(dims: Dims, re: Vec<f64>, im: Vec<f64>) -> Self {
@@ -300,7 +310,7 @@ impl Matrix {
                 }
             }
         }
-        Matrix { dims: vec![cols, rows], data: out, im: out_im, kind: self.kind }
+        Matrix { dims: vec![cols, rows], data: out, im: out_im, kind: self.kind, sparse: self.sparse }
     }
 
     pub fn to_string_lossy(&self) -> String {
@@ -334,7 +344,7 @@ impl Matrix {
     pub fn gather(&self, pos: &[usize], dims: Dims) -> Matrix {
         let data = pos.iter().map(|&p| self.data[p]).collect();
         let im = self.im.as_ref().map(|im| pos.iter().map(|&p| im[p]).collect());
-        let mut m = Matrix { dims: nd::normalize(dims), data, im, kind: self.kind };
+        let mut m = Matrix { dims: nd::normalize(dims), data, im, kind: self.kind, sparse: self.sparse };
         m.narrow();
         m
     }

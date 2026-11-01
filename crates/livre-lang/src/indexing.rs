@@ -298,6 +298,14 @@ pub fn concat(items: Vec<Value>, dim: usize) -> R<Value> {
         return rt("Arrays of objects or function handles are not supported in this version; use a cell array.");
     }
     let mats: Vec<Matrix> = items.into_iter().map(|v| if let Value::Num(m) = v { m } else { unreachable!() }).collect();
+    // Concatenating with a sparse matrix gives a sparse matrix.
+    if mats.iter().any(|m| m.sparse) {
+        let mut out = concat(mats.into_iter().map(|mut m| { m.sparse = false; Value::Num(m) }).collect(), dim)?;
+        if let Value::Num(m) = &mut out {
+            m.sparse = true;
+        }
+        return Ok(out);
+    }
     let mut kind = Kind::Double;
     let mut int: Option<IntClass> = None;
     for m in &mats {

@@ -86,6 +86,16 @@ pub fn arith_kind(a: Kind, b: Kind) -> R<Kind> {
 }
 
 pub fn binary(op: BinOp, a: &Value, b: &Value) -> R<Value> {
+    let mut out = binary_dense(op, a, b)?;
+    if crate::builtins_sparse::binary_sparse(op, a, b) {
+        if let Value::Num(m) = &mut out {
+            m.sparse = true;
+        }
+    }
+    Ok(out)
+}
+
+fn binary_dense(op: BinOp, a: &Value, b: &Value) -> R<Value> {
     if matches!(a, Value::Sym(_)) || matches!(b, Value::Sym(_)) {
         return crate::sym::binary(op, a, b);
     }
@@ -376,7 +386,7 @@ pub fn unary(op: UnOp, v: &Value) -> R<Value> {
         (UnOp::CTranspose | UnOp::Transpose, Value::Func(_) | Value::Object(_)) => Ok(v.clone()),
         (UnOp::Neg, Value::Num(m)) => {
             let kind = if matches!(m.kind, Kind::Logical | Kind::Char) { Kind::Double } else { m.kind };
-            let mut out = Matrix { dims: m.dims.clone(), data: m.data.iter().map(|x| -x).collect(), im: m.im.as_ref().map(|im| im.iter().map(|x| -x).collect()), kind: Kind::Double };
+            let mut out = Matrix { dims: m.dims.clone(), data: m.data.iter().map(|x| -x).collect(), im: m.im.as_ref().map(|im| im.iter().map(|x| -x).collect()), kind: Kind::Double, sparse: m.sparse };
             out = out.cast_to(kind);
             Ok(Value::Num(out))
         }
@@ -388,7 +398,9 @@ pub fn unary(op: UnOp, v: &Value) -> R<Value> {
             if m.data.iter().any(|x| x.is_nan()) {
                 return rt("NaN's cannot be converted to logicals.");
             }
-            Ok(Value::Num(Matrix::from_dims(m.dims.clone(), (0..m.numel()).map(|i| b2f(m.data[i] == 0.0 && m.im_at(i) == 0.0)).collect()).with_kind(Kind::Logical)))
+            let mut out = Matrix::from_dims(m.dims.clone(), (0..m.numel()).map(|i| b2f(m.data[i] == 0.0 && m.im_at(i) == 0.0)).collect()).with_kind(Kind::Logical);
+            out.sparse = m.sparse;
+            Ok(Value::Num(out))
         }
         _ => rt(format!("Unary operator is not supported for values of class '{}'.", v.class_name())),
     }

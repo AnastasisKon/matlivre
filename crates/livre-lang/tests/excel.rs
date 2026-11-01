@@ -33,7 +33,7 @@ fn reads_a_workbook_written_by_matlab() {
             "s = 3×1 string array\n\n    \"Sheet1\"\n    \"M\"     \n    \"W\"     ",
             "T2 = 3×3 table\n\n    Id    Name     Val\n    __    _____    ___\n\n    1     {'a'}    0.5\n    2     {'b'}    1.5\n    3     {'c'}    2.5",
             "M = 3×3\n\n     8     1     6\n     3     5     7\n     4     9     2",
-            "num = 3×3\n\n   1.0000      NaN   0.5000\n   2.0000      NaN   1.5000\n   3.0000      NaN   2.5000",
+            "num = 3×3\n\n    1.0000       NaN    0.5000\n    2.0000       NaN    1.5000\n    3.0000       NaN    2.5000",
             "txt = 4×3 cell\n\n    {'Id'    }    {'Name'}    {'Val'   }\n    {0×0 char}    {'a'   }    {0×0 char}\n    {0×0 char}    {'b'   }    {0×0 char}\n    {0×0 char}    {'c'   }    {0×0 char}",
             "num2 = 2×2\n\n     8     1\n     3     5",
             "R = 2×2 cell\n\n    {'x'}    {[1]}\n    {'y'}    {[2]}",

@@ -133,7 +133,7 @@ fn lsqnonneg_matches_matlab() {
     close(&it, "rn", &[0.0], 1e-15);
     close(&it, "r", &[0.0; 4], 1e-15);
     close(&it, "ef", &[1.0], 0.0);
-    assert_eq!(out.last().unwrap(), "x = 2×1\n\n        0\n   0.6929");
+    assert_eq!(out.last().unwrap(), "x = 2×1\n\n         0\n    0.6929");
 }
 
 #[test]

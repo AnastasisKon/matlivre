@@ -189,7 +189,8 @@ fn page_body(m: &Matrix, page: usize, rows: usize, cols: usize, f: NumFormat) ->
     let max_abs = finite.iter().fold(0.0f64, |a, &v| a.max(v.abs()));
     let any_neg = m.data.iter().any(|&v| v < 0.0);
     if all_int && max_abs < 1e9 {
-        let w = m.data.iter().map(|&v| fmt_short_scalar(v).len()).max().unwrap_or(1).max(3) + 3;
+        // Columns are 6 wide below 1000 and 12 wide from there (MATLAB's integer layout).
+        let w = if max_abs < 1e3 { 6 } else { 12 }.max(m.data.iter().map(|&v| fmt_short_scalar(v).len()).max().unwrap_or(1) + 2);
         for r in 0..rows {
             for c in 0..cols {
                 out.push_str(&format!("{:>w$}", fmt_short_scalar(m.data[at(r, c)])));
@@ -210,7 +211,8 @@ fn page_body(m: &Matrix, page: usize, rows: usize, cols: usize, f: NumFormat) ->
     }
     let scaled_max = max_abs / scale;
     let int_digits = if scaled_max >= 1.0 { scaled_max.log10().floor() as usize + 1 } else { 1 };
-    let w = int_digits + 1 + decimals + usize::from(any_neg) + 3;
+    // Short format columns are 10 wide (up to -999.9999); long ones have 3 leading spaces.
+    let w = if f == NumFormat::Long { int_digits + 1 + decimals + usize::from(any_neg) + 3 } else { 10 };
     for r in 0..rows {
         for c in 0..cols {
             let v = m.data[at(r, c)];
@@ -443,6 +445,7 @@ fn struct_names_body(s: &StructArray) -> String {
 /// The text shown for an unsuppressed statement: `name = value`.
 pub fn display_value(name: &str, v: &Value, f: NumFormat) -> String {
     match v {
+        Value::Num(m) if m.sparse => crate::builtins_sparse::display(name, m, f),
         Value::Num(m) => {
             if m.kind == Kind::Char && m.is_2d() && m.rows() <= 1 {
                 return format!("{name} = '{}'", m.to_string_lossy());
@@ -509,6 +512,7 @@ pub fn display_value(name: &str, v: &Value, f: NumFormat) -> String {
 /// Text produced by `disp(v)`.
 pub fn disp_value(v: &Value, f: NumFormat) -> String {
     match v {
+        Value::Num(m) if m.sparse => crate::builtins_sparse::body(m, f),
         Value::Num(m) => {
             if m.kind == Kind::Char {
                 return (0..m.rows()).map(|r| (0..m.cols()).map(|c| char::from_u32(m.get(r, c) as u32).unwrap_or('?')).collect::<String>()).collect::<Vec<_>>().join("\n");
@@ -516,8 +520,8 @@ pub fn disp_value(v: &Value, f: NumFormat) -> String {
             if m.is_empty() {
                 return String::new();
             }
-            if m.is_scalar() {
-                return if m.kind == Kind::Logical || m.kind.is_int() { format!("   {}", fmt_elem(m, 0, f)) } else { fmt_elem(m, 0, f) };
+            if m.is_scalar() && (m.kind == Kind::Logical || m.kind.is_int()) {
+                return format!("   {}", fmt_elem(m, 0, f));
             }
             matrix_body(m, f, "ans").trim_end_matches('\n').to_string()
         }

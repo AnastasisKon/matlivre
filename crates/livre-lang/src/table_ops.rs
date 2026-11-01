@@ -17,7 +17,7 @@ type R<T> = Result<T, LangError>;
 
 pub const NAMES: &[&str] = &[
     "addvars", "movevars", "mergevars", "splitvars", "convertvars", "rows2vars", "varfun", "rowfun", "innerjoin", "outerjoin", "stack", "unstack",
-    "anymissing", "istabular", "isstr", "celldisp", "issparse", "isenum", "isjava", "home", "commandwindow",
+    "anymissing", "istabular", "isstr", "celldisp", "isenum", "isjava", "home", "commandwindow",
 ];
 
 /// Functions whose default output names come from the names of their input variables.
@@ -653,7 +653,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], _nargout: usize) -> R
         }
         "istabular" => one(Value::bool(matches!(a.first(), Some(Value::Table(_))))),
         "isstr" => one(Value::bool(matches!(a.first(), Some(Value::Num(m)) if m.kind == Kind::Char))),
-        "issparse" | "isenum" | "isjava" => {
+        "isenum" | "isjava" => {
             crate::builtins::arg(a, 0, name)?;
             one(Value::bool(false))
         }

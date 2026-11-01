@@ -1,0 +1,105 @@
+//! Sparse matrices against MATLAB R2023b (Live Editor output and `disp` of the results).
+
+use livre_lang::{Interpreter, OutputKind};
+
+fn shown(src: &str) -> Vec<String> {
+    let mut it = Interpreter::new();
+    let _ = it.run_source(src);
+    it.take_outputs()
+        .into_iter()
+        .filter_map(|o| match o.kind {
+            OutputKind::Value { text, .. } => Some(text),
+            OutputKind::Text(t) => Some(t),
+            OutputKind::Warning(w) => Some(format!("Warning: {w}")),
+            OutputKind::Error(e) => Some(format!("Error: {e}")),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn displays_and_propagates_like_matlab() {
+    assert_eq!(
+        shown(concat!(
+            "S = sparse([1 2 3], [1 3 2], [4 5 6])\nF = full(S)\nI = speye(3)\ns1 = S(2, 3)\ne = sparse(3, 3)\n",
+            "D = spdiags([1 2 3; 4 5 6; 7 8 9], [-1 0 1], 3, 3)\nnz = nnz(S)\nv = nonzeros(S)'\n",
+            "t = [issparse(S * 2), issparse(S + 1), issparse(S .* rand(3)), issparse(S * ones(3)), issparse(S'), issparse(S + S)]\n",
+            "b = S \\ [1; 2; 3]\nc = class(S)\nL = sparse(logical([1 0; 0 1]))\n",
+            "a = sparse([1 2], [1 2], [0.5 -1.25])\nb = sparse(10, 12, 7)\nc = sparse([1 12], [1 3], [1e6 2])\nd = sparse([1 2], [1 1], [pi 100.5])\n",
+            "f = sparse([1 2],[1 2],[1 2]) * 0.1\nA = delsq(numgrid('S', 4))\n",
+        )),
+        [
+            "S = \n\n   (1,1)        4\n   (3,2)        6\n   (2,3)        5",
+            "F = 3×3\n\n     4     0     0\n     0     0     5\n     0     6     0",
+            "I = \n\n   (1,1)        1\n   (2,2)        1\n   (3,3)        1",
+            "s1 = \n\n   (1,1)        5",
+            "e = \n\n   All zero sparse: 3x3",
+            "D = \n\n   (1,1)        2\n   (2,1)        1\n   (1,2)        6\n   (2,2)        5\n   (3,2)        4\n   (2,3)        9\n   (3,3)        8",
+            "nz = 3",
+            "v = 1×3\n\n     4     6     5",
+            "t = 1×6 logical array\n\n   1   0   1   0   1   1",
+            "b = 3×1\n\n    0.2500\n    0.5000\n    0.4000",
+            "c = 'double'",
+            "L = 2x2 sparse logical array\n\n   (1,1)      1\n   (2,2)      1",
+            "a = \n\n   (1,1)       0.5000\n   (2,2)      -1.2500",
+            "b = \n\n  (10,12)       7",
+            "c = \n\n   (1,1)        1000000\n  (12,3)              2",
+            "d = \n\n   (1,1)       3.1416\n   (2,1)     100.5000",
+            "f = \n\n   (1,1)       0.1000\n   (2,2)       0.2000",
+            "A = \n\n   (1,1)        4\n   (2,1)       -1\n   (3,1)       -1\n   (1,2)       -1\n   (2,2)        4\n   (4,2)       -1\n   (1,3)       -1\n   (3,3)        4\n   (4,3)       -1\n   (2,4)       -1\n   (3,4)       -1\n   (4,4)        4",
+        ]
+    );
+}
+
+#[test]
+fn test_matrices_and_trees_match_matlab() {
+    assert_eq!(
+        shown(concat!(
+            "disp(numgrid('S', 5))\ndisp(numgrid('L', 6))\ndisp(numgrid('C', 7))\ndisp(numgrid('A', 9))\n",
+            "A = delsq(numgrid('S', 5));\ndisp(etree(A))\ndisp(symrcm(A))\ndisp(symbfact(A)')\n",
+            "disp(colperm(sparse([1 0 1; 1 1 1; 0 0 1])))\n[xx, yy] = treelayout([0 1 1 2 2]); disp(xx); disp(yy)\n",
+            "disp(sprank(sparse([1 1 0; 0 0 0; 1 1 0])))\ndisp(nzmax(sparse(3,3))); disp(nzmax(speye(3)))\n",
+            "[B, d] = spdiags(sparse([1 2 0; 3 4 5; 0 6 7])); disp(B); disp(d')\n",
+            "disp(full(ichol(sparse([4 1 0; 1 4 1; 0 1 4]))))\n[Lu, Uu] = ilu(sparse([4 1 0; 1 4 1; 0 1 4])); disp(full(Lu)); disp(full(Uu))\n",
+        )),
+        [
+            "     0     0     0     0     0\n     0     1     4     7     0\n     0     2     5     8     0\n     0     3     6     9     0\n     0     0     0     0     0\n",
+            "     0     0     0     0     0     0\n     0     1     3     5     9     0\n     0     2     4     6    10     0\n     0     0     0     7    11     0\n     0     0     0     8    12     0\n     0     0     0     0     0     0\n",
+            "     0     0     0     0     0     0     0\n     0     1     4     7    12    17     0\n     0     2     5     8    13    18     0\n     0     3     6     9    14    19     0\n     0     0     0    10    15    20     0\n     0     0     0    11    16    21     0\n     0     0     0     0     0     0     0\n",
+            "     0     0     0     0     0     0     0     0     0\n     0     0     6    10    12    14    16     0     0\n     0     1     7     0     0     0    17    20     0\n     0     2     0     0     0     0     0    21     0\n     0     3     0     0     0     0     0    22     0\n     0     4     0     0     0     0     0    23     0\n     0     5     8     0     0     0    18    24     0\n     0     0     9    11    13    15    19     0     0\n     0     0     0     0     0     0     0     0     0\n",
+            "     2     3     4     5     6     7     8     9     0\n",
+            "     1     4     2     7     5     3     8     6     9\n",
+            "     3     4     4     4     4     4     3     2     1\n",
+            "     2     1     3\n",
+            "    0.5000    0.3750    0.7500    0.2500    0.5000\n",
+            "    0.7500    0.5000    0.2500    0.2500    0.2500\n",
+            "     2\n",
+            "     1\n",
+            "     3\n",
+            "     3     1     0\n     6     4     2\n     0     7     5\n",
+            "    -1     0     1\n",
+            "    2.0000         0         0\n    0.5000    1.9365         0\n         0    0.5164    1.9322\n",
+            "    1.0000         0         0\n    0.2500    1.0000         0\n         0    0.2667    1.0000\n",
+            "    4.0000    1.0000         0\n         0    3.7500    1.0000\n         0         0    3.7333\n",
+        ]
+    );
+}
+
+#[test]
+fn iterative_solvers_report_like_matlab() {
+    let out = shown(concat!(
+        "x = pcg([4 1; 1 3], [1; 2])\n[x2, fl] = gmres([4 1; 1 3], [1; 2])\n",
+        "A = delsq(numgrid('S', 5)); b = ones(size(A,1),1);\nx = pcg(A, b);\nx = pcg(A, b, 1e-10, 2);\n",
+        "r = [];\nfor s = {'gmres', 'bicgstab', 'minres', 'cgs', 'bicg', 'qmr', 'lsqr'}, [y, f] = feval(s{1}, A, b); r(end+1) = norm(A*y - b) < 1e-8 && f == 0; end, disp(all(r))\n",
+    ));
+    assert_eq!(out[0], "pcg converged at iteration 2 to a solution with relative residual 0.\n");
+    assert_eq!(out[1], "x = 2×1\n\n    0.0909\n    0.6364");
+    assert_eq!(out[2], "x2 = 2×1\n\n    0.0909\n    0.6364");
+    assert_eq!(out[3], "fl = 0");
+    assert_eq!(out[4], "pcg converged at iteration 3 to a solution with relative residual 0.\n");
+    assert_eq!(
+        out[5],
+        "pcg stopped at iteration 2 without converging to the desired tolerance 1e-10\nbecause the maximum number of iterations was reached.\nThe iterate returned (number 2) has relative residual 0.091.\n"
+    );
+    assert_eq!(out[6], "   1\n");
+}
