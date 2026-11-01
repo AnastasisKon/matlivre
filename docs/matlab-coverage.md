@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1316 |
+| Implemented | 1355 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **706** |
+| **To implement** | **667** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -590,77 +590,43 @@ Implemented: `./`, `.\`, `/`, `\`, `all`, `any`, `bitand`, `bitcmp`, `bitget`, `
 
 ## MATLAB > Mathematics > Computational Geometry
 
-Implemented: 19. To implement: 65. In a branch: 0. Out of scope: 0.
+Implemented: 53. To implement: 31. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `addboundary`
-- [ ] `alphaSpectrum`
-- [ ] `alphaTriangulation`
-- [ ] `barycentricToCartesian`
 - [ ] `baryToCart`
-- [ ] `boundaryFacets`
 - [ ] `boundaryshape`
-- [ ] `boundingbox`
-- [ ] `cartesianToBarycentric`
 - [ ] `cartToBary`
-- [ ] `centroid`
-- [ ] `circumcenter`
 - [ ] `circumcenters`
-- [ ] `convexHull`
-- [ ] `criticalAlpha`
 - [ ] `DelaunayTri`
-- [ ] `edgeAttachments`
-- [ ] `edges`
-- [ ] `faceNormal`
 - [ ] `faceNormals`
-- [ ] `featureEdges`
-- [ ] `freeBoundary`
 - [ ] `holes`
-- [ ] `incenter`
 - [ ] `incenters`
 - [ ] `inOutStatus`
-- [ ] `inShape`
-- [ ] `isConnected`
 - [ ] `isEdge`
 - [ ] `ishole`
-- [ ] `isinterior`
-- [ ] `isInterior`
 - [ ] `issimplified`
-- [ ] `nearestNeighbor`
 - [ ] `nearestvertex`
 - [ ] `numboundaries`
-- [ ] `numRegions`
-- [ ] `numsides`
 - [ ] `overlaps`
-- [ ] `perimeter`
-- [ ] `pointLocation`
 - [ ] `polybuffer`
-- [ ] `regions`
 - [ ] `rmboundary`
 - [ ] `rmholes`
 - [ ] `rmslivers`
-- [ ] `rotate`
-- [ ] `scale`
 - [ ] `sortboundaries`
 - [ ] `sortregions`
 - [ ] `stlread`
 - [ ] `stlwrite`
 - [ ] `subtract`
-- [ ] `surfaceArea`
 - [ ] `tetramesh`
-- [ ] `translate`
 - [ ] `trimesh`
 - [ ] `triplot`
 - [ ] `TriRep`
 - [ ] `trisurf`
 - [ ] `turningdist`
-- [ ] `vertexAttachments`
-- [ ] `vertexNormal`
-- [ ] `volume`
-- [ ] `voronoiDiagram`
 
-Implemented: `alphaShape`, `area`, `boundary`, `convhull`, `convhulln`, `delaunay`, `delaunayn`, `delaunayTriangulation`, `dsearchn`, `inpolygon`, `nsidedpoly`, `patch`, `polyarea`, `polyshape`, `rectint`, `triangulation`, `tsearchn`, `voronoi`, `voronoin`
+Implemented: `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `boundary`, `boundaryFacets`, `boundingbox`, `cartesianToBarycentric`, `centroid`, `circumcenter`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `featureEdges`, `freeBoundary`, `incenter`, `inpolygon`, `inShape`, `isConnected`, `isInterior`, `isinterior`, `nearestNeighbor`, `nsidedpoly`, `numRegions`, `numsides`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polyshape`, `rectint`, `regions`, `rotate`, `scale`, `surfaceArea`, `translate`, `triangulation`, `tsearchn`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
 
 ## MATLAB > Mathematics > Elementary Math
 
@@ -836,19 +802,11 @@ Implemented: `addpath`, `cd`, `copyfile`, `dir`, `exist`, `filemarker`, `filepar
 
 ## MATLAB > Programming > Functions
 
-Implemented: 57. To implement: 5. In a branch: 0. Out of scope: 0.
-
-To implement:
-
-- [ ] `addOptional`
-- [ ] `addParameter`
-- [ ] `addParamValue`
-- [ ] `addRequired`
-- [ ] `parse`
+Implemented: 62. To implement: 0. In a branch: 0. Out of scope: 0.
 
 Language keywords to check: `arguments`, `global`, `nargin`, `nargout`, `persistent`, `varargin`, `varargout`
 
-Implemented: `assert`, `assignin`, `error`, `genvarname`, `inputname`, `inputParser`, `isvarname`, `lasterr`, `lasterror`, `lastwarn`, `matlab.lang.makeUniqueStrings`, `matlab.lang.makeValidName`, `mfilename`, `mislocked`, `mlock`, `munlock`, `mustBeA`, `mustBeFile`, `mustBeFinite`, `mustBeFloat`, `mustBeFolder`, `mustBeGreaterThan`, `mustBeGreaterThanOrEqual`, `mustBeInRange`, `mustBeInteger`, `mustBeLessThan`, `mustBeLessThanOrEqual`, `mustBeMember`, `mustBeNegative`, `mustBeNonempty`, `mustBeNonmissing`, `mustBeNonNan`, `mustBeNonnegative`, `mustBeNonpositive`, `mustBeNonsparse`, `mustBeNonzero`, `mustBeNonzeroLengthText`, `mustBeNumeric`, `mustBeNumericOrLogical`, `mustBePositive`, `mustBeReal`, `mustBeScalarOrEmpty`, `mustBeSparse`, `mustBeText`, `mustBeTextScalar`, `mustBeUnderlyingType`, `mustBeValidVariableName`, `mustBeVector`, `namedargs2cell`, `namelengthmax`, `nargchk`, `narginchk`, `nargoutchk`, `onCleanup`, `validatecolor`, `validatestring`, `warning`
+Implemented: `addOptional`, `addParameter`, `addParamValue`, `addRequired`, `assert`, `assignin`, `error`, `genvarname`, `inputname`, `inputParser`, `isvarname`, `lasterr`, `lasterror`, `lastwarn`, `matlab.lang.makeUniqueStrings`, `matlab.lang.makeValidName`, `mfilename`, `mislocked`, `mlock`, `munlock`, `mustBeA`, `mustBeFile`, `mustBeFinite`, `mustBeFloat`, `mustBeFolder`, `mustBeGreaterThan`, `mustBeGreaterThanOrEqual`, `mustBeInRange`, `mustBeInteger`, `mustBeLessThan`, `mustBeLessThanOrEqual`, `mustBeMember`, `mustBeNegative`, `mustBeNonempty`, `mustBeNonmissing`, `mustBeNonNan`, `mustBeNonnegative`, `mustBeNonpositive`, `mustBeNonsparse`, `mustBeNonzero`, `mustBeNonzeroLengthText`, `mustBeNumeric`, `mustBeNumericOrLogical`, `mustBePositive`, `mustBeReal`, `mustBeScalarOrEmpty`, `mustBeSparse`, `mustBeText`, `mustBeTextScalar`, `mustBeUnderlyingType`, `mustBeValidVariableName`, `mustBeVector`, `namedargs2cell`, `namelengthmax`, `nargchk`, `narginchk`, `nargoutchk`, `onCleanup`, `parse`, `validatecolor`, `validatestring`, `warning`
 
 ## MATLAB > Programming > Live Scripts and Functions
 
