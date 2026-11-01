@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1276 |
+| Implemented | 1299 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **746** |
+| **To implement** | **723** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -641,8 +641,8 @@ To implement:
 - [ ] `isConnected`
 - [ ] `isEdge`
 - [ ] `ishole`
-- [ ] `isInterior`
 - [ ] `isinterior`
+- [ ] `isInterior`
 - [ ] `issimplified`
 - [ ] `nearestNeighbor`
 - [ ] `nearestvertex`
@@ -745,36 +745,13 @@ Implemented: `balance`, `bandwidth`, `cdf2rdf`, `chol`, `cholupdate`, `cond`, `c
 
 ## MATLAB > Mathematics > Numerical Integration and Differential Equations
 
-Implemented: 20. To implement: 24. In a branch: 0. Out of scope: 0.
+Implemented: 43. To implement: 1. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `bvp4c`
-- [ ] `bvp5c`
-- [ ] `bvpget`
-- [ ] `bvpinit`
-- [ ] `bvpset`
-- [ ] `bvpxtend`
-- [ ] `dde23`
-- [ ] `ddeget`
-- [ ] `ddensd`
-- [ ] `ddesd`
-- [ ] `ddeset`
-- [ ] `decic`
-- [ ] `ode113`
-- [ ] `ode15i`
-- [ ] `ode15s`
-- [ ] `ode23s`
-- [ ] `ode23t`
-- [ ] `ode23tb`
-- [ ] `ode78`
-- [ ] `ode89`
-- [ ] `odextend`
-- [ ] `pdepe`
-- [ ] `pdeval`
 - [ ] `solutionFcn`
 
-Implemented: `cumtrapz`, `dblquad`, `del2`, `deval`, `gradient`, `integral`, `integral2`, `integral3`, `ode23`, `ode45`, `odeget`, `odeset`, `quad`, `quad2d`, `quadgk`, `quadl`, `quadv`, `solve`, `trapz`, `triplequad`
+Implemented: `bvp4c`, `bvp5c`, `bvpget`, `bvpinit`, `bvpset`, `bvpxtend`, `cumtrapz`, `dblquad`, `dde23`, `ddeget`, `ddensd`, `ddesd`, `ddeset`, `decic`, `del2`, `deval`, `gradient`, `integral`, `integral2`, `integral3`, `ode113`, `ode15i`, `ode15s`, `ode23`, `ode23s`, `ode23t`, `ode23tb`, `ode45`, `ode78`, `ode89`, `odeget`, `odeset`, `odextend`, `pdepe`, `pdeval`, `quad`, `quad2d`, `quadgk`, `quadl`, `quadv`, `solve`, `trapz`, `triplequad`
 
 ## MATLAB > Mathematics > Optimization
 
