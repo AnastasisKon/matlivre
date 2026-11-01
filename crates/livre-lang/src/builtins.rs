@@ -36,7 +36,7 @@ const NAMES: &[&str] = &[
 pub fn exists(name: &str) -> bool {
     static ALL: std::sync::OnceLock<std::collections::HashSet<&'static str>> = std::sync::OnceLock::new();
     ALL.get_or_init(|| {
-        [NAMES, crate::builtins_elfun::NAMES, crate::builtins_datafun::NAMES, crate::builtins_lang::NAMES, crate::builtins_strings::NAMES, crate::builtins_types::NAMES, crate::builtins_dates::NAMES, crate::builtins_files::NAMES, crate::builtins_textio::NAMES, crate::builtins_data::NAMES, crate::builtins_media::NAMES, crate::builtins_archive::NAMES, crate::builtins_structio::NAMES, crate::gfx::NAMES, crate::builtins_plotfmt::NAMES, crate::builtins_graph3d::NAMES, crate::builtins_funfun::NAMES, crate::builtins_matfun::NAMES, crate::builtins_elmat::NAMES, crate::builtins_ops::NAMES, crate::builtins_specfun::NAMES, crate::polyshape::NAMES, crate::builtins_polyfun::NAMES, crate::builtins_geom::NAMES, crate::polyfun_classes::NAMES, crate::builtins_text::NAMES, crate::builtins_plot::NAMES, crate::time::NAMES, crate::table::NAMES, crate::sym::NAMES, crate::sym::extra::NAMES, crate::containers::NAMES, crate::table_ops::NAMES, crate::builtins_plotmore::NAMES, crate::patterns::NAMES]
+        [NAMES, crate::builtins_elfun::NAMES, crate::builtins_datafun::NAMES, crate::builtins_lang::NAMES, crate::builtins_strings::NAMES, crate::builtins_types::NAMES, crate::builtins_dates::NAMES, crate::builtins_files::NAMES, crate::builtins_textio::NAMES, crate::builtins_data::NAMES, crate::builtins_media::NAMES, crate::builtins_archive::NAMES, crate::builtins_structio::NAMES, crate::gfx::NAMES, crate::builtins_plotfmt::NAMES, crate::builtins_graph3d::NAMES, crate::builtins_funfun::NAMES, crate::builtins_matfun::NAMES, crate::builtins_elmat::NAMES, crate::builtins_ops::NAMES, crate::builtins_specfun::NAMES, crate::polyshape::NAMES, crate::builtins_polyfun::NAMES, crate::builtins_geom::NAMES, crate::polyfun_classes::NAMES, crate::builtins_text::NAMES, crate::builtins_plot::NAMES, crate::time::NAMES, crate::table::NAMES, crate::sym::NAMES, crate::sym::extra::NAMES, crate::containers::NAMES, crate::table_ops::NAMES, crate::builtins_plotmore::NAMES, crate::patterns::NAMES, crate::builtins_validate::NAMES, crate::graphs::NAMES, crate::graphs::FUNCS]
             .iter()
             .flat_map(|n| n.iter().copied())
             .collect()
@@ -537,6 +537,16 @@ pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) 
     // Type families first.
     if crate::patterns::TEXT_FUNCS.contains(&name) && args.iter().skip(1).any(crate::patterns::is_pattern) {
         return crate::patterns::text_call(name, &args);
+    }
+    if crate::graphs::NAMES.contains(&name) {
+        if let Some(r) = crate::graphs::call(it, name, &args, nargout)? {
+            return Ok(Some(r));
+        }
+    }
+    if crate::builtins_validate::NAMES.contains(&name) {
+        if let Some(r) = crate::builtins_validate::call(it, name, &args, nargout)? {
+            return Ok(Some(r));
+        }
     }
     if crate::patterns::NAMES.contains(&name) {
         if let Some(r) = crate::patterns::call(it, name, &args, nargout)? {
@@ -1966,27 +1976,39 @@ pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) 
         }
         "error" => {
             let mut parts: &[Value] = a;
+            let mut id = String::new();
             if parts.len() >= 2 {
-                if let Ok(id) = parts[0].text() {
-                    if id.contains(':') && !id.contains(' ') && parts[1].is_text() {
+                if let Ok(t) = parts[0].text() {
+                    if t.contains(':') && !t.contains(' ') && parts[1].is_text() {
+                        id = t;
                         parts = &parts[1..];
                     }
                 }
             }
             let msg = match parts.first() {
-                Some(Value::Struct(s)) => s.get("message").map(|m| m.text()).transpose()?.unwrap_or_default(),
+                Some(Value::Struct(s)) => {
+                    if let Some(i) = s.get("identifier") {
+                        id = i.text().unwrap_or_default();
+                    }
+                    s.get("message").map(|m| m.text()).transpose()?.unwrap_or_default()
+                }
                 Some(f) => {
                     if parts.len() > 1 { sprintf(&f.text()?, &parts[1..])? } else { f.text()? }
                 }
                 None => return none(),
             };
-            rt(msg)
+            if msg.is_empty() {
+                return none();
+            }
+            crate::error::rt_id(&id, msg)
         }
         "warning" => {
             let mut parts: &[Value] = a;
+            let mut id = String::new();
             if parts.len() >= 2 {
-                if let Ok(id) = parts[0].text() {
-                    if id.contains(':') && !id.contains(' ') {
+                if let Ok(t) = parts[0].text() {
+                    if t.contains(':') && !t.contains(' ') {
+                        id = t;
                         parts = &parts[1..];
                     }
                 }
@@ -1997,6 +2019,7 @@ pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) 
                     return none();
                 }
                 let msg = if parts.len() > 1 { sprintf(&t, &parts[1..])? } else { t };
+                it.last_warning = (msg.clone(), id);
                 it.emit(OutputKind::Warning(msg));
             }
             none()

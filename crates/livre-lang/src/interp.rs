@@ -104,6 +104,9 @@ pub struct Interpreter {
     depth: usize,
     /// Source names of the arguments of the builtin being called (`table` uses them).
     pub(crate) arg_names: Vec<Option<String>>,
+    /// The last error and warning (message, identifier), for `lasterr` and `lastwarn`.
+    pub(crate) last_error: (String, String),
+    pub(crate) last_warning: (String, String),
     jit: Option<crate::jit::Jit>,
     jit_enabled: bool,
     /// Compiled kernels by (statement address, variable types); `None` = not compilable.
@@ -152,6 +155,8 @@ impl Interpreter {
             end_stack: Vec::new(),
             depth: 0,
             arg_names: Vec::new(),
+            last_error: (String::new(), String::new()),
+            last_warning: (String::new(), String::new()),
             jit: None,
             jit_enabled: std::env::var_os("MATLIVRE_NOJIT").is_none(),
             jit_cache: HashMap::new(),
@@ -277,6 +282,7 @@ impl Interpreter {
                     if e.line == 0 {
                         e.line = self.top_line;
                     }
+                    self.last_error = (e.message.clone(), e.identifier.clone());
                     let line = self.top_line.max(1);
                     self.pending.push(Output { line, kind: OutputKind::Error(e.message.clone()) });
                     self.flush_outputs();
@@ -377,7 +383,9 @@ impl Interpreter {
     }
 
     pub(crate) fn remove_var(&mut self, name: &str) {
-        self.take_var(name);
+        if let Some(v) = self.take_var(name) {
+            crate::builtins_validate::run_cleanup(self, &v);
+        }
     }
 
     pub(crate) fn var_names(&self) -> Vec<String> {
@@ -387,7 +395,10 @@ impl Interpreter {
     }
 
     pub(crate) fn clear_current_scope(&mut self) {
-        self.frame_mut().vars.clear();
+        let vars: Vec<Value> = self.frame_mut().vars.drain().map(|(_, v)| v).collect();
+        for v in &vars {
+            crate::builtins_validate::run_cleanup(self, v);
+        }
     }
 
     pub fn has_function(&mut self, name: &str) -> bool {
@@ -781,10 +792,11 @@ impl Interpreter {
                     if e.message == "Execution stopped by user." {
                         return Err(e);
                     }
+                    self.last_error = (e.message.clone(), e.identifier.clone());
                     if let Some(name) = catch_var {
                         let mut st = StructArray::scalar();
                         st.set("message", Value::chars(&e.message));
-                        st.set("identifier", Value::chars(""));
+                        st.set("identifier", Value::chars(&e.identifier));
                         st.set("stack", Value::Struct(StructArray::empty_with(vec!["file".into(), "name".into(), "line".into()])));
                         self.set_var(name, Value::Struct(st));
                     }
@@ -1927,7 +1939,12 @@ impl Interpreter {
         let r = self.exec_block(&f.body);
         let frame = self.frames.pop().unwrap();
         self.depth -= 1;
-        r?;
+        if let Err(e) = r {
+            for v in frame.vars.values() {
+                crate::builtins_validate::run_cleanup(self, v);
+            }
+            return Err(e);
+        }
         let mut out = Vec::new();
         let want = nargout.max(1);
         for (i, o) in f.outputs.iter().enumerate() {
@@ -1951,6 +1968,10 @@ impl Interpreter {
             }
         }
         out.truncate(want);
+        // onCleanup objects that were not returned run their task as the workspace ends.
+        for v in frame.vars.values() {
+            crate::builtins_validate::run_cleanup(self, v);
+        }
         Ok(out)
     }
 }

@@ -1278,6 +1278,12 @@ pub fn display(name: &str, v: &Value, f: NumFormat) -> Option<String> {
     if let Some(text) = crate::patterns::display(name, v) {
         return Some(text);
     }
+    if let Some(text) = crate::builtins_validate::display(name, v, f) {
+        return Some(text);
+    }
+    if let Some(text) = crate::graphs::display(name, v) {
+        return Some(text);
+    }
     let Value::Object(o) = v else { return None };
     Some(match o.class.name.as_str() {
         MAP => map_display(name, o),

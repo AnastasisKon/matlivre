@@ -39,7 +39,7 @@ pub fn is_varname(s: &str) -> bool {
 /// `genvarname`: whitespace removed (the next letter capitalized), other invalid characters
 /// replaced by underscores, an `x` prefix for names not starting with a letter or that are
 /// keywords, and a numeric suffix to avoid the exclusions.
-fn genvarname(s: &str, exclude: &[String]) -> String {
+pub(crate) fn genvarname(s: &str, exclude: &[String]) -> String {
     let mut out = String::new();
     let mut cap = false;
     for ch in s.chars() {
