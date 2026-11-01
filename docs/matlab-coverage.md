@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1355 |
+| Implemented | 1386 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **667** |
+| **To implement** | **636** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -590,43 +590,9 @@ Implemented: `./`, `.\`, `/`, `\`, `all`, `any`, `bitand`, `bitcmp`, `bitget`, `
 
 ## MATLAB > Mathematics > Computational Geometry
 
-Implemented: 53. To implement: 31. In a branch: 0. Out of scope: 0.
+Implemented: 84. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `addboundary`
-- [ ] `baryToCart`
-- [ ] `boundaryshape`
-- [ ] `cartToBary`
-- [ ] `circumcenters`
-- [ ] `DelaunayTri`
-- [ ] `faceNormals`
-- [ ] `holes`
-- [ ] `incenters`
-- [ ] `inOutStatus`
-- [ ] `isEdge`
-- [ ] `ishole`
-- [ ] `issimplified`
-- [ ] `nearestvertex`
-- [ ] `numboundaries`
-- [ ] `overlaps`
-- [ ] `polybuffer`
-- [ ] `rmboundary`
-- [ ] `rmholes`
-- [ ] `rmslivers`
-- [ ] `sortboundaries`
-- [ ] `sortregions`
-- [ ] `stlread`
-- [ ] `stlwrite`
-- [ ] `subtract`
-- [ ] `tetramesh`
-- [ ] `trimesh`
-- [ ] `triplot`
-- [ ] `TriRep`
-- [ ] `trisurf`
-- [ ] `turningdist`
-
-Implemented: `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `boundary`, `boundaryFacets`, `boundingbox`, `cartesianToBarycentric`, `centroid`, `circumcenter`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `featureEdges`, `freeBoundary`, `incenter`, `inpolygon`, `inShape`, `isConnected`, `isInterior`, `isinterior`, `nearestNeighbor`, `nsidedpoly`, `numRegions`, `numsides`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polyshape`, `rectint`, `regions`, `rotate`, `scale`, `surfaceArea`, `translate`, `triangulation`, `tsearchn`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
+Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isinterior`, `isInterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
 
 ## MATLAB > Mathematics > Elementary Math
 
