@@ -3,14 +3,14 @@
 Every function in the MATLAB R2023b and Symbolic Math Toolbox function references (the
 installation's `help/*/helpfuncbycat.xml`), plus key classes and undocumented public functions
 found in the toolbox folders, checked against MatLivre. Regenerate with
-`tools/coverage/update.sh` after merging work (2026-10-31).
+`tools/coverage/update.sh` after merging work (2026-11-01).
 
 | Status | Count |
 |---|---:|
-| Implemented | 1130 |
+| Implemented | 1224 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **892** |
+| **To implement** | **798** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -708,65 +708,16 @@ Implemented: `conv2`, `convn`, `fft`, `fft2`, `fftn`, `fftshift`, `fftw`, `filte
 
 ## MATLAB > Mathematics > Graph and Network Algorithms
 
-Implemented: 1. To implement: 53. In a branch: 0. Out of scope: 0.
+Implemented: 50. To implement: 4. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `addedge`
-- [ ] `addnode`
-- [ ] `adjacency`
-- [ ] `allcycles`
-- [ ] `allpaths`
-- [ ] `bctree`
-- [ ] `bfsearch`
-- [ ] `biconncomp`
-- [ ] `centrality`
-- [ ] `condensation`
-- [ ] `conncomp`
-- [ ] `cyclebasis`
-- [ ] `degree`
-- [ ] `dfsearch`
-- [ ] `digraph`
-- [ ] `distances`
-- [ ] `edgecount`
-- [ ] `findedge`
-- [ ] `findnode`
-- [ ] `flipedge`
-- [ ] `graph`
-- [ ] `hascycles`
 - [ ] `highlight`
-- [ ] `incidence`
-- [ ] `indegree`
-- [ ] `inedges`
-- [ ] `isdag`
-- [ ] `isisomorphic`
-- [ ] `ismultigraph`
-- [ ] `isomorphism`
 - [ ] `labeledge`
 - [ ] `labelnode`
-- [ ] `laplacian`
 - [ ] `layout`
-- [ ] `maxflow`
-- [ ] `minspantree`
-- [ ] `nearest`
-- [ ] `neighbors`
-- [ ] `numedges`
-- [ ] `numnodes`
-- [ ] `outdegree`
-- [ ] `outedges`
-- [ ] `predecessors`
-- [ ] `reordernodes`
-- [ ] `rmedge`
-- [ ] `rmnode`
-- [ ] `shortestpath`
-- [ ] `shortestpathtree`
-- [ ] `subgraph`
-- [ ] `successors`
-- [ ] `toposort`
-- [ ] `transclosure`
-- [ ] `transreduction`
 
-Implemented: `simplify`
+Implemented: `addedge`, `addnode`, `adjacency`, `allcycles`, `allpaths`, `bctree`, `bfsearch`, `biconncomp`, `centrality`, `condensation`, `conncomp`, `cyclebasis`, `degree`, `dfsearch`, `digraph`, `distances`, `edgecount`, `findedge`, `findnode`, `flipedge`, `graph`, `hascycles`, `incidence`, `indegree`, `inedges`, `isdag`, `isisomorphic`, `ismultigraph`, `isomorphism`, `laplacian`, `maxflow`, `minspantree`, `nearest`, `neighbors`, `numedges`, `numnodes`, `outdegree`, `outedges`, `predecessors`, `reordernodes`, `rmedge`, `rmnode`, `shortestpath`, `shortestpathtree`, `simplify`, `subgraph`, `successors`, `toposort`, `transclosure`, `transreduction`
 
 ## MATLAB > Mathematics > Interpolation
 
@@ -968,7 +919,7 @@ Implemented: `addpath`, `cd`, `copyfile`, `dir`, `exist`, `filemarker`, `filepar
 
 ## MATLAB > Programming > Functions
 
-Implemented: 13. To implement: 49. In a branch: 0. Out of scope: 0.
+Implemented: 57. To implement: 5. In a branch: 0. Out of scope: 0.
 
 To implement:
 
@@ -976,55 +927,11 @@ To implement:
 - [ ] `addParameter`
 - [ ] `addParamValue`
 - [ ] `addRequired`
-- [ ] `inputParser`
-- [ ] `lasterr`
-- [ ] `lasterror`
-- [ ] `lastwarn`
-- [ ] `matlab.lang.makeUniqueStrings`
-- [ ] `matlab.lang.makeValidName`
-- [ ] `mislocked`
-- [ ] `mlock`
-- [ ] `munlock`
-- [ ] `mustBeA`
-- [ ] `mustBeFile`
-- [ ] `mustBeFinite`
-- [ ] `mustBeFloat`
-- [ ] `mustBeFolder`
-- [ ] `mustBeGreaterThan`
-- [ ] `mustBeGreaterThanOrEqual`
-- [ ] `mustBeInRange`
-- [ ] `mustBeInteger`
-- [ ] `mustBeLessThan`
-- [ ] `mustBeLessThanOrEqual`
-- [ ] `mustBeMember`
-- [ ] `mustBeNegative`
-- [ ] `mustBeNonempty`
-- [ ] `mustBeNonmissing`
-- [ ] `mustBeNonNan`
-- [ ] `mustBeNonnegative`
-- [ ] `mustBeNonpositive`
-- [ ] `mustBeNonsparse`
-- [ ] `mustBeNonzero`
-- [ ] `mustBeNonzeroLengthText`
-- [ ] `mustBeNumeric`
-- [ ] `mustBeNumericOrLogical`
-- [ ] `mustBePositive`
-- [ ] `mustBeReal`
-- [ ] `mustBeScalarOrEmpty`
-- [ ] `mustBeSparse`
-- [ ] `mustBeText`
-- [ ] `mustBeTextScalar`
-- [ ] `mustBeUnderlyingType`
-- [ ] `mustBeValidVariableName`
-- [ ] `mustBeVector`
-- [ ] `namedargs2cell`
-- [ ] `onCleanup`
 - [ ] `parse`
-- [ ] `validatecolor`
 
 Language keywords to check: `arguments`, `global`, `nargin`, `nargout`, `persistent`, `varargin`, `varargout`
 
-Implemented: `assert`, `assignin`, `error`, `genvarname`, `inputname`, `isvarname`, `mfilename`, `namelengthmax`, `nargchk`, `narginchk`, `nargoutchk`, `validatestring`, `warning`
+Implemented: `assert`, `assignin`, `error`, `genvarname`, `inputname`, `inputParser`, `isvarname`, `lasterr`, `lasterror`, `lastwarn`, `matlab.lang.makeUniqueStrings`, `matlab.lang.makeValidName`, `mfilename`, `mislocked`, `mlock`, `munlock`, `mustBeA`, `mustBeFile`, `mustBeFinite`, `mustBeFloat`, `mustBeFolder`, `mustBeGreaterThan`, `mustBeGreaterThanOrEqual`, `mustBeInRange`, `mustBeInteger`, `mustBeLessThan`, `mustBeLessThanOrEqual`, `mustBeMember`, `mustBeNegative`, `mustBeNonempty`, `mustBeNonmissing`, `mustBeNonNan`, `mustBeNonnegative`, `mustBeNonpositive`, `mustBeNonsparse`, `mustBeNonzero`, `mustBeNonzeroLengthText`, `mustBeNumeric`, `mustBeNumericOrLogical`, `mustBePositive`, `mustBeReal`, `mustBeScalarOrEmpty`, `mustBeSparse`, `mustBeText`, `mustBeTextScalar`, `mustBeUnderlyingType`, `mustBeValidVariableName`, `mustBeVector`, `namedargs2cell`, `namelengthmax`, `nargchk`, `narginchk`, `nargoutchk`, `onCleanup`, `validatecolor`, `validatestring`, `warning`
 
 ## MATLAB > Programming > Live Scripts and Functions
 
@@ -1036,7 +943,7 @@ To implement:
 
 ## MATLAB > Programming > Programming Utilities
 
-Implemented: 6. To implement: 23. In a branch: 0. Out of scope: 0.
+Implemented: 7. To implement: 22. In a branch: 0. Out of scope: 0.
 
 To implement:
 
@@ -1052,7 +959,6 @@ To implement:
 - [ ] `MException.last`
 - [ ] `parallel.pool.Constant`
 - [ ] `parfevalOnAll`
-- [ ] `rethrow`
 - [ ] `start`
 - [ ] `startat`
 - [ ] `stop`
@@ -1064,7 +970,7 @@ To implement:
 - [ ] `try, catch`
 - [ ] `wait`
 
-Implemented: `eval`, `evalc`, `evalin`, `isvalid`, `maxNumCompThreads`, `run`
+Implemented: `eval`, `evalc`, `evalin`, `isvalid`, `maxNumCompThreads`, `rethrow`, `run`
 
 ## MATLAB > Programming > Scripts
 
