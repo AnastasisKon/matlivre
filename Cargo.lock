@@ -2549,6 +2549,7 @@ dependencies = [
  "raw-window-handle",
  "resvg",
  "rfd",
+ "serde_json",
  "velopack",
  "windows-sys 0.59.0",
 ]

@@ -52,6 +52,8 @@ pub enum Ic {
     ClearOutput,
     Theme,
     Help,
+    /// The Claude panel: a speech bubble with a spark.
+    Chat,
     Mlx,
     MFile,
     Csv,
@@ -253,6 +255,10 @@ fn body(ic: Ic, bg: &str, fg: &str) -> String {
         Ic::ClearOutput => fo(&frame_rect(), "#FFFFFF", 0.9) + &l("M5 5L11 11M11 5L5 11", "#D13438", 1.4),
         Ic::Theme => r##"<circle cx="8" cy="8" r="6.5" fill="#FFFFFF" stroke="#8A8A8A" stroke-width="0.9"/>"##.to_string() + &f("M8 1.5A6.5 6.5 0 0 1 8 14.5Z", "#1F1F1F"),
         Ic::Help => circle(8.0, 8.0, 6.5, B) + &l("M6.2 6.2A1.8 1.8 0 1 1 8.6 7.9C8.1 8.2 8 8.5 8 9.2", "#FFFFFF", 1.3) + &circle(8.0, 11.3, 0.8, "#FFFFFF"),
+        Ic::Chat => {
+            l("M3 3H13A1.5 1.5 0 0 1 14.5 4.5V10A1.5 1.5 0 0 1 13 11.5H7.5L4.5 14V11.5H3A1.5 1.5 0 0 1 1.5 10V4.5A1.5 1.5 0 0 1 3 3Z", fg, 1.0)
+                + &f("M8 4.6L8.55 6.65L10.6 7.2L8.55 7.75L8 9.8L7.45 7.75L5.4 7.2L7.45 6.65Z", B)
+        }
         Ic::Mlx => page() + &f("M4.5 7H10.5V8H4.5ZM4.5 9.5H10.5V10.5H4.5Z", "#B0B0B0") + &f("M4.5 12H8.5V13H4.5Z", "#B0B0B0") + &f("M4 4.5H8.5V5.6H4Z", B),
         Ic::MFile => page() + &l("M6 8L4.6 9.8L6 11.6M9 8L10.4 9.8L9 11.6", "#8764B8", 1.2),
         Ic::Csv => page() + &f("M4.3 7H10.7V12.6H4.3Z", G) + &l("M4.3 8.9H10.7M4.3 10.8H10.7M7.5 7V12.6", "#FFFFFF", 0.8),

@@ -1,10 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod chat;
+mod claude;
+mod complete;
 mod engine;
 mod files;
 mod highlight;
 mod icons;
+mod mcp;
 mod os;
 mod plot;
 mod theme;
@@ -27,6 +31,11 @@ pub enum Launch {
 fn main() -> eframe::Result<()> {
     // Velopack's install, update and uninstall hooks: answered and quit before anything else.
     velopack::VelopackApp::build().run();
+    // An MCP server over stdio for Claude Code (`claude mcp add matlivre -- matlivre --mcp`).
+    if std::env::args().nth(1).as_deref() == Some("--mcp") {
+        mcp::stdio();
+        return Ok(());
+    }
     updater::check_in_background();
     let mut launch = Launch::Welcome;
     let mut at = None;

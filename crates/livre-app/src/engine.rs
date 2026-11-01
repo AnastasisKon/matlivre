@@ -62,6 +62,18 @@ impl Engine {
     }
 }
 
+/// saveas/print/exportgraphics render with the light skin at MATLAB's figure size.
+pub fn install_exporter(it: &mut Interpreter, ctx: egui::Context) {
+    it.set_figure_exporter(move |fig, format, scale| {
+        let skin = crate::theme::Skin::light();
+        let size = egui::vec2(560.0, 420.0);
+        match format {
+            livre_lang::ExportFormat::Svg => Ok(crate::plot::to_svg(&ctx, &skin, fig, size).into_bytes()),
+            livre_lang::ExportFormat::Png => crate::plot::to_png(&ctx, &skin, fig, size, scale),
+        }
+    });
+}
+
 fn engine_main(rx: Receiver<Command>, tx: Sender<Event>, cancel: Arc<AtomicBool>, ctx: egui::Context) {
     let mut it = Interpreter::new();
     it.set_cancel_flag(cancel);
@@ -77,18 +89,7 @@ fn engine_main(rx: Receiver<Command>, tx: Sender<Event>, cancel: Arc<AtomicBool>
             ctx.request_repaint();
         });
     }
-    {
-        // saveas/print/exportgraphics render with the light skin at MATLAB's figure size.
-        let ctx = ctx.clone();
-        it.set_figure_exporter(move |fig, format, scale| {
-            let skin = crate::theme::Skin::light();
-            let size = egui::vec2(560.0, 420.0);
-            match format {
-                livre_lang::ExportFormat::Svg => Ok(crate::plot::to_svg(&ctx, &skin, fig, size).into_bytes()),
-                livre_lang::ExportFormat::Png => crate::plot::to_png(&ctx, &skin, fig, size, scale),
-            }
-        });
-    }
+    install_exporter(&mut it, ctx.clone());
     while let Ok(cmd) = rx.recv() {
         match cmd {
             Command::ClearWorkspace => {

@@ -128,6 +128,19 @@ per-case Octave comparison are in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.m
 - A files panel, workspace browser, command window and floating figure windows; tabs that can
   be dragged between windows; light and dark themes.
 - Code runs on its own engine thread, so the editor never freezes while a script runs.
+- Files changed by another program (an editor, Claude Code, git) reload in their tab, as in
+  VS Code and MATLAB. A tab with unsaved changes asks instead: reload the file or keep your
+  version, and it never saves over a change it has not shown you.
+- Claude, through the Claude Code installed on your computer (no API key):
+  - **Claude panel** (Ctrl+L): chat with Claude, which can run code in your workspace, see
+    your figures, and read and edit the open documents. It asks before it runs or changes
+    anything.
+  - **Code completions**: after a pause in typing, Claude suggests the rest of the line or
+    block in grey; Tab inserts it, Esc dismisses it, Alt+\ asks at once. Toggle them in the
+    … menu.
+  - **MCP server**: … › Connect Claude Code copies a `claude mcp add` command, after which
+    Claude Code in a terminal works in the open MatLivre window (or in a MatLivre without a
+    window, `matlivre --mcp`, when none is open).
 
 | Shortcut | Action |
 |---|---|
@@ -136,6 +149,8 @@ per-case Octave comparison are in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.m
 | F5 | Run all |
 | Ctrl+Alt+Enter | Insert section break |
 | Ctrl+N / Ctrl+O / Ctrl+S | New / Open / Save |
+| Ctrl+L | Show or hide the Claude panel |
+| Tab / Esc / Alt+\ | Accept / dismiss / request a code suggestion |
 
 ## The language
 

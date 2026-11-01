@@ -1,8 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::Receiver;
-use std::time::Duration;
+use std::sync::mpsc::{Receiver, Sender};
+use std::time::{Duration, Instant, SystemTime};
 
 use eframe::egui::text::{CCursor, LayoutJob, TextFormat};
 use eframe::egui::{
@@ -12,7 +13,10 @@ use eframe::egui::{
 use livre_doc::{Block, BlockKind, ControlKind, Document};
 use livre_lang::{Figure, OutputKind, VarInfo};
 
+use crate::chat::{self, Chat};
+use crate::complete::{self, Completer};
 use crate::engine::{Command, Engine, Event, COMMAND_ID};
+use crate::mcp::{self, ToolResult};
 use crate::files::FileTree;
 use crate::icons::{self, Ic};
 use crate::os;
@@ -66,7 +70,89 @@ struct Tab {
     focus_block: Option<u64>,
     /// The caret in the focused code block, where Insert › Control puts a control.
     caret: Option<(u64, egui::text::CCursorRange)>,
+    /// The file as last read or written here, to notice changes made by other programs.
+    disk: Option<Disk>,
+    /// The file changed on disk while the tab had unsaved changes: the user picks a version.
+    conflict: bool,
 }
+
+/// What a file on disk looked like: its time and size are checked often, its content
+/// only when they change.
+#[derive(Clone, PartialEq)]
+struct Disk {
+    modified: Option<SystemTime>,
+    len: u64,
+    hash: u64,
+}
+
+fn hash_bytes(b: &[u8]) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    b.hash(&mut h);
+    h.finish()
+}
+
+fn disk_state(path: &Path) -> Option<Disk> {
+    let meta = std::fs::metadata(path).ok()?;
+    let bytes = std::fs::read(path).ok()?;
+    Some(Disk { modified: meta.modified().ok(), len: meta.len(), hash: hash_bytes(&bytes) })
+}
+
+/// How a file on disk relates to the tab showing it.
+#[derive(Debug, PartialEq)]
+enum DiskChange {
+    None,
+    /// Only its time changed (or it was written by this window).
+    Touched,
+    /// Another program changed it: the tab reloads, or asks when it has unsaved changes.
+    Changed,
+}
+
+fn disk_change(known: &Disk, now: &Disk) -> DiskChange {
+    if known == now {
+        DiskChange::None
+    } else if known.hash == now.hash && known.len == now.len {
+        DiskChange::Touched
+    } else {
+        DiskChange::Changed
+    }
+}
+
+/// Suggested code shown after the caret, which Tab inserts.
+#[derive(Clone)]
+struct Ghost {
+    block: u64,
+    /// Char index of the caret.
+    at: usize,
+    text: String,
+}
+
+/// The focused editor's caret: block, char index, and a hash of the block's text.
+#[derive(Clone, Copy, PartialEq)]
+struct Caret {
+    block: u64,
+    index: usize,
+    text: u64,
+}
+
+fn hash_text(s: &str) -> u64 {
+    hash_bytes(s.as_bytes())
+}
+
+/// Code completion: what the editor did lately and what was asked.
+struct Completion {
+    on: bool,
+    ghost: Option<Ghost>,
+    seen: Option<Caret>,
+    /// When the text last changed; a request goes out after a pause.
+    edited_at: Option<Instant>,
+    /// The request in flight, the caret it was made at, and the text before and after it.
+    asked: Option<(u64, Caret, String, String)>,
+    next_key: u64,
+    /// Alt+\ asks now, wherever the caret is.
+    force: bool,
+}
+
+const COMPLETION_PAUSE: Duration = Duration::from_millis(600);
 
 impl Tab {
     fn title(&self) -> String {
@@ -165,6 +251,8 @@ enum MenuCmd {
     Control(ControlTag),
     ClearOutput,
     ToggleTheme,
+    ToggleCompletions,
+    ConnectClaude,
     GettingStarted,
 }
 
@@ -208,6 +296,11 @@ struct View {
     figure_action: Option<(Figure, FigAction, u64)>,
     control_runs: Vec<usize>,
     control_edit: Option<ControlEdit>,
+    /// The completion on show, and whether Tab took it this frame.
+    ghost: Option<Ghost>,
+    ghost_taken: bool,
+    /// The caret of the focused code editor.
+    caret: Option<Caret>,
 }
 
 pub struct App {
@@ -259,6 +352,17 @@ pub struct App {
     confirm: Option<Confirm>,
     /// The layout last written to the settings file.
     saved_layout: SavedLayout,
+    /// This window's MCP server, its tool calls waiting to run, and the one running.
+    mcp: Option<mcp::Server>,
+    mcp_queue: VecDeque<mcp::Request>,
+    mcp_run: Option<(Sender<ToolResult>, mcp::Collector)>,
+    chat: Chat,
+    chat_open: bool,
+    chat_w: f32,
+    completer: Completer,
+    completion: Completion,
+    /// When open files were last compared with the disk.
+    watched: Instant,
 }
 
 /// The window layout remembered between runs (`%APPDATA%\matlivre\settings.txt`, one
@@ -273,11 +377,26 @@ struct SavedLayout {
     cmd_h: f32,
     output_right: bool,
     dark: bool,
+    chat_open: bool,
+    chat_w: f32,
+    completions: bool,
 }
 
 impl Default for SavedLayout {
     fn default() -> Self {
-        SavedLayout { files_open: false, cmd_open: true, ws_open: true, files_w: 248.0, ws_w: 300.0, cmd_h: 150.0, output_right: false, dark: false }
+        SavedLayout {
+            files_open: false,
+            cmd_open: true,
+            ws_open: true,
+            files_w: 248.0,
+            ws_w: 300.0,
+            cmd_h: 150.0,
+            output_right: false,
+            dark: false,
+            chat_open: false,
+            chat_w: 380.0,
+            completions: true,
+        }
     }
 }
 
@@ -304,6 +423,9 @@ impl SavedLayout {
                 "command_height" => l.cmd_h = size.unwrap_or(l.cmd_h),
                 "output" => l.output_right = v == "right",
                 "theme" => l.dark = v == "dark",
+                "claude_open" => l.chat_open = flag,
+                "claude_width" => l.chat_w = size.unwrap_or(l.chat_w),
+                "completions" => l.completions = flag,
                 _ => {}
             }
         }
@@ -313,7 +435,7 @@ impl SavedLayout {
     fn save(&self) {
         let Some(path) = SavedLayout::path() else { return };
         let text = format!(
-            "files_open={}\ncommand_open={}\nworkspace_open={}\nfiles_width={}\nworkspace_width={}\ncommand_height={}\noutput={}\ntheme={}\n",
+            "files_open={}\ncommand_open={}\nworkspace_open={}\nfiles_width={}\nworkspace_width={}\ncommand_height={}\noutput={}\ntheme={}\nclaude_open={}\nclaude_width={}\ncompletions={}\n",
             self.files_open,
             self.cmd_open,
             self.ws_open,
@@ -322,6 +444,9 @@ impl SavedLayout {
             self.cmd_h.round(),
             if self.output_right { "right" } else { "inline" },
             if self.dark { "dark" } else { "light" },
+            self.chat_open,
+            self.chat_w.round(),
+            self.completions,
         );
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
@@ -402,6 +527,15 @@ impl App {
             figures: Vec::new(),
             confirm: None,
             saved_layout: layout.clone(),
+            mcp: mcp::start(cc.egui_ctx.clone()),
+            mcp_queue: VecDeque::new(),
+            mcp_run: None,
+            chat: Chat::new(),
+            chat_open: layout.chat_open,
+            chat_w: layout.chat_w,
+            completer: Completer::new(),
+            completion: Completion { on: layout.completions, ghost: None, seen: None, edited_at: None, asked: None, next_key: 1, force: false },
+            watched: Instant::now(),
         };
         if layout.dark {
             app.set_dark(&cc.egui_ctx, true);
@@ -433,6 +567,9 @@ impl App {
             cmd_h: self.cmd_h,
             output_right: self.output_right,
             dark: self.skin.dark,
+            chat_open: self.chat_open,
+            chat_w: self.chat_w,
+            completions: self.completion.on,
         }
     }
 
@@ -469,6 +606,7 @@ impl App {
     fn add_tab(&mut self, kind: Kind, doc: Document, path: Option<PathBuf>, name: String, dirty: bool) {
         let id = self.next_tab;
         self.next_tab += 1;
+        let disk = path.as_deref().and_then(disk_state);
         self.tabs.push(Tab {
             id,
             kind,
@@ -481,6 +619,8 @@ impl App {
             current: 0,
             focus_block: None,
             caret: None,
+            disk,
+            conflict: false,
         });
         self.active = self.tabs.len() - 1;
     }
@@ -725,6 +865,8 @@ impl App {
                     let t = self.tab_mut();
                     t.kind = kind;
                     t.doc = doc;
+                    t.disk = disk_state(&p);
+                    t.conflict = false;
                     t.path = Some(p);
                     t.outputs.clear();
                     t.stale.clear();
@@ -761,10 +903,23 @@ impl App {
             }
         };
         let Some(p) = path else { return false };
+        // Saving over a change made by another program needs the user's choice first.
+        if self.tab().path.as_ref() == Some(&p) {
+            let changed = match (&self.tab().disk, disk_state(&p)) {
+                (Some(known), Some(now)) => disk_change(known, &now) == DiskChange::Changed,
+                _ => false,
+            };
+            if changed || self.tab().conflict {
+                self.tab_mut().conflict = true;
+                return false;
+            }
+        }
         let result = if script { std::fs::write(&p, self.tab().script_text()).map_err(|e| e.to_string()) } else { self.tab().doc.save(&p).map_err(|e| e.to_string()) };
         match result {
             Ok(()) => {
                 let t = self.tab_mut();
+                t.disk = disk_state(&p);
+                t.conflict = false;
                 t.path = Some(p);
                 t.dirty = false;
                 true
@@ -949,12 +1104,15 @@ impl App {
         }
     }
 
-    fn poll_engine(&mut self) {
+    fn poll_engine(&mut self, ctx: &egui::Context) {
         while let Ok(ev) = self.engine.rx.try_recv() {
             let origin = self.origin;
             match ev {
                 Event::BlockStarted(id) => self.running_block = Some(id),
                 Event::Output(id, out) => {
+                    if let Some((_, c)) = &mut self.mcp_run {
+                        c.push(&out);
+                    }
                     let tab_index = match origin {
                         Some(Origin::Tab { id: t, .. }) => self.tabs.iter().position(|x| x.id == t),
                         _ => None,
@@ -1039,6 +1197,9 @@ impl App {
                 Event::Finished { workspace, ok, elapsed } => {
                     self.workspace = workspace;
                     self.running = false;
+                    if let Some((reply, c)) = self.mcp_run.take() {
+                        let _ = reply.send(c.finish(ctx, ok));
+                    }
                     self.running_block = None;
                     self.origin = None;
                     if let Some(Origin::Tab { id, .. }) = origin {
@@ -1056,6 +1217,405 @@ impl App {
                             self.run_section(section);
                             self.active = keep;
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- Claude ------------------------------------------------------------------------
+
+    /// Runs code from the Claude panel or a tool call as command-window input.
+    fn eval_command(&mut self, code: &str) {
+        for (k, l) in code.trim_end().split('\n').enumerate() {
+            self.hist.push((format!("{} {l}", if k == 0 { ">>" } else { "  " }), HistKind::Input));
+        }
+        self.running = true;
+        self.origin = Some(Origin::Command);
+        self.engine.send(Command::Eval(code.to_string()));
+    }
+
+    /// The tab a tool call names (file name, stem or path), or the active one.
+    fn find_tab(&self, args: &serde_json::Value) -> Result<usize, String> {
+        let Some(name) = args.get("document").and_then(|d| d.as_str()).map(str::trim).filter(|d| !d.is_empty()) else { return Ok(self.active) };
+        let same = |a: &str| a.eq_ignore_ascii_case(name);
+        self.tabs
+            .iter()
+            .position(|t| same(&t.title()) || t.path.as_ref().is_some_and(|p| same(&p.display().to_string()) || p.file_stem().is_some_and(|s| same(&s.to_string_lossy()))))
+            .ok_or_else(|| format!("No open document is called {name}. Open documents: {}.", self.tabs.iter().map(|t| t.title()).collect::<Vec<_>>().join(", ")))
+    }
+
+    fn doc_text(tab: &Tab) -> String {
+        match tab.kind {
+            Kind::Script => tab.script_text().to_string(),
+            Kind::Live => livre_doc::write_m(&tab.doc),
+        }
+    }
+
+    fn set_doc_text(tab: &mut Tab, text: &str) {
+        let text = text.replace("\r\n", "\n");
+        match tab.kind {
+            Kind::Script => tab.doc.blocks[0].text = text,
+            Kind::Live => {
+                tab.doc = livre_doc::read_m(&text);
+                if tab.doc.blocks.is_empty() {
+                    tab.doc.push(BlockKind::Code, "");
+                }
+                tab.outputs.clear();
+                tab.stale.clear();
+                tab.current = 0;
+                tab.caret = None;
+            }
+        }
+        tab.dirty = true;
+    }
+
+    /// Answers a tool call that does not run code.
+    fn mcp_tool(&mut self, name: &str, args: &serde_json::Value) -> ToolResult {
+        let arg = |k: &str| args.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+        match name {
+            "get_workspace" => ToolResult::text(mcp::workspace_text(&self.workspace)),
+            "list_documents" => ToolResult::text(
+                self.tabs
+                    .iter()
+                    .enumerate()
+                    .map(|(k, t)| {
+                        let kind = if t.kind == Kind::Live { "live script" } else { "script" };
+                        let path = t.path.as_ref().map_or_else(|| "not saved yet".to_string(), |p| p.display().to_string());
+                        let flags = [(k == self.active).then_some("active"), t.dirty.then_some("unsaved changes")].into_iter().flatten().collect::<Vec<_>>().join(", ");
+                        format!("{}  ({kind}, {path}){}", t.title(), if flags.is_empty() { String::new() } else { format!("  [{flags}]") })
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
+            "read_document" => match self.find_tab(args) {
+                Ok(i) => ToolResult::text(Self::doc_text(&self.tabs[i])),
+                Err(e) => ToolResult::error(e),
+            },
+            "edit_document" | "write_document" => {
+                let i = match self.find_tab(args) {
+                    Ok(i) => i,
+                    Err(e) => return ToolResult::error(e),
+                };
+                let title = self.tabs[i].title();
+                if self.is_running_tab(self.tabs[i].id) {
+                    return ToolResult::error(format!("{title} is running; try again when it has finished."));
+                }
+                let new = if name == "write_document" {
+                    arg("text")
+                } else {
+                    let (old, new) = (arg("old_text").replace("\r\n", "\n"), arg("new_text").replace("\r\n", "\n"));
+                    let text = Self::doc_text(&self.tabs[i]);
+                    match if old.is_empty() { 0 } else { text.matches(old.as_str()).count() } {
+                        1 => text.replacen(old.as_str(), &new, 1),
+                        0 => return ToolResult::error(format!("old_text is not in {title}. Read the document again; it may have changed.")),
+                        n => return ToolResult::error(format!("old_text occurs {n} times in {title}; include more of the surrounding text.")),
+                    }
+                };
+                Self::set_doc_text(&mut self.tabs[i], &new);
+                self.active = i;
+                ToolResult::text(format!("Edited {title} in the editor; it is not saved yet."))
+            }
+            "open_document" => {
+                let p = PathBuf::from(arg("path"));
+                let ext = p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase());
+                if !matches!(ext.as_deref(), Some("m") | Some("mlx")) {
+                    return ToolResult::error("MatLivre opens .m and .mlx files.");
+                }
+                if p.exists() {
+                    self.open_path(p.clone());
+                    if let Some((msg, true)) = &self.notice {
+                        return ToolResult::error(msg.clone());
+                    }
+                } else {
+                    let (kind, doc) = if ext.as_deref() == Some("mlx") {
+                        let mut d = Document::new();
+                        d.push(BlockKind::Code, "");
+                        (Kind::Live, d)
+                    } else {
+                        (Kind::Script, script_doc(""))
+                    };
+                    self.add_tab(kind, doc, Some(p.clone()), String::new(), true);
+                }
+                ToolResult::text(format!("Opened {}.", p.display()))
+            }
+            _ => ToolResult::error(format!("Unknown tool {name}.")),
+        }
+    }
+
+    /// Starts a tool call that runs code; its result goes out when the run finishes.
+    fn mcp_start(&mut self, r: mcp::Request) {
+        if r.tool == "run_code" {
+            let code = r.args.get("code").and_then(|c| c.as_str()).unwrap_or("").to_string();
+            if code.trim().is_empty() {
+                let _ = r.reply.send(ToolResult::error("No code to run."));
+                return;
+            }
+            self.cmd_open = true;
+            self.eval_command(&code);
+        } else {
+            let i = match self.find_tab(&r.args) {
+                Ok(i) => i,
+                Err(e) => {
+                    let _ = r.reply.send(ToolResult::error(e));
+                    return;
+                }
+            };
+            self.active = i;
+            match r.args.get("section").and_then(|s| s.as_u64()) {
+                Some(n) if n >= 1 && (n as usize) <= self.tab().section_count() => self.run_section(n as usize - 1),
+                Some(n) => {
+                    let _ = r.reply.send(ToolResult::error(format!("{} has {} sections; there is no section {n}.", self.tab().title(), self.tab().section_count())));
+                    return;
+                }
+                None => self.run_all(),
+            }
+            if !self.running {
+                let _ = r.reply.send(ToolResult::text("Nothing to run."));
+                return;
+            }
+        }
+        self.mcp_run = Some((r.reply, mcp::Collector::default()));
+    }
+
+    /// Tool calls from the MCP server: runs wait their turn, the rest are answered now.
+    fn serve_mcp(&mut self) {
+        if let Some(s) = &self.mcp {
+            self.mcp_queue.extend(s.rx.try_iter());
+        }
+        let mut waiting = VecDeque::new();
+        while let Some(r) = self.mcp_queue.pop_front() {
+            match r.tool.as_str() {
+                mcp::APPROVE => {
+                    self.chat_open = true;
+                    self.chat.ask(r);
+                }
+                "run_code" | "run_document" => {
+                    if self.running || self.mcp_run.is_some() || !waiting.is_empty() {
+                        waiting.push_back(r);
+                    } else {
+                        self.mcp_start(r);
+                    }
+                }
+                _ => {
+                    let res = self.mcp_tool(&r.tool, &r.args);
+                    let _ = r.reply.send(res);
+                }
+            }
+        }
+        self.mcp_queue = waiting;
+    }
+
+    fn chat_send(&mut self, ctx: &egui::Context, text: String) {
+        let Some(url) = self.mcp.as_ref().map(|m| m.dock_url.clone()) else {
+            self.chat.items.push(chat::Item::Error("MatLivre could not start its MCP server, which Claude needs.".into()));
+            return;
+        };
+        let t = self.tab();
+        let cwd = t.path.as_ref().and_then(|p| p.parent().map(Path::to_path_buf)).or_else(|| std::env::current_dir().ok()).unwrap_or_else(std::env::temp_dir);
+        let path = t.path.as_ref().map_or_else(|| "not saved yet".to_string(), |p| p.display().to_string());
+        let note = format!(
+            "The active document is {} ({}, {path}{}), section {} of {}.",
+            t.title(),
+            if t.kind == Kind::Live { "live script" } else { "script" },
+            if t.dirty { ", unsaved changes" } else { "" },
+            t.current_section() + 1,
+            t.section_count()
+        );
+        self.chat.send(text, &note, &url, &cwd, ctx);
+    }
+
+    fn chat_panel(&mut self, ui: &mut Ui, rect: Rect) {
+        let skin = self.skin.clone();
+        let mut ui = Self::card(ui, &skin, rect);
+        let mut clear = false;
+        let has_items = !self.chat.items.is_empty();
+        Self::drawer_header(&mut ui, &skin, Some(Ic::Chat), "Claude", |ui| {
+            if has_items && widgets::tool_button(ui, &skin, Ic::New, 16.0, "New conversation").clicked() {
+                clear = true;
+            }
+        });
+        if clear {
+            self.chat.clear();
+        }
+        let area = ui.available_rect_before_wrap();
+        let body = Rect::from_min_max(area.min + vec2(12.0, 4.0), area.max - vec2(12.0, 12.0));
+        if self.chat.exe().is_none() {
+            let mut c = ui.new_child(UiBuilder::new().max_rect(body).layout(Layout::top_down(Align::Min)));
+            c.spacing_mut().item_spacing.y = 6.0;
+            c.add(egui::Label::new(RichText::new("Claude Code is not installed on this computer.").color(skin.text)).wrap());
+            c.add(egui::Label::new(RichText::new("Install it from claude.com/claude-code and run claude once in a terminal to sign in. The panel uses that installation; no API key is needed.").size(12.0).color(skin.text_secondary)).wrap());
+            return;
+        }
+        let composer_h = 92.0;
+        let list = Rect::from_min_max(body.min, pos2(body.right(), body.bottom() - composer_h - 8.0));
+        let bottom = Rect::from_min_max(pos2(body.left(), body.bottom() - composer_h), body.max);
+        let mut l = ui.new_child(UiBuilder::new().max_rect(list).layout(Layout::top_down(Align::Min)));
+        l.set_clip_rect(list);
+        let mut actions = Vec::new();
+        egui::ScrollArea::vertical().id_salt("chat").auto_shrink([false, false]).stick_to_bottom(true).show(&mut l, |ui| {
+            actions = chat::transcript(ui, &skin, &mut self.chat);
+            ui.add_space(4.0);
+        });
+        let mut b = ui.new_child(UiBuilder::new().max_rect(bottom).layout(Layout::top_down(Align::Min)));
+        if let Some(a) = chat::composer(&mut b, &skin, &mut self.chat, Id::new("chat-input")) {
+            actions.push(a);
+        }
+        for a in actions {
+            match a {
+                chat::Action::Send(text) => self.chat_send(ui.ctx(), text),
+                chat::Action::Run(code) => {
+                    if self.running {
+                        self.notice = Some(("Wait for the current run to finish.".into(), false));
+                    } else {
+                        self.cmd_open = true;
+                        self.eval_command(&code);
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- code completion ---------------------------------------------------------------
+
+    /// The text before and after the caret (a live script's other code blocks included) and
+    /// the document's name.
+    fn completion_context(&self, c: Caret) -> Option<(String, String, String)> {
+        let t = self.tabs.iter().find(|t| t.doc.blocks.iter().any(|b| b.id == c.block))?;
+        let mut before = String::new();
+        let mut after = String::new();
+        let mut seen = false;
+        for b in t.doc.blocks.iter().filter(|b| b.kind == BlockKind::Code) {
+            if b.id == c.block {
+                let at = b.text.char_indices().nth(c.index).map_or(b.text.len(), |(i, _)| i);
+                before.push_str(&b.text[..at]);
+                after.push_str(&b.text[at..]);
+                seen = true;
+            } else if seen {
+                after.push_str("\n\n");
+                after.push_str(&b.text);
+            } else {
+                before.push_str(&b.text);
+                before.push_str("\n\n");
+            }
+        }
+        Some((before, after, t.title()))
+    }
+
+    /// Asks for a completion after a pause in typing, and shows the answer while the caret
+    /// and the text stay as they were when it was asked.
+    fn complete(&mut self, ctx: &egui::Context, caret: Option<Caret>) {
+        if let Some((key, text)) = self.completer.poll() {
+            if let Some((k, at, before, after)) = self.completion.asked.take() {
+                if k == key && Some(at) == self.completion.seen {
+                    let text = complete::clean(&text, &before, &after);
+                    if !text.is_empty() {
+                        self.completion.ghost = Some(Ghost { block: at.block, at: at.index, text });
+                    }
+                } else {
+                    self.completion.asked = Some((k, at, before, after));
+                }
+            }
+        }
+        let c = &mut self.completion;
+        if caret != c.seen {
+            let typed = matches!((caret, c.seen), (Some(a), Some(b)) if a.block == b.block && a.text != b.text);
+            c.ghost = None;
+            if c.asked.take().is_some() {
+                self.completer.cancel();
+            }
+            c.seen = caret;
+            c.edited_at = typed.then(Instant::now);
+            if typed && c.on {
+                self.completer.warm_up();
+            }
+        }
+        let c = &mut self.completion;
+        let Some(at) = caret else {
+            c.force = false;
+            return;
+        };
+        let due = c.force || (c.on && c.edited_at.is_some_and(|t| t.elapsed() >= COMPLETION_PAUSE));
+        if let (Some(t), false) = (c.edited_at, due) {
+            ctx.request_repaint_after(COMPLETION_PAUSE.saturating_sub(t.elapsed()));
+        }
+        if !due || c.asked.is_some() || c.ghost.is_some() {
+            return;
+        }
+        let force = std::mem::take(&mut c.force);
+        c.edited_at = None;
+        let Some((before, after, file)) = self.completion_context(at) else { return };
+        if !force && !wants_completion(&before, &after) {
+            return;
+        }
+        let key = self.completion.next_key;
+        self.completion.next_key += 1;
+        let vars: Vec<String> = self.workspace.iter().map(|v| v.name.clone()).collect();
+        self.completer.request(key, complete::prompt(&file, &before, &after, &vars), ctx);
+        self.completion.asked = Some((key, at, before, after));
+    }
+
+    // ---- files on disk -----------------------------------------------------------------
+
+    /// Puts the file's current content in tab `i`, which then has no unsaved changes.
+    fn reload(&mut self, i: usize, now: Disk) {
+        let running = self.is_running_tab(self.tabs[i].id);
+        let t = &mut self.tabs[i];
+        let Some(path) = t.path.clone() else { return };
+        match t.kind {
+            Kind::Script => {
+                let Ok(bytes) = std::fs::read(&path) else { return };
+                // The block keeps its id, so the editor keeps its caret and undo history.
+                t.doc.blocks[0].text = String::from_utf8_lossy(&bytes).replace("\r\n", "\n");
+            }
+            Kind::Live => {
+                if running {
+                    return;
+                }
+                let Ok(doc) = Document::load(&path) else { return };
+                t.doc = doc;
+                if t.doc.blocks.is_empty() {
+                    t.doc.push(BlockKind::Code, "");
+                }
+                t.outputs.clear();
+                t.stale.clear();
+                t.current = t.current.min(t.doc.blocks.len() - 1);
+                t.caret = None;
+            }
+        }
+        t.disk = Some(now);
+        t.dirty = false;
+        t.conflict = false;
+    }
+
+    /// Once a second, compares the open files with the disk, as VS Code and MATLAB do: a tab
+    /// without unsaved changes takes the new version; one with changes asks which to keep.
+    fn watch_files(&mut self, ctx: &egui::Context) {
+        ctx.request_repaint_after(Duration::from_secs(1));
+        if self.watched.elapsed() < Duration::from_secs(1) {
+            return;
+        }
+        self.watched = Instant::now();
+        for i in 0..self.tabs.len() {
+            let Some(path) = self.tabs[i].path.clone() else { continue };
+            // A file that is gone (or being replaced) keeps the last known state.
+            let Ok(meta) = std::fs::metadata(&path) else { continue };
+            let Some(known) = self.tabs[i].disk.clone() else {
+                self.tabs[i].disk = disk_state(&path);
+                continue;
+            };
+            if meta.modified().ok() == known.modified && meta.len() == known.len {
+                continue;
+            }
+            let Some(now) = disk_state(&path) else { continue };
+            match disk_change(&known, &now) {
+                DiskChange::None => {}
+                DiskChange::Touched => self.tabs[i].disk = Some(now),
+                DiskChange::Changed => {
+                    if self.tabs[i].dirty {
+                        self.tabs[i].conflict = true;
+                    } else {
+                        self.reload(i, now);
                     }
                 }
             }
@@ -1219,6 +1779,18 @@ impl App {
         if self.confirm.is_some() {
             return;
         }
+        if self.completion.ghost.is_some() && pressed(sc(Modifiers::NONE, Key::Escape)) {
+            self.completion.ghost = None;
+        }
+        if pressed(sc(Modifiers::ALT, Key::Backslash)) {
+            self.completion.force = true;
+        }
+        if pressed(sc(Modifiers::CTRL, Key::L)) {
+            self.chat_open = !self.chat_open;
+            if self.chat_open {
+                ctx.memory_mut(|m| m.request_focus(Id::new("chat-input")));
+            }
+        }
         if (self.menu.is_some() || self.control_edit.is_some()) && pressed(sc(Modifiers::NONE, Key::Escape)) {
             self.menu = None;
             self.control_edit = None;
@@ -1288,6 +1860,18 @@ impl App {
             MenuCmd::ToggleTheme => {
                 let dark = !self.skin.dark;
                 self.set_dark(ctx, dark);
+            }
+            MenuCmd::ToggleCompletions => {
+                self.completion.on = !self.completion.on;
+                self.completion.ghost = None;
+            }
+            MenuCmd::ConnectClaude => {
+                let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "matlivre".into());
+                ctx.copy_text(format!("claude mcp add matlivre -- \"{exe}\" --mcp"));
+                self.notice = Some((
+                    "Copied a command that adds MatLivre to Claude Code. Run it once in a terminal: Claude Code then works in this window's workspace and documents, or in a MatLivre without a window when none is open.".into(),
+                    false,
+                ));
             }
             MenuCmd::GettingStarted => self.getting_started(),
         }
@@ -1468,6 +2052,9 @@ impl App {
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let more = more_button(ui, &skin, self.menu.is_some_and(|(o, _)| o == Menu::More)).on_hover_text("More");
                         self.toggle_menu(Menu::More, &more);
+                        if widgets::cmd_button(ui, &skin, Some(Ic::Chat), "", true, false, self.chat_open).on_hover_text("Show or hide Claude (Ctrl+L)").clicked() {
+                            self.chat_open = !self.chat_open;
+                        }
                         if widgets::cmd_button(ui, &skin, Some(Ic::Workspace), "", true, false, self.ws_open).on_hover_text("Show or hide the workspace").clicked() {
                             self.ws_open = !self.ws_open;
                         }
@@ -1546,6 +2133,9 @@ impl App {
                     widgets::menu_separator(ui, &skin);
                     item(ui, MenuEntry::new(Ic::Theme, "Dark theme").checked(dark), MenuCmd::ToggleTheme);
                     widgets::menu_separator(ui, &skin);
+                    item(ui, MenuEntry::new(Ic::Code, "Code completions").checked(self.completion.on).shortcut("Alt+\\"), MenuCmd::ToggleCompletions);
+                    item(ui, MenuEntry::new(Ic::Chat, "Connect Claude Code…"), MenuCmd::ConnectClaude);
+                    widgets::menu_separator(ui, &skin);
                     item(ui, MenuEntry::new(Ic::Help, "Getting started"), MenuCmd::GettingStarted);
                 }
             }
@@ -1613,6 +2203,11 @@ impl App {
                         };
                         ui.label(small(&text, skin.text));
                     }
+                    if self.completion.ghost.is_some() {
+                        ui.label(small("·  Tab inserts the suggestion, Esc dismisses it", skin.text_secondary));
+                    } else if self.completion.asked.is_some() {
+                        ui.label(small("·  Claude is suggesting…", skin.text_tertiary));
+                    }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let divider = |ui: &mut Ui| {
                             let (r, _) = ui.allocate_exact_size(vec2(1.0, 12.0), Sense::hover());
@@ -1669,6 +2264,7 @@ impl App {
                 let (mut x0, mut x1) = (full.left(), full.right());
                 let mut files_rect = None;
                 let mut ws_rect = None;
+                let mut chat_rect = None;
                 if self.files_open {
                     let w = self.files_w.min((full.width() - min_center - 12.0).max(160.0));
                     files_rect = Some(Rect::from_min_max(pos2(x0, full.top()), pos2(x0 + w, full.bottom())));
@@ -1676,6 +2272,14 @@ impl App {
                     let d = widgets::splitter(ui, &skin, Id::new("split-files"), split, true);
                     self.files_w = (self.files_w + d).clamp(160.0, 420.0);
                     x0 += w + 12.0;
+                }
+                if self.chat_open {
+                    let w = self.chat_w.min((x1 - x0 - min_center - 12.0).max(260.0));
+                    chat_rect = Some(Rect::from_min_max(pos2(x1 - w, full.top()), pos2(x1, full.bottom())));
+                    let split = Rect::from_min_max(pos2(x1 - w - 12.0, full.top()), pos2(x1 - w, full.bottom()));
+                    let d = widgets::splitter(ui, &skin, Id::new("split-chat"), split, true);
+                    self.chat_w = (self.chat_w - d).clamp(280.0, 640.0);
+                    x1 -= w + 12.0;
                 }
                 if self.ws_open {
                     let w = self.ws_w.min((x1 - x0 - min_center - 12.0).max(200.0));
@@ -1700,6 +2304,9 @@ impl App {
                 }
                 if let Some(r) = ws_rect {
                     self.workspace_panel(ui, r);
+                }
+                if let Some(r) = chat_rect {
+                    self.chat_panel(ui, r);
                 }
                 self.document(ui, doc_rect);
             });
@@ -1910,6 +2517,28 @@ impl App {
                 self.notice = None;
             }
         }
+        if self.tab().conflict {
+            let name = self.tab().title();
+            let mut pick = None;
+            egui::Frame::none().inner_margin(Margin::same(8.0)).show(&mut ui, |ui| {
+                pick = conflict_bar(ui, &skin, &name);
+            });
+            let i = self.active;
+            let now = self.tabs[i].path.as_deref().and_then(disk_state);
+            match pick {
+                Some(true) => {
+                    if let Some(now) = now {
+                        self.reload(i, now);
+                    }
+                }
+                Some(false) => {
+                    let t = &mut self.tabs[i];
+                    t.disk = now;
+                    t.conflict = false;
+                }
+                None => {}
+            }
+        }
         let running_section = self.running_section();
         let active_id = self.tab().id;
         let this_running = self.is_running_tab(active_id);
@@ -1929,6 +2558,9 @@ impl App {
             figure_action: None,
             control_runs: Vec::new(),
             control_edit: self.control_edit.take(),
+            ghost: self.completion.ghost.clone(),
+            ghost_taken: false,
+            caret: None,
         };
         let tab = &mut self.tabs[self.active];
         let mut actions = Vec::new();
@@ -1966,6 +2598,10 @@ impl App {
         if let Some((fig, action, block)) = v.figure_action {
             self.figure_action(ui.ctx(), &fig, action, block);
         }
+        if v.ghost_taken {
+            self.completion.ghost = None;
+        }
+        self.complete(ui.ctx(), v.caret);
     }
 
     fn figure_action(&mut self, ctx: &egui::Context, fig: &Figure, action: FigAction, block: u64) {
@@ -2063,7 +2699,10 @@ impl eframe::App for App {
                 self.close_window(ctx, HashSet::new());
             }
         }
-        self.poll_engine();
+        self.poll_engine(ctx);
+        self.serve_mcp();
+        self.chat.poll();
+        self.watch_files(ctx);
         self.handle_shortcuts(ctx);
         if self.tabs.is_empty() {
             return;
@@ -2096,7 +2735,7 @@ fn rgb(c: Color32) -> [u8; 3] {
 /// True on the user's first launch of MatLivre, which a marker file in the per-user app data
 /// folder (`%APPDATA%\matlivre`) then records.
 /// The per-user app data folder (`%APPDATA%\matlivre`).
-fn app_dir() -> Option<PathBuf> {
+pub(crate) fn app_dir() -> Option<PathBuf> {
     let base = std::env::var_os("APPDATA")
         .or_else(|| std::env::var_os("XDG_CONFIG_HOME"))
         .map(PathBuf::from)
@@ -2506,6 +3145,12 @@ fn code_editor(ui: &mut Ui, tab: &mut Tab, i: usize, focused: bool, err_line: Op
     let char_w = ui.fonts(|f| f.glyph_width(&font, '0'));
     let block_id = tab.doc.blocks[i].id;
     let edit_id = Id::new(("block", block_id));
+    if let Some(old) = take_ghost(ui, edit_id, block_id, &mut tab.doc.blocks[i].text, v) {
+        if !tab.doc.blocks[i].controls.is_empty() {
+            tab.doc.blocks[i].reanchor_controls(&old);
+        }
+        tab.dirty = true;
+    }
     let section = tab.doc.section_of(i);
     let widths: Vec<f32> = (0..tab.doc.blocks[i].controls.len()).map(|k| control_width(ui, &tab.doc.blocks[i], k)).collect();
     let spans: Vec<(usize, usize, usize, f32)> = tab.doc.blocks[i].controls.iter().zip(&widths).map(|(c, w)| (c.line, c.start, c.end, *w)).collect();
@@ -2583,7 +3228,9 @@ fn code_editor(ui: &mut Ui, tab: &mut Tab, i: usize, focused: bool, err_line: Op
     if out.response.has_focus() {
         if let Some(range) = out.cursor_range {
             tab.caret = Some((block_id, range.as_ccursor_range()));
+            v.caret = Some(Caret { block: block_id, index: range.primary.ccursor.index, text: hash_text(&tab.doc.blocks[i].text) });
         }
+        paint_ghost(ui, &skin, v, block_id, &galley, origin, box_rect.right() - 8.0);
     }
     // The live controls, over their hidden literals.
     let mut changes: Vec<(usize, String)> = Vec::new();
@@ -2846,8 +3493,12 @@ fn script_view(ui: &mut Ui, tab: &mut Tab, v: &mut View) -> Option<usize> {
     let skin = v.skin.clone();
     let font = FontId::monospace(13.0);
     let mut run = None;
-    let edit_id = Id::new(("block", tab.doc.blocks[0].id));
+    let block_id = tab.doc.blocks[0].id;
+    let edit_id = Id::new(("block", block_id));
     let focus = tab.focus_block.take().is_some();
+    if take_ghost(ui, edit_id, block_id, &mut tab.doc.blocks[0].text, v).is_some() {
+        tab.dirty = true;
+    }
     ui.scope(|ui| {
         let content_style = ui.style().clone();
         style_scroll_bar(ui, &skin);
@@ -2884,6 +3535,8 @@ fn script_view(ui: &mut Ui, tab: &mut Tab, v: &mut View) -> Option<usize> {
             if let Some(range) = out.cursor_range {
                 if out.response.has_focus() {
                     tab.current = line_col(&tab.doc.blocks[0].text, range.primary.ccursor.index).0;
+                    v.caret = Some(Caret { block: block_id, index: range.primary.ccursor.index, text: hash_text(&tab.doc.blocks[0].text) });
+                    paint_ghost(&child, &skin, v, block_id, &out.galley, out.galley_pos, code_x + width);
                 }
             }
             let text = tab.doc.blocks[0].text.clone();
@@ -2935,6 +3588,91 @@ fn script_view(ui: &mut Ui, tab: &mut Tab, v: &mut View) -> Option<usize> {
     run
 }
 
+/// Whether a pause in typing should bring a suggestion: at the end of a line that has code,
+/// or on a new line below one.
+fn wants_completion(before: &str, after: &str) -> bool {
+    let rest = after.split('\n').next().unwrap_or("");
+    if !rest.trim().is_empty() {
+        return false;
+    }
+    let mut lines = before.rsplit('\n');
+    let line = lines.next().unwrap_or("");
+    let prev = lines.next().unwrap_or("");
+    let code = |l: &str| !l.trim().is_empty() && !l.trim_start().starts_with('%');
+    code(line) || (line.trim().is_empty() && code(prev))
+}
+
+/// Tab in the focused editor inserts the suggestion at its caret. Returns the text before.
+fn take_ghost(ui: &Ui, edit_id: Id, block: u64, text: &mut String, v: &mut View) -> Option<String> {
+    let g = v.ghost.as_ref().filter(|g| g.block == block)?;
+    if !ui.memory(|m| m.has_focus(edit_id)) || !ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab)) {
+        return None;
+    }
+    let old = text.clone();
+    let at = text.char_indices().nth(g.at).map_or(text.len(), |(b, _)| b);
+    text.insert_str(at, &g.text);
+    let end = g.at + g.text.chars().count();
+    if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), edit_id) {
+        state.cursor.set_char_range(Some(egui::text::CCursorRange::one(CCursor::new(end))));
+        state.store(ui.ctx(), edit_id);
+    }
+    v.ghost = None;
+    v.ghost_taken = true;
+    Some(old)
+}
+
+/// The suggestion in grey after the caret; lines past the first cover the code below them.
+fn paint_ghost(ui: &Ui, skin: &Skin, v: &View, block: u64, galley: &egui::Galley, origin: Pos2, right: f32) {
+    let Some(g) = v.ghost.as_ref().filter(|g| g.block == block) else { return };
+    let at = galley.pos_from_ccursor(CCursor::new(g.at)).translate(origin.to_vec2());
+    let font = FontId::monospace(13.0);
+    let p = ui.painter();
+    let mut lines = g.text.split('\n');
+    p.text(at.left_top(), Align2::LEFT_TOP, lines.next().unwrap_or(""), font.clone(), skin.text_tertiary);
+    let rest: Vec<&str> = lines.collect();
+    if rest.is_empty() {
+        return;
+    }
+    let top = at.top() + 20.0;
+    let cover = Rect::from_min_max(pos2(origin.x - 2.0, top), pos2(right, top + 20.0 * rest.len() as f32));
+    p.rect_filled(cover, Rounding::same(2.0), skin.code_bg);
+    p.rect_filled(Rect::from_min_size(pos2(origin.x - 6.0, top + 2.0), vec2(2.0, cover.height() - 4.0)), Rounding::same(1.0), skin.accent);
+    for (k, l) in rest.iter().enumerate() {
+        p.text(pos2(origin.x, top + 20.0 * k as f32), Align2::LEFT_TOP, *l, font.clone(), skin.text_tertiary);
+    }
+}
+
+/// The bar a tab shows when its file changed on disk while it had unsaved changes.
+/// `Some(true)` reloads the file, `Some(false)` keeps the editor's version.
+fn conflict_bar(ui: &mut Ui, skin: &Skin, name: &str) -> Option<bool> {
+    let mut pick = None;
+    egui::Frame::none()
+        .fill(skin.info_bg)
+        .rounding(Rounding::same(RADIUS))
+        .stroke(Stroke::new(1.0_f32, skin.separator))
+        .inner_margin(Margin::symmetric(12.0, 8.0))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                let (r, _) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
+                ui.painter().circle_filled(r.center(), 8.0, skin.accent);
+                ui.painter().text(r.center(), Align2::CENTER_CENTER, "!", FontId::proportional(11.0), if skin.dark { Color32::BLACK } else { Color32::WHITE });
+                ui.add_space(4.0);
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    if widgets::dialog_button(ui, skin, Id::new("conflict-keep"), "Keep mine", 96.0, false).on_hover_text("Keep the editor's text; saving replaces the file").clicked() {
+                        pick = Some(false);
+                    }
+                    if widgets::dialog_button(ui, skin, Id::new("conflict-reload"), "Reload", 80.0, true).on_hover_text("Load the file from disk; your unsaved changes are lost").clicked() {
+                        pick = Some(true);
+                    }
+                    ui.add(egui::Label::new(RichText::new(format!("{name} was changed by another program while you had unsaved changes."))).wrap());
+                });
+            });
+        });
+    pick
+}
+
 /// ModernInfoBar (informational / error) for notices. Returns true when dismissed.
 fn info_bar(ui: &mut Ui, skin: &Skin, msg: &str, error: bool) -> bool {
     let mut closed = false;
@@ -2965,7 +3703,27 @@ fn info_bar(ui: &mut Ui, skin: &Skin, msg: &str, error: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::SavedLayout;
+    use super::{disk_change, wants_completion, Disk, DiskChange, SavedLayout};
+
+    #[test]
+    fn disk_changes_are_told_apart() {
+        let t0 = Some(std::time::SystemTime::UNIX_EPOCH);
+        let t1 = t0.map(|t| t + std::time::Duration::from_secs(5));
+        let known = Disk { modified: t0, len: 10, hash: 1 };
+        assert_eq!(disk_change(&known, &known.clone()), DiskChange::None);
+        assert_eq!(disk_change(&known, &Disk { modified: t1, len: 10, hash: 1 }), DiskChange::Touched);
+        assert_eq!(disk_change(&known, &Disk { modified: t1, len: 12, hash: 2 }), DiskChange::Changed);
+        assert_eq!(disk_change(&known, &Disk { modified: t0, len: 10, hash: 3 }), DiskChange::Changed);
+    }
+
+    #[test]
+    fn completion_comes_at_the_end_of_a_line() {
+        assert!(wants_completion("x = linspace(0, 1, 10);\nplot(x, ", ""));
+        assert!(wants_completion("for i = 1:3\n", "\nend"));
+        assert!(!wants_completion("plot(x", ", y)"));
+        assert!(!wants_completion("", ""));
+        assert!(!wants_completion("% a comment", ""));
+    }
 
     /// A first launch starts with the Files drawer closed; a saved layout comes back as saved.
     #[test]
@@ -2974,8 +3732,20 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::env::set_var("APPDATA", &dir);
         let first = SavedLayout::load();
-        assert!(!first.files_open && first.cmd_open && first.ws_open && !first.output_right && !first.dark);
-        let mine = SavedLayout { files_open: true, cmd_open: false, ws_open: true, files_w: 300.0, ws_w: 280.0, cmd_h: 210.0, output_right: true, dark: true };
+        assert!(!first.files_open && first.cmd_open && first.ws_open && !first.output_right && !first.dark && !first.chat_open && first.completions);
+        let mine = SavedLayout {
+            files_open: true,
+            cmd_open: false,
+            ws_open: true,
+            files_w: 300.0,
+            ws_w: 280.0,
+            cmd_h: 210.0,
+            output_right: true,
+            dark: true,
+            chat_open: true,
+            chat_w: 420.0,
+            completions: false,
+        };
         mine.save();
         assert!(SavedLayout::load() == mine);
         let _ = std::fs::remove_dir_all(&dir);

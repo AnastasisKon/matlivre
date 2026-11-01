@@ -570,7 +570,7 @@ pub fn standard_button(ui: &mut Ui, skin: &Skin, id: Id, text: &str) -> Response
 }
 
 /// A 32 px ContentDialog footer button, `width` wide: an accent button or a standard one.
-fn dialog_button(ui: &mut Ui, skin: &Skin, id: Id, text: &str, width: f32, accent: bool) -> Response {
+pub fn dialog_button(ui: &mut Ui, skin: &Skin, id: Id, text: &str, width: f32, accent: bool) -> Response {
     let (rect, _) = ui.allocate_exact_size(vec2(width, 32.0), Sense::hover());
     let resp = ui.interact(rect, id, Sense::click());
     let p = ui.painter();
