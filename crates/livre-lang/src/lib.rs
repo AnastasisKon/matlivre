@@ -55,6 +55,7 @@ pub mod table_ops;
 pub mod builtins_sparse;
 pub mod builtins_ode;
 pub mod timetable;
+pub mod io_more;
 pub mod time;
 pub mod value;
 

@@ -327,7 +327,7 @@ fn read_matrix(d: &[u8]) -> Option<(String, Option<Value>)> {
 }
 
 /// All (name, value) pairs of a MAT-file; unsupported variables have no value.
-fn read_mat(path: &str) -> R<Vec<(String, Option<Value>)>> {
+pub(crate) fn read_mat(path: &str) -> R<Vec<(String, Option<Value>)>> {
     let bytes = std::fs::read(path).map_err(|_| LangError::new(format!("Unable to find file or directory '{path}'."), 0))?;
     if bytes.len() < 128 || &bytes[126..128] != b"IM" {
         return Err(bad(path));
@@ -462,7 +462,7 @@ fn write_matrix(name: &str, v: &Value) -> R<Vec<u8>> {
     Ok(w.b)
 }
 
-fn write_mat(path: &str, vars: &[(String, Value)], append: bool) -> R<()> {
+pub(crate) fn write_mat(path: &str, vars: &[(String, Value)], append: bool) -> R<()> {
     let mut body = if append { std::fs::read(path).ok().filter(|b| b.len() >= 128 && &b[126..128] == b"IM").unwrap_or_default() } else { Vec::new() };
     if body.is_empty() {
         let text = format!("MATLAB 5.0 MAT-file, Platform: PCWIN64, Created on: {} by MatLivre", crate::time::format_datetime(crate::time::now_utc_ms() + crate::time::local_offset_ms(), "EEE MMM dd HH:mm:ss yyyy"));

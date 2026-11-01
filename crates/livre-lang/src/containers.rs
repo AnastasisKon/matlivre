@@ -696,8 +696,11 @@ fn dict_display(name: &str, o: &Object, f: NumFormat) -> String {
         0 => format!("{head} with no entries."),
         n => {
             let mut out = format!("{head} with {n} {}:\n", if n == 1 { "entry" } else { "entries" });
-            for (k, v) in d.keys.iter().zip(&d.vals) {
-                out.push_str(&format!("\n    {} --> {}", entry_text(k, f), entry_text(v, f)));
+            // Keys are padded to a common width.
+            let keys: Vec<String> = d.keys.iter().map(|k| entry_text(k, f)).collect();
+            let w = keys.iter().map(|k| k.chars().count()).max().unwrap_or(0);
+            for (k, v) in keys.iter().zip(&d.vals) {
+                out.push_str(&format!("\n    {k:<w$} --> {}", entry_text(v, f)));
             }
             out
         }
@@ -1288,6 +1291,9 @@ pub fn display(name: &str, v: &Value, f: NumFormat) -> Option<String> {
         return Some(text);
     }
     if let Some(text) = crate::timetable::display(name, v) {
+        return Some(text);
+    }
+    if let Some(text) = crate::io_more::display(name, v) {
         return Some(text);
     }
     let Value::Object(o) = v else { return None };
