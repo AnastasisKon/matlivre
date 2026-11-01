@@ -9,6 +9,7 @@ pub mod builtins_datafun;
 pub mod builtins_dates;
 pub mod builtins_elfun;
 pub mod builtins_elmat;
+pub mod builtins_excel;
 pub mod builtins_files;
 pub mod builtins_funfun;
 pub mod builtins_matfun;

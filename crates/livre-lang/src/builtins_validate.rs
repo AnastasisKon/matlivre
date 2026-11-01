@@ -23,8 +23,131 @@ pub const NAMES: &[&str] = &[
     "mustBePositive", "mustBeReal", "mustBeScalarOrEmpty", "mustBeSparse", "mustBeText", "mustBeTextScalar", "mustBeUnderlyingType",
     "mustBeValidVariableName", "mustBeVector", "lasterr", "lasterror", "lastwarn", "rethrow", "matlab.lang.makeValidName",
     "matlab.lang.makeUniqueStrings", "namedargs2cell", "onCleanup", "validatecolor", "mlock", "munlock", "mislocked", "inputParser",
-    "matlivre_inputparser_method",
+    "matlivre_inputparser_method", "MException", "MException.last", "throw", "throwAsCaller", "getReport", "addCause", "addCorrection",
+    "matlivre_mexception_method",
 ];
+
+// ---- MException ----------------------------------------------------------------------------
+
+const ME_PROPS: &[&str] = &["identifier", "message", "cause", "stack", "Correction"];
+const ME_METHODS: &[&str] = &["throw", "rethrow", "throwAsCaller", "getReport", "addCause", "addCorrection"];
+
+fn me_class() -> Rc<ClassDef> {
+    thread_local! {
+        static DEF: RefCell<Option<Rc<ClassDef>>> = const { RefCell::new(None) };
+    }
+    DEF.with(|d| {
+        if let Some(def) = d.borrow().as_ref() {
+            return def.clone();
+        }
+        let mut src = String::from("classdef MException\n  properties\n");
+        for p in ME_PROPS {
+            src.push_str(&format!("    {p}\n"));
+        }
+        src.push_str("  end\n  methods\n");
+        for m in ME_METHODS {
+            src.push_str(&format!("    function varargout = {m}(varargin)\n      varargout = matlivre_mexception_method('{m}', varargin{{:}});\n    end\n"));
+        }
+        src.push_str("  end\nend\n");
+        let ast = crate::class::parse_classdef(&src).expect("built-in class source parses");
+        let def = Rc::new(ClassDef::build(ast, &[]));
+        *d.borrow_mut() = Some(def.clone());
+        def
+    })
+}
+
+/// The identifier MATLAB gives its own errors, from their message.
+pub fn builtin_identifier(message: &str) -> &'static str {
+    const KNOWN: &[(&str, &str)] = &[
+        ("Index exceeds", "MATLAB:badsubscript"),
+        ("Index in position", "MATLAB:badsubscript"),
+        ("Array indices must be positive integers", "MATLAB:badsubscript"),
+        ("Unrecognized function or variable", "MATLAB:UndefinedFunction"),
+        ("Undefined function", "MATLAB:UndefinedFunction"),
+        ("Arrays have incompatible sizes", "MATLAB:sizeDimensionsMustMatch"),
+        ("Incorrect dimensions for matrix multiplication", "MATLAB:innerdim"),
+        ("Not enough input arguments", "MATLAB:minrhs"),
+        ("Too many input arguments", "MATLAB:TooManyInputs"),
+        ("Too many output arguments", "MATLAB:TooManyOutputs"),
+        ("Unrecognized field name", "MATLAB:nonExistentField"),
+        ("Dimensions of arrays being concatenated are not consistent", "MATLAB:catenate:dimensionMismatch"),
+        ("Unable to perform assignment because the left and right sides have a different number of elements", "MATLAB:matrix:singleSubscriptNumelMismatch"),
+    ];
+    KNOWN.iter().find(|(p, _)| message.starts_with(p)).map(|(_, id)| *id).unwrap_or("")
+}
+
+/// An MException value for an error (as `catch e` sees it).
+pub fn mexception(message: &str, identifier: &str) -> Value {
+    let id = if identifier.is_empty() { builtin_identifier(message) } else { identifier };
+    let stack = StructArray { dims: vec![0, 1], ..StructArray::empty_with(vec!["file".into(), "name".into(), "line".into()]) };
+    let values = vec![
+        Value::chars(id),
+        Value::chars(message),
+        Value::Cell(CellArray::from_dims(vec![0, 0], Vec::new())),
+        Value::Struct(stack),
+        Value::empty(),
+    ];
+    Value::Object(Object { class: me_class(), props: Rc::new(RefCell::new(values)) })
+}
+
+/// (message, identifier) of an error value: an MException or an error struct.
+pub fn error_parts(v: &Value) -> Option<(String, String)> {
+    let get = |name: &str| -> Option<String> {
+        match v {
+            Value::Object(o) if o.class.name == "MException" => o.get(name).and_then(|x| x.text().ok()),
+            Value::Struct(s) => s.get(name).and_then(|x| x.text().ok()),
+            _ => None,
+        }
+    };
+    if !matches!(v, Value::Struct(_)) && !matches!(v, Value::Object(o) if o.class.name == "MException") {
+        return None;
+    }
+    Some((get("message").unwrap_or_default(), get("identifier").unwrap_or_default()))
+}
+
+fn me_method(it: &mut Interpreter, a: &[Value]) -> Ret {
+    let m = arg(a, 0, "matlivre_mexception_method")?.text()?;
+    let me = arg(a, 1, &m)?;
+    let Some((msg, id)) = error_parts(me) else { return rt("Expected an MException.") };
+    let out = match m.as_str() {
+        "throw" | "rethrow" | "throwAsCaller" => {
+            it.last_error = (msg.clone(), id.clone());
+            return rt_id(&id, msg);
+        }
+        "getReport" => vec![Value::chars(&msg)],
+        "addCause" | "addCorrection" => {
+            let Value::Object(o) = me else { return rt("Expected an MException.") };
+            let copy = Object { class: o.class.clone(), props: Rc::new(RefCell::new(o.props.borrow().clone())) };
+            let prop = if m == "addCause" { "cause" } else { "Correction" };
+            let add = arg(a, 2, &m)?.clone();
+            let mut items = match copy.get(prop) {
+                Some(Value::Cell(c)) => c.data,
+                _ => Vec::new(),
+            };
+            items.push(add);
+            let n = items.len();
+            let v = if m == "addCause" { Value::Cell(CellArray::from_dims(vec![n, 1], items)) } else { items.pop().unwrap() };
+            set(&copy, prop, v);
+            vec![Value::Object(copy)]
+        }
+        _ => return rt(format!("Undefined method '{m}' for MException.")),
+    };
+    one(Value::Cell(CellArray::row(out)))
+}
+
+/// `ME = ...` display of an MException.
+pub fn display_mexception(name: &str, v: &Value, f: crate::display::NumFormat) -> Option<String> {
+    let Value::Object(o) = v else { return None };
+    if o.class.name != "MException" {
+        return None;
+    }
+    let mut s = StructArray::scalar();
+    for p in ME_PROPS {
+        s.set(p, o.get(p).unwrap_or_else(Value::empty));
+    }
+    let body = crate::display::struct_fields_body(&s, f).replace("cause: {0×0 cell}", "cause: {}");
+    Some(format!("{name} = \n  MException with properties:\n\n{}", body.trim_end_matches('\n')))
+}
 
 const IP_METHODS: &[&str] = &["addRequired", "addOptional", "addParameter", "addParamValue", "parse"];
 
@@ -651,12 +774,38 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
             s.set("stack", Value::Struct(StructArray::empty_with(vec!["file".into(), "name".into(), "line".into()])));
             one(Value::Struct(s))
         }
-        "rethrow" => {
-            let Some(Value::Struct(s)) = a.first() else { return rt("rethrow requires an error structure or MException.") };
-            let msg = s.get("message").map(|m| m.text()).transpose()?.unwrap_or_default();
-            let id = s.get("identifier").map(|m| m.text()).transpose()?.unwrap_or_default();
+        "rethrow" | "throw" | "throwAsCaller" => {
+            let Some((msg, id)) = a.first().and_then(error_parts) else { return rt(format!("{name} requires an error structure or MException.")) };
+            it.last_error = (msg.clone(), id.clone());
             rt_id(&id, msg)
         }
+        "MException" => {
+            let id = arg(a, 0, name)?.text()?;
+            let fmt = arg(a, 1, name)?.text()?;
+            let msg = crate::format::sprintf(&fmt, &a[2..])?;
+            if !id.is_empty() && !id.contains(':') {
+                return rt("The identifier must have at least one colon (e.g. 'component:message').");
+            }
+            one(mexception(&msg, &id))
+        }
+        "MException.last" => {
+            if a.first().map(|v| v.text().map(|t| t == "reset").unwrap_or(false)).unwrap_or(false) {
+                it.last_error = (String::new(), String::new());
+                return Ok(Some(Vec::new()));
+            }
+            let (msg, id) = it.last_error.clone();
+            one(mexception(&msg, &id))
+        }
+        "getReport" | "addCause" | "addCorrection" => {
+            let mut args = vec![Value::chars(name)];
+            args.extend(a.iter().cloned());
+            let r = me_method(it, &args)?.and_then(|mut v| v.pop());
+            Ok(r.and_then(|c| match c {
+                Value::Cell(c) => Some(c.data),
+                _ => None,
+            }))
+        }
+        "matlivre_mexception_method" => me_method(it, a),
         "matlab.lang.makeValidName" => {
             let v = arg(a, 0, name)?;
             let made = map_texts(v, |s| if crate::builtins_lang::is_varname(s) { s.to_string() } else { crate::builtins_lang::genvarname(s, &[]) })?;

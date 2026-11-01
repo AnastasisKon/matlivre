@@ -36,7 +36,7 @@ const NAMES: &[&str] = &[
 pub fn exists(name: &str) -> bool {
     static ALL: std::sync::OnceLock<std::collections::HashSet<&'static str>> = std::sync::OnceLock::new();
     ALL.get_or_init(|| {
-        [NAMES, crate::builtins_elfun::NAMES, crate::builtins_datafun::NAMES, crate::builtins_lang::NAMES, crate::builtins_strings::NAMES, crate::builtins_types::NAMES, crate::builtins_dates::NAMES, crate::builtins_files::NAMES, crate::builtins_textio::NAMES, crate::builtins_data::NAMES, crate::builtins_media::NAMES, crate::builtins_archive::NAMES, crate::builtins_structio::NAMES, crate::gfx::NAMES, crate::builtins_plotfmt::NAMES, crate::builtins_graph3d::NAMES, crate::builtins_funfun::NAMES, crate::builtins_matfun::NAMES, crate::builtins_elmat::NAMES, crate::builtins_ops::NAMES, crate::builtins_specfun::NAMES, crate::polyshape::NAMES, crate::builtins_polyfun::NAMES, crate::builtins_geom::NAMES, crate::polyfun_classes::NAMES, crate::builtins_text::NAMES, crate::builtins_plot::NAMES, crate::time::NAMES, crate::table::NAMES, crate::sym::NAMES, crate::sym::extra::NAMES, crate::containers::NAMES, crate::table_ops::NAMES, crate::builtins_plotmore::NAMES, crate::patterns::NAMES, crate::builtins_validate::NAMES, crate::graphs::NAMES, crate::graphs::FUNCS]
+        [NAMES, crate::builtins_elfun::NAMES, crate::builtins_datafun::NAMES, crate::builtins_lang::NAMES, crate::builtins_strings::NAMES, crate::builtins_types::NAMES, crate::builtins_dates::NAMES, crate::builtins_files::NAMES, crate::builtins_textio::NAMES, crate::builtins_data::NAMES, crate::builtins_media::NAMES, crate::builtins_archive::NAMES, crate::builtins_structio::NAMES, crate::gfx::NAMES, crate::builtins_plotfmt::NAMES, crate::builtins_graph3d::NAMES, crate::builtins_funfun::NAMES, crate::builtins_matfun::NAMES, crate::builtins_elmat::NAMES, crate::builtins_ops::NAMES, crate::builtins_specfun::NAMES, crate::polyshape::NAMES, crate::builtins_polyfun::NAMES, crate::builtins_geom::NAMES, crate::polyfun_classes::NAMES, crate::builtins_text::NAMES, crate::builtins_plot::NAMES, crate::time::NAMES, crate::table::NAMES, crate::sym::NAMES, crate::sym::extra::NAMES, crate::containers::NAMES, crate::table_ops::NAMES, crate::builtins_plotmore::NAMES, crate::patterns::NAMES, crate::builtins_validate::NAMES, crate::graphs::NAMES, crate::graphs::FUNCS, crate::builtins_excel::NAMES]
             .iter()
             .flat_map(|n| n.iter().copied())
             .collect()
@@ -534,6 +534,18 @@ fn element(v: &Value, k: usize, unwrap_cells: bool) -> R<Value> {
 }
 
 pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) -> Ret {
+    // Spreadsheet files for the table and matrix readers and writers.
+    if crate::builtins_excel::FILE_FUNCS.contains(&name) {
+        let at = if name.starts_with("read") { 0 } else { 1 };
+        if args.get(at).and_then(|v| v.text().ok()).is_some_and(|p| crate::builtins_excel::is_sheet_path(&p)) {
+            return crate::builtins_excel::file_call(it, name, &args, nargout);
+        }
+    }
+    if crate::builtins_excel::NAMES.contains(&name) {
+        if let Some(r) = crate::builtins_excel::call(it, name, &args, nargout)? {
+            return Ok(Some(r));
+        }
+    }
     // Type families first.
     if crate::patterns::TEXT_FUNCS.contains(&name) && args.iter().skip(1).any(crate::patterns::is_pattern) {
         return crate::patterns::text_call(name, &args);
@@ -1986,11 +1998,10 @@ pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) 
                 }
             }
             let msg = match parts.first() {
-                Some(Value::Struct(s)) => {
-                    if let Some(i) = s.get("identifier") {
-                        id = i.text().unwrap_or_default();
-                    }
-                    s.get("message").map(|m| m.text()).transpose()?.unwrap_or_default()
+                Some(v @ (Value::Struct(_) | Value::Object(_))) => {
+                    let (m, i) = crate::builtins_validate::error_parts(v).unwrap_or_default();
+                    id = i;
+                    m
                 }
                 Some(f) => {
                     if parts.len() > 1 { sprintf(&f.text()?, &parts[1..])? } else { f.text()? }

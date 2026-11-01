@@ -1281,6 +1281,9 @@ pub fn display(name: &str, v: &Value, f: NumFormat) -> Option<String> {
     if let Some(text) = crate::builtins_validate::display(name, v, f) {
         return Some(text);
     }
+    if let Some(text) = crate::builtins_validate::display_mexception(name, v, f) {
+        return Some(text);
+    }
     if let Some(text) = crate::graphs::display(name, v) {
         return Some(text);
     }

@@ -792,13 +792,10 @@ impl Interpreter {
                     if e.message == "Execution stopped by user." {
                         return Err(e);
                     }
-                    self.last_error = (e.message.clone(), e.identifier.clone());
+                    let id = if e.identifier.is_empty() { crate::builtins_validate::builtin_identifier(&e.message).to_string() } else { e.identifier.clone() };
+                    self.last_error = (e.message.clone(), id.clone());
                     if let Some(name) = catch_var {
-                        let mut st = StructArray::scalar();
-                        st.set("message", Value::chars(&e.message));
-                        st.set("identifier", Value::chars(&e.identifier));
-                        st.set("stack", Value::Struct(StructArray::empty_with(vec!["file".into(), "name".into(), "line".into()])));
-                        self.set_var(name, Value::Struct(st));
+                        self.set_var(name, crate::builtins_validate::mexception(&e.message, &id));
                     }
                     return self.exec_block(catch_body);
                 }

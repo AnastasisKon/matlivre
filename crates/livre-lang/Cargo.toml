@@ -31,5 +31,7 @@ num-bigint = "0.4"
 num-integer = "0.1"
 num-rational = { version = "0.4", default-features = false, features = ["num-bigint", "std"] }
 num-traits = "0.2"
+calamine = "0.37"
+rust_xlsxwriter = "0.102"
 complex-bessel = "0.3"
 num-complex = "0.4"
