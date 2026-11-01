@@ -1229,11 +1229,29 @@ fn polar_series(it: &mut Interpreter, a: &[Value], scatter: bool, nargout: usize
 fn polarhistogram(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
     let a = leading_handle(it, a);
     let (pos, props) = split_props(a)?;
-    let theta = arg(pos, 0, "polarhistogram")?.clone();
-    let mut hargs = vec![theta];
-    hargs.extend(pos[1..].iter().cloned());
-    let out = it.call_function("histcounts", hargs, 2)?;
-    let (counts, edges) = (mat(&out[0])?.data, mat(&out[1])?.data);
+    // Angles wrap into [0, 2*pi); a bin count splits the circle into equal sectors, each
+    // closed on the left.
+    let two_pi = 2.0 * std::f64::consts::PI;
+    let theta = mat(arg(pos, 0, "polarhistogram")?)?;
+    let wrapped: Vec<f64> = theta.data.iter().map(|t| t.rem_euclid(two_pi)).collect();
+    let (counts, edges) = match pos.get(1) {
+        Some(v) if v.numel() == 1 => {
+            let n = v.as_usize()?.max(1);
+            let edges: Vec<f64> = (0..=n).map(|k| two_pi * k as f64 / n as f64).collect();
+            let mut counts = vec![0.0; n];
+            for &t in wrapped.iter().filter(|t| t.is_finite()) {
+                let k = edges[..n].iter().rposition(|&e| t >= e).unwrap_or(0);
+                counts[k] += 1.0;
+            }
+            (counts, edges)
+        }
+        _ => {
+            let mut hargs = vec![Value::Num(Matrix::from_dims(theta.dims.clone(), wrapped))];
+            hargs.extend(pos[1..].iter().cloned());
+            let out = it.call_function("histcounts", hargs, 2)?;
+            (mat(&out[0])?.data, mat(&out[1])?.data)
+        }
+    };
     let mut x = Vec::new();
     let mut y = Vec::new();
     for (k, &n) in counts.iter().enumerate() {
