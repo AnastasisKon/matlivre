@@ -43,6 +43,7 @@ pub mod lexer;
 pub mod nd;
 pub mod ops;
 pub mod parser;
+pub mod patterns;
 pub mod polyfun_classes;
 pub mod polyshape;
 pub mod sym;

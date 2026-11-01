@@ -1275,6 +1275,9 @@ fn cat_display(name: &str, c: &Cat) -> String {
 
 /// `name = ...` for an unsuppressed value of these classes.
 pub fn display(name: &str, v: &Value, f: NumFormat) -> Option<String> {
+    if let Some(text) = crate::patterns::display(name, v) {
+        return Some(text);
+    }
     let Value::Object(o) = v else { return None };
     Some(match o.class.name.as_str() {
         MAP => map_display(name, o),

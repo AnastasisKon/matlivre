@@ -85,7 +85,7 @@ fn parse_opts(a: &[Value], ignore_case: bool) -> R<Opts> {
 }
 
 /// MATLAB pattern syntax to fancy_regex syntax.
-fn translate(pat: &str) -> String {
+pub(crate) fn translate(pat: &str) -> String {
     let mut out = String::with_capacity(pat.len() + 8);
     let mut chars = pat.chars().peekable();
     let mut in_class = false;

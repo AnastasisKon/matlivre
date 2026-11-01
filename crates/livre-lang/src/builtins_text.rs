@@ -17,7 +17,7 @@ pub const NAMES: &[&str] = &[
     "upper", "lower", "strtrim", "strip", "deblank", "strrep", "replace", "strcat", "append", "strcmp", "strcmpi", "strncmp", "strncmpi", "strsplit",
     "split", "strjoin", "join", "contains", "startsWith", "endsWith", "strfind", "extractBefore", "extractAfter", "extractBetween", "ismissing",
     "isspace", "isletter", "isstrprop", "reverse", "pad", "compose", "ischar", "iscellstr", "count", "erase", "insertAfter", "insertBefore", "newline",
-    "blanks", "lettersPattern", "strjust", "convertStringsToChars", "convertCharsToStrings", "missing",
+    "blanks", "strjust", "convertStringsToChars", "convertCharsToStrings", "missing",
 ];
 
 /// Text items of a value, with the container they came from.
@@ -604,10 +604,52 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
         }
         "newline" => one(Value::chars("\n")),
         "blanks" => one(Value::chars(&" ".repeat(arg(a, 0, name)?.as_usize()?))),
-        "strjust" | "lettersPattern" => rt(format!("'{name}' is not supported in this version.")),
+        "strjust" => strjust(arg(a, 0, name)?, a.get(1)),
         _ => {
             let _ = nargout;
             Ok(None)
         }
     }
+}
+
+/// `strjust(s, side)`: moves each row's (or string's) text to the right (default), left or
+/// center of its width; centering puts the smaller half of the spaces on the left.
+fn strjust(v: &Value, side: Option<&Value>) -> Ret {
+    let side = match side {
+        Some(s) => s.text()?.to_lowercase(),
+        None => "right".into(),
+    };
+    if !matches!(side.as_str(), "left" | "right" | "center") {
+        return rt("Justification must be 'left', 'right', or 'center'.");
+    }
+    let justify = |row: &str| -> String {
+        let chars: Vec<char> = row.chars().collect();
+        let w = chars.len();
+        let start = chars.iter().position(|&c| c != ' ').unwrap_or(w);
+        let end = chars.iter().rposition(|&c| c != ' ').map(|p| p + 1).unwrap_or(start);
+        let text: String = chars[start..end].iter().collect();
+        let pad = w - (end - start);
+        let left = match side.as_str() {
+            "left" => 0,
+            "right" => pad,
+            _ => pad / 2,
+        };
+        format!("{}{}{}", " ".repeat(left), text, " ".repeat(pad - left))
+    };
+    one(match v {
+        Value::Num(m) if m.kind == Kind::Char => {
+            let (r, c) = (m.rows(), m.cols());
+            let mut data = m.data.clone();
+            for i in 0..r {
+                let row: String = (0..c).map(|j| char::from_u32(m.data[j * r + i] as u32).unwrap_or(' ')).collect();
+                for (j, ch) in justify(&row).chars().enumerate() {
+                    data[j * r + i] = ch as u32 as f64;
+                }
+            }
+            Value::Num(Matrix::from_dims(m.dims.clone(), data).with_kind(Kind::Char))
+        }
+        Value::Str(s) => Value::Str(StrArray::from_dims(s.dims.clone(), s.data.iter().map(|x| x.as_deref().map(justify)).collect())),
+        Value::Cell(c) => Value::Cell(CellArray::from_dims(c.dims.clone(), c.data.iter().map(|x| x.text().map(|t| Value::chars(&justify(&t)))).collect::<R<_>>()?)),
+        other => return rt(format!("Input must be a character array, string array or cell array of character vectors, not '{}'.", other.class_name())),
+    })
 }
