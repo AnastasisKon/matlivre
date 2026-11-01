@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1039 |
+| Implemented | 1113 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **983** |
+| **To implement** | **909** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -167,7 +167,7 @@ Out of scope: `demo` (Environment and Settings > Help and Support), `doc` (Envir
 
 ## MATLAB > Environment and Settings > Platform and License
 
-Implemented: 5. To implement: 8. In a branch: 0. Out of scope: 0.
+Implemented: 6. To implement: 7. In a branch: 0. Out of scope: 0.
 
 To implement:
 
@@ -176,11 +176,10 @@ To implement:
 - [ ] `isstudent`
 - [ ] `isunix`
 - [ ] `javachk`
-- [ ] `license`
 - [ ] `usejava`
 - [ ] `version`
 
-Implemented: `computer`, `isMATLABReleaseOlderThan`, `matlabRelease`, `ver`, `verLessThan`
+Implemented: `computer`, `isMATLABReleaseOlderThan`, `license`, `matlabRelease`, `ver`, `verLessThan`
 
 ## MATLAB > Environment and Settings > Startup and Shutdown
 
@@ -271,15 +270,13 @@ Out of scope: `addFields` (External Language Interfaces), `callSoapService` (Ext
 
 ## MATLAB > Graphics > 2-D and 3-D Plots
 
-Implemented: 40. To implement: 108. In a branch: 0. Out of scope: 0.
+Implemented: 51. To implement: 97. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `addpoints`
 - [ ] `addToolbarMapButton`
 - [ ] `animatedline`
-- [ ] `bar3`
-- [ ] `bar3h`
 - [ ] `binscatter`
 - [ ] `boxchart`
 - [ ] `bubblechart`
@@ -289,8 +286,6 @@ To implement:
 - [ ] `bubblelim`
 - [ ] `bubblesize`
 - [ ] `clearpoints`
-- [ ] `comet`
-- [ ] `comet3`
 - [ ] `compass`
 - [ ] `coneplot`
 - [ ] `contourslice`
@@ -306,9 +301,7 @@ To implement:
 - [ ] `ezpolar`
 - [ ] `ezsurf`
 - [ ] `ezsurfc`
-- [ ] `feather`
 - [ ] `fewerbins`
-- [ ] `fill3`
 - [ ] `fimplicit`
 - [ ] `fimplicit3`
 - [ ] `flow`
@@ -324,7 +317,6 @@ To implement:
 - [ ] `getframe`
 - [ ] `getpoints`
 - [ ] `heatmap`
-- [ ] `hist`
 - [ ] `histogram2`
 - [ ] `im2frame`
 - [ ] `interpstreamspeed`
@@ -335,8 +327,6 @@ To implement:
 - [ ] `morebins`
 - [ ] `movie`
 - [ ] `parallelplot`
-- [ ] `pareto`
-- [ ] `pie`
 - [ ] `pie3`
 - [ ] `piechart`
 - [ ] `plotmatrix`
@@ -350,7 +340,6 @@ To implement:
 - [ ] `reducevolume`
 - [ ] `refreshdata`
 - [ ] `removeToolbarMapButton`
-- [ ] `ribbon`
 - [ ] `rlim`
 - [ ] `rose`
 - [ ] `rtickangle`
@@ -381,39 +370,20 @@ To implement:
 - [ ] `thetaticklabels`
 - [ ] `thetaticks`
 - [ ] `volumebounds`
-- [ ] `waterfall`
 - [ ] `wordcloud`
 
-Implemented: `bar`, `barh`, `clabel`, `contour`, `contour3`, `contourc`, `contourf`, `cylinder`, `drawnow`, `ellipsoid`, `errorbar`, `fcontour`, `fill`, `fmesh`, `fplot`, `fplot3`, `fsurf`, `hidden`, `histc`, `histogram`, `loglog`, `mesh`, `meshc`, `meshz`, `pcolor`, `peaks`, `plot3`, `quiver`, `quiver3`, `scatter`, `scatter3`, `semilogx`, `semilogy`, `sphere`, `stairs`, `stem`, `stem3`, `surf`, `surface`, `surfc`
+Implemented: `bar`, `bar3`, `bar3h`, `barh`, `clabel`, `comet`, `comet3`, `contour`, `contour3`, `contourc`, `contourf`, `cylinder`, `drawnow`, `ellipsoid`, `errorbar`, `fcontour`, `feather`, `fill`, `fill3`, `fmesh`, `fplot`, `fplot3`, `fsurf`, `hidden`, `hist`, `histc`, `histogram`, `loglog`, `mesh`, `meshc`, `meshz`, `pareto`, `pcolor`, `peaks`, `pie`, `plot3`, `quiver`, `quiver3`, `ribbon`, `scatter`, `scatter3`, `semilogx`, `semilogy`, `sphere`, `stairs`, `stem`, `stem3`, `surf`, `surface`, `surfc`, `waterfall`
 
 ## MATLAB > Graphics > Formatting and Annotation
 
-Implemented: 68. To implement: 56. In a branch: 0. Out of scope: 0.
+Implemented: 101. To implement: 23. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `alim`
-- [ ] `alpha`
-- [ ] `alphamap`
-- [ ] `annotation`
-- [ ] `brighten`
-- [ ] `camdolly`
 - [ ] `cameratoolbar`
-- [ ] `camlight`
-- [ ] `camlookat`
-- [ ] `camorbit`
-- [ ] `campan`
-- [ ] `campos`
-- [ ] `camproj`
-- [ ] `camroll`
-- [ ] `camtarget`
-- [ ] `camup`
-- [ ] `camva`
-- [ ] `camzoom`
 - [ ] `colorcube`
 - [ ] `colordef`
 - [ ] `Colormap Editor`
-- [ ] `colororder`
 - [ ] `contrast`
 - [ ] `datatip`
 - [ ] `datetick`
@@ -422,61 +392,40 @@ To implement:
 - [ ] `ginput`
 - [ ] `graymon`
 - [ ] `gtext`
-- [ ] `light`
-- [ ] `lightangle`
-- [ ] `lighting`
-- [ ] `makehgtform`
-- [ ] `material`
-- [ ] `nexttile`
 - [ ] `num2ruler`
-- [ ] `orderedcolors`
-- [ ] `pbaspect`
 - [ ] `plotyy`
-- [ ] `rectangle`
-- [ ] `rgbplot`
 - [ ] `ruler2num`
 - [ ] `specular`
 - [ ] `spinmap`
-- [ ] `texlabel`
 - [ ] `tightPosition`
-- [ ] `tiledlayout`
-- [ ] `tilenum`
-- [ ] `tilerowcol`
-- [ ] `viewmtx`
 - [ ] `whitebg`
 - [ ] `xsecondarylabel`
 - [ ] `ysecondarylabel`
 - [ ] `yyaxis`
 - [ ] `zsecondarylabel`
 
-Implemented: `abyss`, `autumn`, `axes`, `axis`, `bone`, `box`, `cla`, `clf`, `clim`, `colorbar`, `colormap`, `cool`, `copper`, `daspect`, `figure`, `flag`, `fontsize`, `gray`, `grid`, `hold`, `hot`, `hsv`, `hsv2rgb`, `jet`, `legend`, `line`, `lines`, `parula`, `pink`, `prism`, `rgb2hsv`, `sgtitle`, `shading`, `sky`, `spring`, `subplot`, `subtitle`, `summer`, `text`, `title`, `turbo`, `view`, `winter`, `xlabel`, `xlim`, `xline`, `xregion`, `xscale`, `xtickangle`, `xtickformat`, `xticklabels`, `xticks`, `ylabel`, `ylim`, `yline`, `yregion`, `yscale`, `ytickangle`, `ytickformat`, `yticklabels`, `yticks`, `zlabel`, `zlim`, `zscale`, `ztickangle`, `ztickformat`, `zticklabels`, `zticks`
+Implemented: `abyss`, `alim`, `alpha`, `alphamap`, `annotation`, `autumn`, `axes`, `axis`, `bone`, `box`, `brighten`, `camdolly`, `camlight`, `camlookat`, `camorbit`, `campan`, `campos`, `camproj`, `camroll`, `camtarget`, `camup`, `camva`, `camzoom`, `cla`, `clf`, `clim`, `colorbar`, `colormap`, `colororder`, `cool`, `copper`, `daspect`, `figure`, `flag`, `fontsize`, `gray`, `grid`, `hold`, `hot`, `hsv`, `hsv2rgb`, `jet`, `legend`, `light`, `lightangle`, `lighting`, `line`, `lines`, `makehgtform`, `material`, `nexttile`, `orderedcolors`, `parula`, `pbaspect`, `pink`, `prism`, `rectangle`, `rgb2hsv`, `rgbplot`, `sgtitle`, `shading`, `sky`, `spring`, `subplot`, `subtitle`, `summer`, `texlabel`, `text`, `tiledlayout`, `tilenum`, `tilerowcol`, `title`, `turbo`, `view`, `viewmtx`, `winter`, `xlabel`, `xlim`, `xline`, `xregion`, `xscale`, `xtickangle`, `xtickformat`, `xticklabels`, `xticks`, `ylabel`, `ylim`, `yline`, `yregion`, `yscale`, `ytickangle`, `ytickformat`, `yticklabels`, `yticks`, `zlabel`, `zlim`, `zscale`, `ztickangle`, `ztickformat`, `zticklabels`, `zticks`
 
 ## MATLAB > Graphics > Graphics Objects
 
-Implemented: 12. To implement: 18. In a branch: 0. Out of scope: 0.
+Implemented: 18. To implement: 12. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `copyobj`
 - [ ] `dragrect`
 - [ ] `findfigs`
-- [ ] `gcbf`
-- [ ] `gcbo`
-- [ ] `gco`
 - [ ] `hggroup`
 - [ ] `hgtransform`
 - [ ] `matlab.graphics.Graphics`
 - [ ] `matlab.graphics.GraphicsPlaceholder`
-- [ ] `newplot`
 - [ ] `Property Inspector`
 - [ ] `rbbox`
-- [ ] `refresh`
 - [ ] `reset`
-- [ ] `shg`
 - [ ] `uicontextmenu`
 - [ ] `uimenu`
 
-Implemented: `allchild`, `ancestor`, `delete`, `findall`, `findobj`, `gca`, `gcf`, `gobjects`, `groot`, `ishandle`, `ishghandle`, `ishold`
+Implemented: `allchild`, `ancestor`, `delete`, `findall`, `findobj`, `gca`, `gcbf`, `gcbo`, `gcf`, `gco`, `gobjects`, `groot`, `ishandle`, `ishghandle`, `ishold`, `newplot`, `refresh`, `shg`
 
 ## MATLAB > Graphics > Graphics Performance
 
@@ -528,7 +477,7 @@ Implemented: `exportgraphics`, `print`, `saveas`
 
 ## MATLAB > Language Fundamentals > Data Types
 
-Implemented: 291. To implement: 107. In a branch: 0. Out of scope: 0.
+Implemented: 314. To implement: 84. In a branch: 0. Out of scope: 0.
 
 To implement:
 
@@ -537,23 +486,14 @@ To implement:
 - [ ] `addsample`
 - [ ] `addsampletocollection`
 - [ ] `addts`
-- [ ] `alphanumericBoundary`
-- [ ] `alphanumericsPattern`
 - [ ] `array2timetable`
-- [ ] `asFewOfPattern`
-- [ ] `asManyOfPattern`
 - [ ] `caldiff`
-- [ ] `caseInsensitivePattern`
-- [ ] `caseSensitivePattern`
 - [ ] `cellplot`
-- [ ] `characterListPattern`
 - [ ] `containsrange`
 - [ ] `delevent`
 - [ ] `delsample`
 - [ ] `delsamplefromcollection`
 - [ ] `detectImportOptions`
-- [ ] `digitBoundary`
-- [ ] `digitsPattern`
 - [ ] `eventfilter`
 - [ ] `eventtable`
 - [ ] `extractevents`
@@ -584,26 +524,16 @@ To implement:
 - [ ] `keyMatch`
 - [ ] `lag`
 - [ ] `leapseconds`
-- [ ] `letterBoundary`
-- [ ] `lineBoundary`
 - [ ] `localfunctions`
-- [ ] `lookAheadBoundary`
-- [ ] `lookBehindBoundary`
 - [ ] `lweekdate`
-- [ ] `maskedPattern`
 - [ ] `matlab.datetime.compatibility.convertDatenum`
-- [ ] `namedPattern`
 - [ ] `nweekdate`
-- [ ] `optionalPattern`
 - [ ] `overlapsrange`
 - [ ] `parquetinfo`
 - [ ] `parquetread`
 - [ ] `parquetwrite`
-- [ ] `pattern`
-- [ ] `possessivePattern`
 - [ ] `preview`
 - [ ] `readtimetable`
-- [ ] `regexpPattern`
 - [ ] `removets`
 - [ ] `resample`
 - [ ] `retime`
@@ -620,7 +550,6 @@ To implement:
 - [ ] `syncevents`
 - [ ] `synchronize`
 - [ ] `table2timetable`
-- [ ] `textBoundary`
 - [ ] `time`
 - [ ] `timerange`
 - [ ] `timeseries`
@@ -633,14 +562,11 @@ To implement:
 - [ ] `tzoffset`
 - [ ] `underlyingType`
 - [ ] `vartype`
-- [ ] `whitespaceBoundary`
-- [ ] `whitespacePattern`
-- [ ] `wildcardPattern`
 - [ ] `withinrange`
 - [ ] `withtol`
 - [ ] `writetimetable`
 
-Implemented: `addcats`, `addtodate`, `addvars`, `allfinite`, `anymissing`, `anynan`, `append`, `array2table`, `arrayfun`, `base2dec`, `between`, `bin2dec`, `blanks`, `caldays`, `calendar`, `calendarDuration`, `calmonths`, `calquarters`, `calweeks`, `calyears`, `cast`, `categorical`, `categories`, `cell`, `cell2mat`, `cell2struct`, `cell2table`, `celldisp`, `cellfun`, `cellstr`, `char`, `class`, `clock`, `compose`, `configureDictionary`, `containers.Map`, `contains`, `convertCharsToStrings`, `convertContainedStringsToChars`, `convertStringsToChars`, `convertTo`, `convertvars`, `count`, `countcats`, `date`, `datenum`, `dateshift`, `datestr`, `datetime`, `datevec`, `day`, `days`, `deal`, `deblank`, `dec2base`, `dec2bin`, `dec2hex`, `detrend`, `dictionary`, `discretize`, `double`, `duration`, `endsWith`, `entries`, `eomdate`, `eomday`, `eps`, `erase`, `eraseBetween`, `etime`, `exceltime`, `extract`, `extractAfter`, `extractBefore`, `extractBetween`, `feval`, `fieldnames`, `fillmissing`, `filter`, `findgroups`, `findstr`, `flintmax`, `func2str`, `functions`, `getfield`, `groupcounts`, `groupfilter`, `groupsummary`, `grouptransform`, `height`, `hex2dec`, `hex2num`, `hms`, `hour`, `hours`, `Inf`, `innerjoin`, `insert`, `insertAfter`, `insertBefore`, `int16`, `int2str`, `int32`, `int64`, `int8`, `intersect`, `intmax`, `intmin`, `iqr`, `isa`, `isbetween`, `iscalendarduration`, `iscategorical`, `iscategory`, `iscell`, `iscellstr`, `ischar`, `isConfigured`, `isdatetime`, `isdst`, `isduration`, `isenum`, `isfield`, `isfinite`, `isfloat`, `isgraphics`, `isinf`, `isinteger`, `isjava`, `isKey`, `isletter`, `islogical`, `ismember`, `ismissing`, `isnan`, `isnat`, `isnumeric`, `isobject`, `isordinal`, `isprotected`, `isreal`, `isspace`, `issparse`, `isstr`, `isstring`, `isStringScalar`, `isstrprop`, `isstruct`, `istable`, `istabular`, `isundefined`, `isweekend`, `join`, `juliandate`, `keys`, `lettersPattern`, `lookup`, `lower`, `m2xdate`, `mat2cell`, `mat2str`, `matches`, `max`, `mean`, `median`, `mergecats`, `mergevars`, `milliseconds`, `min`, `minute`, `minutes`, `month`, `months`, `movevars`, `NaN`, `NaT`, `native2unicode`, `newline`, `now`, `num2cell`, `num2hex`, `num2str`, `numEntries`, `orderfields`, `outerjoin`, `pad`, `pivot`, `plot`, `plus`, `posixtime`, `quarter`, `readtable`, `realmax`, `realmin`, `regexp`, `regexpi`, `regexprep`, `regexptranslate`, `remove`, `removecats`, `removevars`, `renamecats`, `renamevars`, `reordercats`, `replace`, `replaceBetween`, `reverse`, `rmfield`, `rmmissing`, `rowfun`, `rows2vars`, `second`, `seconds`, `setcats`, `setdiff`, `setfield`, `setxor`, `single`, `split`, `splitapply`, `splitlines`, `splitvars`, `sprintf`, `sscanf`, `stack`, `standardizeMissing`, `startsWith`, `std`, `str2double`, `str2func`, `str2mat`, `str2num`, `strcat`, `strcmp`, `strcmpi`, `strfind`, `string`, `strings`, `strip`, `strjoin`, `strjust`, `strlength`, `strmatch`, `strncmp`, `strncmpi`, `strread`, `strrep`, `strsplit`, `strtok`, `strtrim`, `struct`, `struct2cell`, `struct2table`, `structfun`, `strvcat`, `sum`, `summary`, `symvar`, `table`, `table2array`, `table2cell`, `table2struct`, `timeofday`, `today`, `topkrows`, `typecast`, `types`, `uint16`, `uint32`, `uint64`, `uint8`, `unicode2native`, `union`, `unique`, `unstack`, `upper`, `validateattributes`, `values`, `var`, `varfun`, `week`, `weekday`, `weeknum`, `whos`, `width`, `writetable`, `x2mdate`, `year`, `years`, `ymd`, `yyyymmdd`
+Implemented: `addcats`, `addtodate`, `addvars`, `allfinite`, `alphanumericBoundary`, `alphanumericsPattern`, `anymissing`, `anynan`, `append`, `array2table`, `arrayfun`, `asFewOfPattern`, `asManyOfPattern`, `base2dec`, `between`, `bin2dec`, `blanks`, `caldays`, `calendar`, `calendarDuration`, `calmonths`, `calquarters`, `calweeks`, `calyears`, `caseInsensitivePattern`, `caseSensitivePattern`, `cast`, `categorical`, `categories`, `cell`, `cell2mat`, `cell2struct`, `cell2table`, `celldisp`, `cellfun`, `cellstr`, `char`, `characterListPattern`, `class`, `clock`, `compose`, `configureDictionary`, `containers.Map`, `contains`, `convertCharsToStrings`, `convertContainedStringsToChars`, `convertStringsToChars`, `convertTo`, `convertvars`, `count`, `countcats`, `date`, `datenum`, `dateshift`, `datestr`, `datetime`, `datevec`, `day`, `days`, `deal`, `deblank`, `dec2base`, `dec2bin`, `dec2hex`, `detrend`, `dictionary`, `digitBoundary`, `digitsPattern`, `discretize`, `double`, `duration`, `endsWith`, `entries`, `eomdate`, `eomday`, `eps`, `erase`, `eraseBetween`, `etime`, `exceltime`, `extract`, `extractAfter`, `extractBefore`, `extractBetween`, `feval`, `fieldnames`, `fillmissing`, `filter`, `findgroups`, `findstr`, `flintmax`, `func2str`, `functions`, `getfield`, `groupcounts`, `groupfilter`, `groupsummary`, `grouptransform`, `height`, `hex2dec`, `hex2num`, `hms`, `hour`, `hours`, `Inf`, `innerjoin`, `insert`, `insertAfter`, `insertBefore`, `int16`, `int2str`, `int32`, `int64`, `int8`, `intersect`, `intmax`, `intmin`, `iqr`, `isa`, `isbetween`, `iscalendarduration`, `iscategorical`, `iscategory`, `iscell`, `iscellstr`, `ischar`, `isConfigured`, `isdatetime`, `isdst`, `isduration`, `isenum`, `isfield`, `isfinite`, `isfloat`, `isgraphics`, `isinf`, `isinteger`, `isjava`, `isKey`, `isletter`, `islogical`, `ismember`, `ismissing`, `isnan`, `isnat`, `isnumeric`, `isobject`, `isordinal`, `isprotected`, `isreal`, `isspace`, `issparse`, `isstr`, `isstring`, `isStringScalar`, `isstrprop`, `isstruct`, `istable`, `istabular`, `isundefined`, `isweekend`, `join`, `juliandate`, `keys`, `letterBoundary`, `lettersPattern`, `lineBoundary`, `lookAheadBoundary`, `lookBehindBoundary`, `lookup`, `lower`, `m2xdate`, `maskedPattern`, `mat2cell`, `mat2str`, `matches`, `max`, `mean`, `median`, `mergecats`, `mergevars`, `milliseconds`, `min`, `minute`, `minutes`, `month`, `months`, `movevars`, `namedPattern`, `NaN`, `NaT`, `native2unicode`, `newline`, `now`, `num2cell`, `num2hex`, `num2str`, `numEntries`, `optionalPattern`, `orderfields`, `outerjoin`, `pad`, `pattern`, `pivot`, `plot`, `plus`, `posixtime`, `possessivePattern`, `quarter`, `readtable`, `realmax`, `realmin`, `regexp`, `regexpi`, `regexpPattern`, `regexprep`, `regexptranslate`, `remove`, `removecats`, `removevars`, `renamecats`, `renamevars`, `reordercats`, `replace`, `replaceBetween`, `reverse`, `rmfield`, `rmmissing`, `rowfun`, `rows2vars`, `second`, `seconds`, `setcats`, `setdiff`, `setfield`, `setxor`, `single`, `split`, `splitapply`, `splitlines`, `splitvars`, `sprintf`, `sscanf`, `stack`, `standardizeMissing`, `startsWith`, `std`, `str2double`, `str2func`, `str2mat`, `str2num`, `strcat`, `strcmp`, `strcmpi`, `strfind`, `string`, `strings`, `strip`, `strjoin`, `strjust`, `strlength`, `strmatch`, `strncmp`, `strncmpi`, `strread`, `strrep`, `strsplit`, `strtok`, `strtrim`, `struct`, `struct2cell`, `struct2table`, `structfun`, `strvcat`, `sum`, `summary`, `symvar`, `table`, `table2array`, `table2cell`, `table2struct`, `textBoundary`, `timeofday`, `today`, `topkrows`, `typecast`, `types`, `uint16`, `uint32`, `uint64`, `uint8`, `unicode2native`, `union`, `unique`, `unstack`, `upper`, `validateattributes`, `values`, `var`, `varfun`, `week`, `weekday`, `weeknum`, `whitespaceBoundary`, `whitespacePattern`, `whos`, `width`, `wildcardPattern`, `writetable`, `x2mdate`, `year`, `years`, `ymd`, `yyyymmdd`
 
 ## MATLAB > Language Fundamentals > Entering Commands
 
