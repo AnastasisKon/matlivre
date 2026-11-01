@@ -102,6 +102,9 @@ pub fn resolve(it: &Interpreter, id: u64) -> Option<Target> {
 }
 
 fn series_class(s: &Series) -> &'static str {
+    if let Some(c) = s.class_hint {
+        return c;
+    }
     match s.kind {
         SeriesKind::Line => "matlab.graphics.chart.primitive.Line",
         SeriesKind::Scatter => "matlab.graphics.chart.primitive.Scatter",
@@ -127,6 +130,7 @@ fn class_of(it: &Interpreter, t: Target) -> &'static str {
     match t {
         Target::Root => "matlab.ui.Root",
         Target::Figure(_) => "matlab.ui.Figure",
+        Target::Axes(f, a) if it.figures[f].axes[a].polar => "matlab.graphics.axis.PolarAxes",
         Target::Axes(..) => "matlab.graphics.axis.Axes",
         Target::Series(f, a, s) => series_class(&it.figures[f].axes[a].series[s]),
         Target::Part(_, _, Part::XAxis | Part::YAxis | Part::ZAxis) => "matlab.graphics.axis.decorator.NumericRuler",
@@ -517,6 +521,32 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
             "Parent" => handle(it, ROOT),
             _ => return Ok(None),
         },
+        Target::Axes(f, a) if it.figures[f].axes[a].polar && polar_prop(name) => {
+            let ax = &it.figures[f].axes[a];
+            let ((t0, t1), (r0, r1)) = ax.polar_limits();
+            match name {
+                "ThetaLim" => row(&[t0, t1]),
+                "RLim" => row(&[r0, r1]),
+                "ThetaLimMode" => Value::chars(if ax.xlim.is_some() { "manual" } else { "auto" }),
+                "RLimMode" => Value::chars(if ax.ylim.is_some() { "manual" } else { "auto" }),
+                "ThetaTick" => row(&ax.polar_theta_ticks()),
+                "RTick" => row(&ax.polar_r_ticks()),
+                "ThetaTickLabel" => cell_col(&ax.polar_theta_labels()),
+                "RTickLabel" => cell_col(&ax.polar_r_labels()),
+                "ThetaTickMode" => Value::chars(if ax.xticks.values.is_some() { "manual" } else { "auto" }),
+                "RTickMode" => Value::chars(if ax.yticks.values.is_some() { "manual" } else { "auto" }),
+                "ThetaDir" => Value::chars(if ax.theta_cw { "clockwise" } else { "counterclockwise" }),
+                "ThetaZeroLocation" => Value::chars(match ax.theta_zero as i64 {
+                    90 => "top",
+                    180 => "left",
+                    270 => "bottom",
+                    _ => "right",
+                }),
+                "RAxisLocation" => Value::num(ax.r_axis_angle.unwrap_or(80.0)),
+                "RTickLabelRotation" => Value::num(ax.yticks.angle as f64),
+                _ => Value::chars("polaraxes"),
+            }
+        }
         Target::Axes(f, a) => {
             let ax = &it.figures[f].axes[a];
             let ((x0, x1), (y0, y1)) = ax.limits();
@@ -775,6 +805,36 @@ fn set_prop(it: &mut Interpreter, id: u64, name: &str, v: Value) -> R<()> {
         Target::Root | Target::Figure(_) => {
             if let (Target::Figure(f), "Name") = (t, name) {
                 mark(it, f);
+            }
+        }
+        Target::Axes(f, a) if it.figures[f].axes[a].polar && polar_prop(name) => {
+            mark(it, f);
+            let ax = &mut it.figures[f].axes[a];
+            keep = false;
+            match name {
+                "ThetaLim" => ax.xlim = limits_arg(&v)?,
+                "RLim" => ax.ylim = limits_arg(&v)?,
+                "ThetaLimMode" if auto => ax.xlim = None,
+                "RLimMode" if auto => ax.ylim = None,
+                "ThetaTick" => ax.xticks.values = Some(v.to_matrix()?.data),
+                "RTick" => ax.yticks.values = Some(v.to_matrix()?.data),
+                "ThetaTickMode" if auto => ax.xticks.values = None,
+                "RTickMode" if auto => ax.yticks.values = None,
+                "ThetaTickLabel" => ax.xticks.labels = Some(texts(&v)?),
+                "RTickLabel" => ax.yticks.labels = Some(texts(&v)?),
+                "RTickLabelRotation" => ax.yticks.angle = v.scalar()? as f32,
+                "ThetaDir" => ax.theta_cw = v.text()?.eq_ignore_ascii_case("clockwise"),
+                "ThetaZeroLocation" => {
+                    ax.theta_zero = match v.text()?.to_lowercase().as_str() {
+                        "right" => 0.0,
+                        "top" => 90.0,
+                        "left" => 180.0,
+                        "bottom" => 270.0,
+                        _ => return rt("ThetaZeroLocation must be 'right', 'top', 'left', or 'bottom'."),
+                    }
+                }
+                "RAxisLocation" => ax.r_axis_angle = Some(v.scalar()?),
+                _ => keep = true,
             }
         }
         Target::Axes(f, a) => {
@@ -1494,4 +1554,13 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], _nargout: usize) -> R
         }
         _ => Ok(None),
     }
+}
+
+/// Properties of polar axes computed from the figure model.
+fn polar_prop(name: &str) -> bool {
+    matches!(
+        name,
+        "ThetaLim" | "RLim" | "ThetaLimMode" | "RLimMode" | "ThetaTick" | "RTick" | "ThetaTickLabel" | "RTickLabel" | "ThetaTickMode" | "RTickMode"
+            | "ThetaDir" | "ThetaZeroLocation" | "RAxisLocation" | "RTickLabelRotation" | "Type"
+    )
 }

@@ -1128,6 +1128,10 @@ fn draw_axes(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, fig_map: Option<&[[f64; 
         draw_axes_3d(c, t, ax, &cs, cell, plot, &m);
         return;
     }
+    if ax.polar || ax.polar_grid {
+        draw_axes_polar(c, t, ax, &cs, cell, plot, &m);
+        return;
+    }
     let (xt, yt) = (((plot.width() / 82.0) as f64).clamp(2.0, 8.0), ((plot.height() / 44.0) as f64).clamp(2.0, 6.0));
     let ((dx0, dx1), (dy0, dy1)) = ax.bounds();
     let mut sx = Scale::new((dx0, dx1), ax.xlim.is_some(), ax.xlog, positive_min(ax, true), xt, ax.x_kind != XAxisKind::Numeric);
@@ -1531,6 +1535,97 @@ fn shaded(c: Color32, k: f32) -> Color32 {
         return c;
     }
     Color32::from_rgba_unmultiplied((c.r() as f32 * k) as u8, (c.g() as f32 * k) as u8, (c.b() as f32 * k) as u8, c.a())
+}
+
+/// Polar axes (`polarplot`, `polarscatter`, `polarhistogram`) and Cartesian axes drawn with a
+/// polar grid (`compass`, `rose`, `polar`): circles at the r ticks, spokes at the theta ticks.
+fn draw_axes_polar(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, cs: &ColorScale, cell: Rect, plot: Rect, m: &Frame) {
+    c.text(pos2(plot.center().x, cell.top() + m.title_y), Align::Center, &ax.title, TITLE, t.fg, 0.0);
+    let ((t0, t1), (r0, r1)) = ax.polar_limits();
+    let span = (r1 - r0).max(1e-300);
+    let radius = (plot.width().min(plot.height()) / 2.0 - 22.0).max(10.0);
+    let centre = plot.center() + vec2(0.0, 6.0);
+    let sign = if ax.theta_cw { -1.0 } else { 1.0 };
+    // Screen position of (theta in degrees, r).
+    let at = |theta_deg: f64, r: f64| -> Pos2 {
+        let a = (ax.theta_zero + sign * theta_deg).to_radians();
+        let rr = ((r - r0) / span).max(0.0) as f32 * radius;
+        centre + vec2(rr * a.cos() as f32, -rr * a.sin() as f32)
+    };
+    let grid = Stroke::new(1.0_f32, t.grid);
+    let axis = Stroke::new(1.0_f32, t.axis);
+    let arc = |r: f64| -> Vec<Pos2> {
+        let n = (((t1 - t0).abs() / 3.0).ceil() as usize).max(2);
+        (0..=n).map(|k| at(t0 + (t1 - t0) * k as f64 / n as f64, r)).collect()
+    };
+    let r_ticks = ax.polar_r_ticks();
+    for &r in r_ticks.iter().filter(|&&r| r > r0 && r < r1) {
+        c.line(&arc(r), grid, &[]);
+    }
+    let theta_ticks = ax.polar_theta_ticks();
+    for &th in &theta_ticks {
+        c.line(&[at(th, r0), at(th, r1)], grid, &[]);
+    }
+    c.line(&arc(r1), axis, &[]);
+    if (t1 - t0).abs() < 360.0 - 1e-9 {
+        c.line(&[at(t0, r0), at(t0, r1)], axis, &[]);
+        c.line(&[at(t1, r0), at(t1, r1)], axis, &[]);
+    }
+    // Theta labels just outside the circle, r labels along the r axis.
+    for (&th, label) in theta_ticks.iter().zip(ax.polar_theta_labels()) {
+        let p = at(th, r1);
+        let out = (p - centre).normalized() * 14.0;
+        c.text(p + out + vec2(0.0, TICK.mid() - TICK.size * 0.5), Align::Center, &label, TICK, t.text, 0.0);
+    }
+    let r_angle = ax.r_axis_angle.unwrap_or(80.0);
+    for (&r, label) in r_ticks.iter().zip(ax.polar_r_labels()) {
+        c.text(at(r_angle, r) + vec2(4.0, TICK.mid() - TICK.size * 0.5), Align::Min, &label, TICK, t.text, 0.0);
+    }
+    for (k, s) in ax.series.iter().enumerate().filter(|(_, s)| s.visible) {
+        let color = t.color(s, k);
+        let pts: Vec<Option<Pos2>> = s
+            .x
+            .iter()
+            .zip(&s.y)
+            .map(|(&x, &y)| {
+                let (th, r) = ax.polar_point(x, y);
+                (th.is_finite() && r.is_finite()).then(|| at(th.to_degrees(), r))
+            })
+            .collect();
+        match s.kind {
+            SeriesKind::Patch | SeriesKind::Rectangle => {
+                let fill = patch_fill(s, color, cs).gamma_multiply(s.face_alpha.clamp(0.0, 1.0));
+                let edge = s.edge_color.filter(|_| s.line_style != LineStyle::None).map(|e| Stroke::new(s.line_width.max(1.0), Color32::from_rgb(e[0], e[1], e[2]))).unwrap_or(Stroke::NONE);
+                for face in pts.split(|p| p.is_none()) {
+                    let poly: Vec<Pos2> = face.iter().flatten().copied().collect();
+                    if poly.len() >= 3 {
+                        fill_polygon(c, &poly, fill, edge);
+                    }
+                }
+            }
+            SeriesKind::Text => {
+                if let Some(p) = pts.first().copied().flatten() {
+                    let color = s.color.map(|c| Color32::from_rgb(c[0], c[1], c[2])).unwrap_or(t.fg);
+                    c.text(p + vec2(0.0, LABEL.mid()), Align::Min, &s.label, LABEL, color, 0.0);
+                }
+            }
+            SeriesKind::Light => {}
+            _ => {
+                if s.line_style != LineStyle::None && s.kind != SeriesKind::Scatter {
+                    draw_polyline(c, &pts, Stroke::new(s.line_width.max(1.5), color), s.line_style);
+                }
+                let marker = s.marker.or((s.kind == SeriesKind::Scatter).then_some(Marker::Circle));
+                if let Some(mk) = marker {
+                    for p in pts.iter().flatten() {
+                        draw_marker(c, mk, *p, s.marker_size / 2.0 + 1.0, color, s.kind == SeriesKind::Scatter);
+                    }
+                }
+            }
+        }
+    }
+    if let Some(names) = &ax.legend {
+        draw_legend(c, t, ax, names, plot);
+    }
 }
 
 fn draw_polyline(c: &mut dyn Canvas, pts: &[Option<Pos2>], stroke: Stroke, style: LineStyle) {

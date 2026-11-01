@@ -97,3 +97,54 @@ fn layouts_annotations_lights_and_classes() {
     close(&nums(&it, "co")[..3], &[0.0, 0.85, 0.929]);
     close(&nums(&it, "co2")[..3], &[0.007, 0.227, 1.0]);
 }
+
+fn cells(it: &Interpreter, v: &str) -> Vec<String> {
+    match it.get_var(v).unwrap_or_else(|| panic!("no {v}")) {
+        livre_lang::Value::Cell(c) => c.data.iter().map(|x| x.text().unwrap()).collect(),
+        other => panic!("{v} is {}", other.class_name()),
+    }
+}
+
+#[test]
+fn polar_axes_match_matlab() {
+    let it = run(concat!(
+        "th = linspace(0, 2*pi, 100); r = 1 + 0.5*sin(3*th);\n",
+        "h = polarplot(th, r); ch = class(h); pax = gca; cp = class(pax); rl = rlim; tl = thetalim; rt = rticks; tt = thetaticks;\n",
+        "tz = pax.ThetaZeroLocation; td = pax.ThetaDir; ra = pax.RAxisLocation; rlab = rticklabels; tlab = thetaticklabels;\n",
+        "rlim([0 3]); rt3 = rticks; thetalim([0 180]); tt180 = thetaticks;\n",
+        "figure; h2 = polarscatter(th(1:10), r(1:10)); cs = class(h2);\n",
+        "figure; h3 = polarhistogram(th, 6); chh = class(h3); hv = h3.Values; he = h3.BinEdges;\n",
+        "figure; h4 = compass([1 2], [1 -1]); cc = class(h4); nc = numel(h4); cca = class(gca);\n",
+        "figure; h5 = rose(th, 4); cr = class(h5); xr = get(h5, 'XData');\n",
+        "figure; h6 = polar(th, r); cpl = class(h6); cpa = class(gca);\n",
+        "figure; polarplot([0 pi/2], [1 2]); thetaticks(0:90:270); rticks([0.5 1.5]); tl2 = thetaticklabels; rl2 = rticklabels;\n",
+        "figure; pa = polaraxes; cpx = class(pa);\n",
+    ));
+    assert_eq!(text(&it, "ch"), "matlab.graphics.chart.primitive.Line");
+    assert_eq!(text(&it, "cp"), "matlab.graphics.axis.PolarAxes");
+    close(&nums(&it, "rl"), &[0.0, 1.5]);
+    close(&nums(&it, "tl"), &[0.0, 360.0]);
+    close(&nums(&it, "rt"), &[0.0, 0.5, 1.0, 1.5]);
+    close(&nums(&it, "tt"), &(0..=12).map(|k| k as f64 * 30.0).collect::<Vec<_>>());
+    assert_eq!(text(&it, "tz"), "right");
+    assert_eq!(text(&it, "td"), "counterclockwise");
+    close(&nums(&it, "ra"), &[80.0]);
+    assert_eq!(cells(&it, "rlab"), ["0", "0.5", "1", "1.5"]);
+    assert_eq!(cells(&it, "tlab"), (0..12).map(|k| format!("{}°", k * 30)).collect::<Vec<_>>());
+    close(&nums(&it, "rt3"), &[0.0, 1.0, 2.0, 3.0]);
+    close(&nums(&it, "tt180"), &[0.0, 30.0, 60.0, 90.0, 120.0, 150.0, 180.0]);
+    assert_eq!(text(&it, "cs"), "matlab.graphics.chart.primitive.Scatter");
+    assert_eq!(text(&it, "chh"), "matlab.graphics.chart.primitive.Histogram");
+    close(&nums(&it, "hv"), &[18.0, 16.0, 17.0, 16.0, 17.0, 16.0]);
+    close(&nums(&it, "he"), &(0..=6).map(|k| k as f64 * std::f64::consts::PI / 3.0).collect::<Vec<_>>());
+    assert_eq!(text(&it, "cc"), "matlab.graphics.chart.primitive.Line");
+    close(&nums(&it, "nc"), &[2.0]);
+    assert_eq!(text(&it, "cca"), "matlab.graphics.axis.Axes");
+    assert_eq!(text(&it, "cr"), "matlab.graphics.chart.primitive.Line");
+    assert_eq!(nums(&it, "xr").len(), 16);
+    assert_eq!(text(&it, "cpl"), "matlab.graphics.chart.primitive.Line");
+    assert_eq!(text(&it, "cpa"), "matlab.graphics.axis.Axes");
+    assert_eq!(cells(&it, "tl2"), ["0°", "90°", "180°", "270°"]);
+    assert_eq!(cells(&it, "rl2"), ["0.5", "1.5"]);
+    assert_eq!(text(&it, "cpx"), "matlab.graphics.axis.PolarAxes");
+}

@@ -119,6 +119,8 @@ pub struct Series {
     pub u: Vec<f64>,
     pub v: Vec<f64>,
     pub w: Vec<f64>,
+    /// The MATLAB class of the object when it differs from its kind's (`polarhistogram`).
+    pub class_hint: Option<&'static str>,
 }
 
 impl Series {
@@ -156,6 +158,7 @@ impl Series {
             u: Vec::new(),
             v: Vec::new(),
             w: Vec::new(),
+            class_hint: None,
         }
     }
 }
@@ -208,6 +211,17 @@ pub struct Axes {
     pub color_order: Option<Vec<[f64; 3]>>,
     /// `lighting none`: lights in the axes have no effect.
     pub lighting_none: bool,
+    /// Polar axes (`polarplot`): series hold (theta in radians, r) in x and y; `xlim` and
+    /// `xticks` are the theta limits and ticks in degrees, `ylim` and `yticks` those of r.
+    pub polar: bool,
+    /// Cartesian axes drawn with a polar grid (`compass`, `rose`, `polar`).
+    pub polar_grid: bool,
+    /// Theta increases clockwise (`ThetaDir`).
+    pub theta_cw: bool,
+    /// Where theta = 0 points, in degrees counter-clockwise from the right (`ThetaZeroLocation`).
+    pub theta_zero: f64,
+    /// Angle of the r tick labels in degrees (`RAxisLocation`); `None` is 80.
+    pub r_axis_angle: Option<f64>,
 }
 
 /// Figure-level objects: a tiled layout or annotations (in normalized figure units, origin at
@@ -693,4 +707,82 @@ pub fn rect_polygon(pos: &[f64], curv: &[f64]) -> (Vec<f64>, Vec<f64>) {
     xs.push(xs[0]);
     ys.push(ys[0]);
     (xs, ys)
+}
+
+impl Axes {
+    /// A point of a series as (theta in radians, r): polar axes store it so, polar-grid axes
+    /// store Cartesian x and y.
+    pub fn polar_point(&self, x: f64, y: f64) -> (f64, f64) {
+        if self.polar { (x, y) } else { (y.atan2(x), x.hypot(y)) }
+    }
+
+    /// Theta limits in degrees and r limits. Automatic r runs from 0 to the largest radius
+    /// rounded up to a tick.
+    pub fn polar_limits(&self) -> ((f64, f64), (f64, f64)) {
+        let theta = if self.polar { self.xlim.unwrap_or((0.0, 360.0)) } else { (0.0, 360.0) };
+        if let (true, Some(r)) = (self.polar, self.ylim) {
+            return (theta, r);
+        }
+        let mut top = 0.0f64;
+        for s in self.series.iter().filter(|s| s.visible && !matches!(s.kind, SeriesKind::Light | SeriesKind::Text)) {
+            for (&x, &y) in s.x.iter().zip(&s.y) {
+                let r = self.polar_point(x, y).1;
+                if r.is_finite() {
+                    top = top.max(r);
+                }
+            }
+        }
+        if top <= 0.0 {
+            return (theta, (0.0, 1.0));
+        }
+        let step = nice_step(top, 4.0);
+        (theta, (0.0, (top / step - 1e-9).ceil() * step))
+    }
+
+    /// r tick values: set ones, or nice steps across the r limits.
+    pub fn polar_r_ticks(&self) -> Vec<f64> {
+        if let (true, Some(v)) = (self.polar, &self.yticks.values) {
+            return v.clone();
+        }
+        let (_, (r0, r1)) = self.polar_limits();
+        let step = nice_step(r1 - r0, 4.0);
+        let n = ((r1 - r0) / step + 1e-9).floor() as usize;
+        (0..=n.min(40)).map(|k| r0 + k as f64 * step).collect()
+    }
+
+    /// Theta tick values in degrees: set ones, or every 30 degrees within the limits.
+    pub fn polar_theta_ticks(&self) -> Vec<f64> {
+        if let (true, Some(v)) = (self.polar, &self.xticks.values) {
+            return v.clone();
+        }
+        let ((t0, t1), _) = self.polar_limits();
+        let first = (t0 / 30.0).ceil() as i64;
+        let last = (t1 / 30.0 + 1e-9).floor() as i64;
+        (first..=last).map(|k| k as f64 * 30.0).collect()
+    }
+
+    /// Theta tick labels (`30°`); a full circle labels 0 and not 360.
+    pub fn polar_theta_labels(&self) -> Vec<String> {
+        if let (true, Some(l)) = (self.polar, &self.xticks.labels) {
+            return l.clone();
+        }
+        let ((t0, t1), _) = self.polar_limits();
+        let full = t1 - t0 >= 360.0 - 1e-9;
+        self.polar_theta_ticks()
+            .into_iter()
+            .filter(|&v| !(full && (v - t1).abs() < 1e-9))
+            .map(|v| match &self.xticks.format {
+                Some(f) => crate::gfx::format_tick(Some(f), v),
+                None => format!("{}°", crate::display::fmt_g(v, 5)),
+            })
+            .collect()
+    }
+
+    /// r tick labels.
+    pub fn polar_r_labels(&self) -> Vec<String> {
+        if let (true, Some(l)) = (self.polar, &self.yticks.labels) {
+            return l.clone();
+        }
+        self.polar_r_ticks().into_iter().map(|v| crate::gfx::format_tick(self.yticks.format.as_deref(), v)).collect()
+    }
 }

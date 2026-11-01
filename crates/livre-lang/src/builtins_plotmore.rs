@@ -18,7 +18,9 @@ pub const NAMES: &[&str] = &[
     "tiledlayout", "nexttile", "tilenum", "tilerowcol", "annotation", "rectangle", "alpha", "alim", "alphamap", "light", "camlight", "lightangle", "lighting",
     "material", "camorbit", "campos", "camtarget", "camup", "camva", "camproj", "camzoom", "camroll", "camdolly", "campan", "camlookat", "colororder",
     "orderedcolors", "fill3", "pie", "bar3", "bar3h", "hist", "pareto", "feather", "waterfall", "ribbon", "comet", "comet3", "newplot", "shg", "refresh", "gco",
-    "gcbo", "gcbf", "brighten", "makehgtform", "viewmtx", "pbaspect", "texlabel", "rgbplot",
+    "gcbo", "gcbf", "brighten", "makehgtform", "viewmtx", "pbaspect", "texlabel", "rgbplot", "polarplot", "polarscatter", "polarhistogram",
+    "polaraxes", "rlim", "thetalim", "rticks", "thetaticks", "rticklabels", "thetaticklabels", "rtickformat", "thetatickformat", "rtickangle",
+    "compass", "rose", "polar", "ezpolar",
 ];
 
 fn is_textlike(v: &Value) -> bool {
@@ -1193,8 +1195,297 @@ fn rgbplot(it: &mut Interpreter, a: &[Value]) -> Ret {
     none()
 }
 
+// ---- polar plots ---------------------------------------------------------------------------
+
+/// Makes the current axes polar after a plot drew into them (fresh axes take the defaults).
+fn make_polar(it: &mut Interpreter, was_polar: bool) {
+    let ax = current_axes(it);
+    if !ax.polar && !was_polar {
+        ax.theta_cw = false;
+        ax.theta_zero = 0.0;
+        ax.r_axis_angle = None;
+    }
+    ax.polar = true;
+    ax.polar_grid = false;
+}
+
+/// `polarplot` / `polarscatter`: `plot` / `scatter` with (theta, r) data in polar axes.
+fn polar_series(it: &mut Interpreter, a: &[Value], scatter: bool, nargout: usize) -> Ret {
+    let a = leading_handle(it, a);
+    let was_polar = current_axes(it).polar && current_axes(it).hold;
+    // polarplot(rho): evenly spaced angles over the circle.
+    let mut args = a.to_vec();
+    let numeric = |v: &Value| matches!(v, Value::Num(m) if m.kind != Kind::Char);
+    if !scatter && numeric(&args[0]) && !args.get(1).is_some_and(numeric) {
+        let n = args[0].numel();
+        let theta: Vec<f64> = (0..n).map(|k| 2.0 * std::f64::consts::PI * k as f64 / n.max(1) as f64).collect();
+        args.insert(0, Value::Num(Matrix::row(theta)));
+    }
+    let r = crate::builtins_plot::call(it, if scatter { "scatter" } else { "plot" }, &args, nargout)?;
+    make_polar(it, was_polar);
+    Ok(r)
+}
+
+fn polarhistogram(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
+    let a = leading_handle(it, a);
+    let (pos, props) = split_props(a)?;
+    let theta = arg(pos, 0, "polarhistogram")?.clone();
+    let mut hargs = vec![theta];
+    hargs.extend(pos[1..].iter().cloned());
+    let out = it.call_function("histcounts", hargs, 2)?;
+    let (counts, edges) = (mat(&out[0])?.data, mat(&out[1])?.data);
+    let mut x = Vec::new();
+    let mut y = Vec::new();
+    for (k, &n) in counts.iter().enumerate() {
+        if k > 0 {
+            x.push(f64::NAN);
+            y.push(f64::NAN);
+        }
+        let (e0, e1) = (edges[k], edges[k + 1]);
+        x.push(e0);
+        y.push(0.0);
+        for j in 0..=16 {
+            x.push(e0 + (e1 - e0) * j as f64 / 16.0);
+            y.push(n);
+        }
+        x.push(e1);
+        y.push(0.0);
+    }
+    let was_polar = current_axes(it).polar && current_axes(it).hold;
+    let mut s = Series::new(SeriesKind::Patch, x, y);
+    s.class_hint = Some("matlab.graphics.chart.primitive.Histogram");
+    s.face_alpha = 0.6;
+    s.edge_color = Some([0, 0, 0]);
+    s.line_style = LineStyle::Solid;
+    let ids = it.add_series(vec![s], XAxisKind::Numeric);
+    make_polar(it, was_polar);
+    if let Some(&id) = ids.first() {
+        let n = counts.len() as f64;
+        it.gfx_store.entry(id).or_default().extend([
+            ("Values".to_string(), Value::Num(Matrix::row(counts))),
+            ("BinEdges".to_string(), Value::Num(Matrix::row(edges))),
+            ("NumBins".to_string(), Value::num(n)),
+        ]);
+    }
+    apply_props(it, &ids, &props)?;
+    handles_out(it, &ids, nargout)
+}
+
+/// `rlim`, `thetaticks`, ... : get or set a property of the current (polar) axes.
+fn polar_prop_fn(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Ret {
+    let a = leading_handle(it, a);
+    let prop = match name {
+        "rlim" => "RLim",
+        "thetalim" => "ThetaLim",
+        "rticks" => "RTick",
+        "thetaticks" => "ThetaTick",
+        "rticklabels" => "RTickLabel",
+        "thetaticklabels" => "ThetaTickLabel",
+        _ => "RTickLabelRotation",
+    };
+    match a.first() {
+        Some(v) if is_textlike(v) && v.text()?.eq_ignore_ascii_case("auto") => {
+            let mode = format!("{}Mode", prop.trim_end_matches("Label"));
+            if prop.ends_with("Label") {
+                let ax = current_axes(it);
+                if name.starts_with('r') { ax.yticks.labels = None } else { ax.xticks.labels = None }
+            } else {
+                axes_set(it, &mode, Value::chars("auto"))?;
+            }
+            none()
+        }
+        Some(v) if is_textlike(v) && v.text()?.eq_ignore_ascii_case("mode") => {
+            let ax = current_axes(it);
+            let manual = match name {
+                "rlim" => ax.ylim.is_some(),
+                "thetalim" => ax.xlim.is_some(),
+                "rticks" => ax.yticks.values.is_some(),
+                "thetaticks" => ax.xticks.values.is_some(),
+                "rticklabels" => ax.yticks.labels.is_some(),
+                _ => ax.xticks.labels.is_some(),
+            };
+            one(Value::chars(if manual { "manual" } else { "auto" }))
+        }
+        Some(v) => {
+            axes_set(it, prop, v.clone())?;
+            if nargout > 0 { one(axes_get(it, prop)?) } else { none() }
+        }
+        None => one(axes_get(it, prop)?),
+    }
+}
+
+fn tick_format_fn(it: &mut Interpreter, name: &str, a: &[Value]) -> Ret {
+    let a = leading_handle(it, a);
+    let ax = current_axes(it);
+    let ticks = if name == "rtickformat" { &mut ax.yticks } else { &mut ax.xticks };
+    match a.first() {
+        Some(v) => {
+            ticks.format = Some(v.text()?);
+            none()
+        }
+        None => {
+            let f = ticks.format.clone().unwrap_or_else(|| if name == "rtickformat" { "%g".into() } else { "degrees".into() });
+            one(Value::chars(&f))
+        }
+    }
+}
+
+fn polar_axes(it: &mut Interpreter, nargout: usize) -> Ret {
+    let ax = current_axes(it);
+    let id = ax.id;
+    *ax = Axes { id, polar: true, ..Axes::default() };
+    if nargout == 0 {
+        return none();
+    }
+    one(it.current_axes_handle())
+}
+
+/// Lines in Cartesian axes drawn with a polar grid (`compass`, `rose`, `polar`).
+fn polar_grid_lines(it: &mut Interpreter, lines: Vec<(Vec<f64>, Vec<f64>)>, spec: Option<&Value>, nargout: usize) -> Ret {
+    let mut args = Vec::new();
+    for (x, y) in lines {
+        args.push(Value::Num(Matrix::row(x)));
+        args.push(Value::Num(Matrix::row(y)));
+        if let Some(s) = spec {
+            args.push(s.clone());
+        }
+    }
+    let r = crate::builtins_plot::call(it, "plot", &args, nargout)?;
+    let ax = current_axes(it);
+    ax.polar = false;
+    ax.polar_grid = true;
+    ax.data_aspect = Some([1.0, 1.0, 1.0]);
+    Ok(r)
+}
+
+fn spec_arg(a: &[Value]) -> Option<&Value> {
+    a.iter().find(|v| is_textlike(v))
+}
+
+fn compass(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
+    let a = leading_handle(it, a);
+    let nums: Vec<&Value> = a.iter().filter(|v| !is_textlike(v)).collect();
+    let (u, v) = match nums.as_slice() {
+        [z] => {
+            let m = mat(z)?;
+            (m.data.clone(), m.im.clone().unwrap_or_else(|| vec![0.0; m.numel()]))
+        }
+        [u, v, ..] => (mat(u)?.data, mat(v)?.data),
+        _ => return rt("Not enough input arguments."),
+    };
+    let lines = u
+        .iter()
+        .zip(&v)
+        .map(|(&x, &y)| {
+            // Shaft and a two-stroke head, as one line per arrow.
+            let len = x.hypot(y);
+            let a = y.atan2(x);
+            let h = 0.15 * len;
+            let (l, r) = (a + std::f64::consts::PI - 0.4, a + std::f64::consts::PI + 0.4);
+            (vec![0.0, x, x + h * l.cos(), x, x + h * r.cos()], vec![0.0, y, y + h * l.sin(), y, y + h * r.sin()])
+        })
+        .collect();
+    polar_grid_lines(it, lines, spec_arg(a), nargout)
+}
+
+/// `rose` bins: counts over `n` equal sectors of the circle (or at given centres), as the
+/// outline's theta and rho.
+fn rose_outline(theta: &[f64], spec: Option<&Matrix>) -> (Vec<f64>, Vec<f64>) {
+    let two_pi = 2.0 * std::f64::consts::PI;
+    let (edges, n) = match spec {
+        Some(m) if m.numel() > 1 => {
+            let c = &m.data;
+            let mut e = vec![0.0];
+            for k in 0..c.len() - 1 {
+                e.push((c[k] + c[k + 1]) / 2.0);
+            }
+            e.push(two_pi);
+            (e, c.len())
+        }
+        other => {
+            let n = other.map(|m| m.data[0] as usize).unwrap_or(20).max(1);
+            ((0..=n).map(|k| two_pi * k as f64 / n as f64).collect::<Vec<_>>(), n)
+        }
+    };
+    let mut counts = vec![0.0; n];
+    for &t in theta.iter().filter(|t| t.is_finite()) {
+        let t = t.rem_euclid(two_pi);
+        let k = edges.iter().rposition(|&e| t >= e).unwrap_or(0).min(n - 1);
+        counts[k] += 1.0;
+    }
+    let (mut th, mut rho) = (Vec::new(), Vec::new());
+    for k in 0..n {
+        th.extend([0.0, edges[k], edges[k + 1], 0.0]);
+        rho.extend([0.0, counts[k], counts[k], 0.0]);
+    }
+    (th, rho)
+}
+
+fn rose(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
+    let a = leading_handle(it, a);
+    let theta = mat(arg(a, 0, "rose")?)?;
+    let spec = a.get(1).filter(|v| !is_textlike(v)).map(mat).transpose()?;
+    let (th, rho) = rose_outline(&theta.data, spec.as_ref());
+    if nargout >= 2 {
+        return Ok(Some(vec![Value::Num(Matrix::row(th)), Value::Num(Matrix::row(rho))]));
+    }
+    let x = th.iter().zip(&rho).map(|(t, r)| r * t.cos()).collect();
+    let y = th.iter().zip(&rho).map(|(t, r)| r * t.sin()).collect();
+    polar_grid_lines(it, vec![(x, y)], spec_arg(a), nargout)
+}
+
+fn polar(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
+    let a = leading_handle(it, a);
+    let nums: Vec<&Value> = a.iter().filter(|v| !is_textlike(v)).collect();
+    let (theta, rho) = match nums.as_slice() {
+        [r] => {
+            let r = mat(r)?;
+            let n = r.numel();
+            ((0..n).map(|k| 2.0 * std::f64::consts::PI * k as f64 / n.max(1) as f64).collect::<Vec<_>>(), r.data)
+        }
+        [t, r, ..] => (mat(t)?.data, mat(r)?.data),
+        _ => return rt("Not enough input arguments."),
+    };
+    let x = theta.iter().zip(&rho).map(|(t, r)| r * t.cos()).collect();
+    let y = theta.iter().zip(&rho).map(|(t, r)| r * t.sin()).collect();
+    polar_grid_lines(it, vec![(x, y)], spec_arg(a), nargout)
+}
+
+fn ezpolar(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
+    let a = leading_handle(it, a);
+    let f = arg(a, 0, "ezpolar")?.clone();
+    let f = if f.is_text() { it.call_function("str2func", vec![Value::chars(&format!("@(t) {}", f.text()?))], 1)?.remove(0) } else { f };
+    let (lo, hi) = match a.get(1) {
+        Some(v) => {
+            let m = mat(v)?;
+            (m.data[0], *m.data.get(1).unwrap_or(&m.data[0]))
+        }
+        None => (0.0, 2.0 * std::f64::consts::PI),
+    };
+    let n = 314;
+    let theta: Vec<f64> = (0..n).map(|k| lo + (hi - lo) * k as f64 / (n - 1) as f64).collect();
+    let mut rho = Vec::with_capacity(n);
+    for &t in &theta {
+        let r = it.call_func_value(&f, vec![Value::num(t)], 1)?;
+        rho.push(r.first().map(|v| v.scalar()).transpose()?.unwrap_or(f64::NAN));
+    }
+    let x = theta.iter().zip(&rho).map(|(t, r)| r * t.cos()).collect();
+    let y = theta.iter().zip(&rho).map(|(t, r)| r * t.sin()).collect();
+    polar_grid_lines(it, vec![(x, y)], None, nargout)
+}
+
 pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Ret {
     match name {
+        "polarplot" => polar_series(it, a, false, nargout),
+        "polarscatter" => polar_series(it, a, true, nargout),
+        "polarhistogram" => polarhistogram(it, a, nargout),
+        "polaraxes" => polar_axes(it, nargout),
+        "rlim" | "thetalim" | "rticks" | "thetaticks" | "rticklabels" | "thetaticklabels" | "rtickangle" => polar_prop_fn(it, name, a, nargout),
+        "rtickformat" | "thetatickformat" => tick_format_fn(it, name, a),
+        "compass" => compass(it, a, nargout),
+        "rose" => rose(it, a, nargout),
+        "polar" => polar(it, a, nargout),
+        "ezpolar" => ezpolar(it, a, nargout),
         "tiledlayout" => tiledlayout(it, a, nargout),
         "nexttile" => nexttile(it, a, nargout),
         "tilenum" => {

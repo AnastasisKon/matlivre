@@ -10,6 +10,7 @@ mod plot;
 mod theme;
 mod transfer;
 mod widgets;
+mod updater;
 
 use std::path::PathBuf;
 
@@ -24,6 +25,9 @@ pub enum Launch {
 }
 
 fn main() -> eframe::Result<()> {
+    // Velopack's install, update and uninstall hooks: answered and quit before anything else.
+    velopack::VelopackApp::build().run();
+    updater::check_in_background();
     let mut launch = Launch::Welcome;
     let mut at = None;
     let mut args = std::env::args().skip(1);
