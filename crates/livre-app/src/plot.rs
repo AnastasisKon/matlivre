@@ -762,10 +762,13 @@ fn draw_axes_3d(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, cs: &ColorScale, cell
                 let base = patch_fill(s, color, cs);
                 let edge = s.edge_color.filter(|_| s.line_style != LineStyle::None).map(|e| Stroke::new(0.6_f32, Color32::from_rgb(e[0], e[1], e[2]))).unwrap_or(Stroke::NONE);
                 let all: Vec<[f64; 3]> = (0..s.x.len()).map(|i| [s.x[i], s.y.get(i).copied().unwrap_or(f64::NAN), zat(i)]).collect();
-                for face in all.split(|p| p.iter().any(|v| v.is_nan())) {
+                // One color value per face colors each face (isocaps, coneplot); one value colors all.
+                let per_face = s.face_mapped && s.c.len() > 1;
+                for (fi, face) in all.split(|p| p.iter().any(|v| v.is_nan())).enumerate() {
                     let poly: Option<Vec<Pos2>> = face.iter().map(|&p| v.screen(p)).collect();
                     let Some(poly) = poly.filter(|p| p.len() >= 3) else { continue };
                     let depth = face.iter().map(|&p| v.depth(p)).sum::<f64>() / face.len() as f64;
+                    let base = if per_face { s.c.get(fi).and_then(|&c| cs.color(c)).unwrap_or(base) } else { base };
                     let fill = shaded(base, shade(ax, &v, face)).gamma_multiply(s.face_alpha.clamp(0.0, 1.0));
                     prims.push((depth, Prim::Poly(poly, fill, edge)));
                 }
