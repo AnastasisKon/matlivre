@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1458 |
+| Implemented | 1480 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **564** |
+| **To implement** | **542** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -253,7 +253,7 @@ Out of scope: `addFields` (External Language Interfaces), `callSoapService` (Ext
 
 ## MATLAB > Graphics > 2-D and 3-D Plots
 
-Implemented: 91. To implement: 57. In a branch: 0. Out of scope: 0.
+Implemented: 113. To implement: 35. In a branch: 0. Out of scope: 0.
 
 To implement:
 
@@ -266,8 +266,6 @@ To implement:
 - [ ] `bubblelegend`
 - [ ] `bubblelim`
 - [ ] `bubblesize`
-- [ ] `coneplot`
-- [ ] `contourslice`
 - [ ] `donutchart`
 - [ ] `fewerbins`
 - [ ] `fimplicit3`
@@ -281,41 +279,21 @@ To implement:
 - [ ] `geoscatter`
 - [ ] `geotickformat`
 - [ ] `heatmap`
-- [ ] `interpstreamspeed`
-- [ ] `isocaps`
-- [ ] `isocolors`
-- [ ] `isonormals`
-- [ ] `isosurface`
 - [ ] `morebins`
 - [ ] `parallelplot`
 - [ ] `piechart`
 - [ ] `polarbubblechart`
-- [ ] `reducepatch`
-- [ ] `reducevolume`
 - [ ] `refreshdata`
 - [ ] `removeToolbarMapButton`
 - [ ] `scatterhistogram`
-- [ ] `shrinkfaces`
-- [ ] `slice`
-- [ ] `smooth3`
 - [ ] `sortx`
 - [ ] `sorty`
-- [ ] `stream2`
-- [ ] `stream3`
-- [ ] `streamline`
-- [ ] `streamparticles`
-- [ ] `streamribbon`
-- [ ] `streamslice`
-- [ ] `streamtube`
-- [ ] `subvolume`
-- [ ] `surf2patch`
 - [ ] `surfnorm`
 - [ ] `swarmchart`
 - [ ] `swarmchart3`
-- [ ] `volumebounds`
 - [ ] `wordcloud`
 
-Implemented: `addpoints`, `animatedline`, `bar`, `bar3`, `bar3h`, `barh`, `clabel`, `clearpoints`, `comet`, `comet3`, `compass`, `contour`, `contour3`, `contourc`, `contourf`, `curl`, `cylinder`, `divergence`, `drawnow`, `ellipsoid`, `errorbar`, `ezcontour`, `ezcontourf`, `ezmesh`, `ezmeshc`, `ezplot`, `ezplot3`, `ezpolar`, `ezsurf`, `ezsurfc`, `fcontour`, `feather`, `fill`, `fill3`, `fimplicit`, `fmesh`, `fplot`, `fplot3`, `frame2im`, `fsurf`, `getframe`, `getpoints`, `hidden`, `hist`, `histc`, `histogram`, `histogram2`, `im2frame`, `loglog`, `mesh`, `meshc`, `meshz`, `movie`, `pareto`, `pcolor`, `peaks`, `pie`, `pie3`, `plot3`, `plotmatrix`, `polar`, `polaraxes`, `polarhistogram`, `polarplot`, `polarscatter`, `quiver`, `quiver3`, `ribbon`, `rlim`, `rose`, `rtickangle`, `rtickformat`, `rticklabels`, `rticks`, `scatter`, `scatter3`, `semilogx`, `semilogy`, `sphere`, `stairs`, `stem`, `stem3`, `surf`, `surface`, `surfc`, `surfl`, `thetalim`, `thetatickformat`, `thetaticklabels`, `thetaticks`, `waterfall`
+Implemented: `addpoints`, `animatedline`, `bar`, `bar3`, `bar3h`, `barh`, `clabel`, `clearpoints`, `comet`, `comet3`, `compass`, `coneplot`, `contour`, `contour3`, `contourc`, `contourf`, `contourslice`, `curl`, `cylinder`, `divergence`, `drawnow`, `ellipsoid`, `errorbar`, `ezcontour`, `ezcontourf`, `ezmesh`, `ezmeshc`, `ezplot`, `ezplot3`, `ezpolar`, `ezsurf`, `ezsurfc`, `fcontour`, `feather`, `fill`, `fill3`, `fimplicit`, `fmesh`, `fplot`, `fplot3`, `frame2im`, `fsurf`, `getframe`, `getpoints`, `hidden`, `hist`, `histc`, `histogram`, `histogram2`, `im2frame`, `interpstreamspeed`, `isocaps`, `isocolors`, `isonormals`, `isosurface`, `loglog`, `mesh`, `meshc`, `meshz`, `movie`, `pareto`, `pcolor`, `peaks`, `pie`, `pie3`, `plot3`, `plotmatrix`, `polar`, `polaraxes`, `polarhistogram`, `polarplot`, `polarscatter`, `quiver`, `quiver3`, `reducepatch`, `reducevolume`, `ribbon`, `rlim`, `rose`, `rtickangle`, `rtickformat`, `rticklabels`, `rticks`, `scatter`, `scatter3`, `semilogx`, `semilogy`, `shrinkfaces`, `slice`, `smooth3`, `sphere`, `stairs`, `stem`, `stem3`, `stream2`, `stream3`, `streamline`, `streamparticles`, `streamribbon`, `streamslice`, `streamtube`, `subvolume`, `surf`, `surf2patch`, `surface`, `surfc`, `surfl`, `thetalim`, `thetatickformat`, `thetaticklabels`, `thetaticks`, `volumebounds`, `waterfall`
 
 ## MATLAB > Graphics > Formatting and Annotation
 
@@ -527,7 +505,7 @@ Implemented: `&amp;`, `&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `'`, `*`, `+`, `-`, `.'`
 
 Implemented: 84. To implement: 0. In a branch: 0. Out of scope: 0.
 
-Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isinterior`, `isInterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
+Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isInterior`, `isinterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
 
 ## MATLAB > Mathematics > Elementary Math
 
