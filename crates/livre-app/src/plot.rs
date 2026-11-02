@@ -604,6 +604,7 @@ enum Prim {
     Poly(Vec<Pos2>, Color32, Stroke),
     Line([Pos2; 2], Stroke, LineStyle),
     Marker(Pos2, Marker, f32, Color32, bool),
+    Text(Pos2, String, Color32),
 }
 
 fn draw_axes_3d(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, cs: &ColorScale, cell: Rect, plot: Rect, m: &Frame) {
@@ -770,6 +771,14 @@ fn draw_axes_3d(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, cs: &ColorScale, cell
                 }
             }
             SeriesKind::Light => {}
+            SeriesKind::Text => {
+                let p3 = [s.x.first().copied().unwrap_or(0.0), s.y.first().copied().unwrap_or(0.0), zat(0)];
+                if let Some(p) = v.screen(p3) {
+                    let color = s.color.map(|c| Color32::from_rgb(c[0], c[1], c[2])).unwrap_or(t.fg);
+                    // Labels stay in front of the data.
+                    prims.push((f64::NEG_INFINITY, Prim::Text(p, s.label.clone(), color)));
+                }
+            }
             SeriesKind::Stem => {
                 for i in 0..s.x.len() {
                     let top = [s.x[i], s.y[i], zat(i)];
@@ -815,6 +824,7 @@ fn draw_axes_3d(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, cs: &ColorScale, cell
             Prim::Poly(pts, fill, stroke) => fill_polygon(c, &pts, fill, stroke),
             Prim::Line(seg, stroke, style) => draw_polyline(c, &[Some(seg[0]), Some(seg[1])], stroke, style),
             Prim::Marker(p, mk, r, color, filled) => draw_marker(c, mk, p, r, color, filled),
+            Prim::Text(p, text, color) => c.text(p + vec2(0.0, LABEL.mid()), Align::Center, &text, LABEL, color, 0.0),
         }
     }
     c.clip(None);
@@ -1848,6 +1858,46 @@ mod tests {
             }
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn renders_function_plots_histograms_and_frames() {
+        let ctx = ctx();
+        let mut it = livre_lang::Interpreter::new();
+        let c2 = ctx.clone();
+        it.set_figure_exporter(move |fig, format, scale| match format {
+            livre_lang::ExportFormat::Svg => Ok(to_svg(&c2, &Skin::light(), fig, vec2(560.0, 420.0)).into_bytes()),
+            livre_lang::ExportFormat::Png => to_png(&c2, &Skin::light(), fig, vec2(560.0, 420.0), scale),
+        });
+        let dir = std::env::temp_dir().join(format!("matlivre-fun-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = |n: &str| dir.join(n).display().to_string().replace('\'', "''");
+        let names = ["fun.png", "hist2.png", "matrix.png"];
+        let src = format!(
+            concat!(
+                "subplot(2, 2, 1); ezplot('sin(x)/x'); subplot(2, 2, 2); fimplicit(@(x, y) x.^2 - y.^2 - 1, 'r'); subplot(2, 2, 3); ezsurf('x*exp(-x^2 - y^2)', [-2 2]);\n",
+                "subplot(2, 2, 4); a = animatedline('Color', 'b'); for k = 1:50, addpoints(a, k, sin(k/5)); end; saveas(gcf, '{a}');\n",
+                "figure; subplot(1, 2, 1); histogram2(randn(500, 1), randn(500, 1)); subplot(1, 2, 2); pie3([1 2 3 4]); saveas(gcf, '{b}');\n",
+                "figure; plotmatrix(randn(100, 3)); saveas(gcf, '{c}');\n",
+                "figure; surfl(peaks(30)); colormap(gray); shading interp; F = getframe(gcf); s = size(F.cdata); c = class(F.cdata); im = frame2im(F); same = isequal(im, F.cdata);\n",
+            ),
+            a = p(names[0]),
+            b = p(names[1]),
+            c = p(names[2]),
+        );
+        it.run_source(&src).unwrap();
+        for n in names {
+            assert!(std::fs::read(dir.join(n)).unwrap().starts_with(b"\x89PNG"));
+        }
+        let s = it.get_var("s").unwrap().to_matrix().unwrap().data;
+        assert!(s.len() == 3 && s[0] > 100.0 && s[1] > 100.0 && s[2] == 3.0, "{s:?}");
+        assert_eq!(it.get_var("c").unwrap().text().unwrap(), "uint8");
+        assert_eq!(it.get_var("same").unwrap().scalar().unwrap(), 1.0);
+        if std::env::var("MATLIVRE_KEEP_PNG").is_ok() {
+            println!("previews in {}", dir.display());
+        } else {
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 
     #[test]

@@ -483,15 +483,47 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
                 return one(Value::chars(if manual { "manual" } else { "auto" }));
             }
             if v.is_text() {
+                let words: Vec<String> = a.iter().filter(|v| v.is_text()).map(|v| v.text()).collect::<R<Vec<_>>>()?.iter().flat_map(|t| t.split_whitespace().map(String::from).collect::<Vec<_>>()).collect();
                 let ax = it.current_figure().axes_mut();
-                for word in v.text()?.split_whitespace() {
-                    match (name, word) {
+                // Data extents of the drawn objects, for 'tight' and 'image'.
+                let extent = |vals: &mut dyn Iterator<Item = f64>| -> Option<(f64, f64)> {
+                    let (lo, hi) = vals.filter(|v| v.is_finite()).fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), v| (a.min(v), b.max(v)));
+                    (lo < hi).then_some((lo, hi))
+                };
+                for word in &words {
+                    match (name, word.as_str()) {
                         (_, "auto") => {
                             ax.xlim = None;
                             ax.ylim = None;
+                            ax.zlim = None;
                         }
                         ("axis", "normal") => ax.data_aspect = None,
-                        ("axis", "equal" | "image") => ax.data_aspect = Some([1.0, 1.0, 1.0]),
+                        ("axis", "equal") => ax.data_aspect = Some([1.0, 1.0, 1.0]),
+                        ("axis", "tight" | "image") => {
+                            let drawn: Vec<&Series> = ax.series.iter().filter(|s| !matches!(s.kind, SeriesKind::Text | SeriesKind::Light | SeriesKind::ConstantLine | SeriesKind::Region)).collect();
+                            if let Some(x) = extent(&mut drawn.iter().flat_map(|s| s.x.iter().copied())) {
+                                ax.xlim = Some(x);
+                            }
+                            if let Some(y) = extent(&mut drawn.iter().flat_map(|s| s.y.iter().copied())) {
+                                ax.ylim = Some(y);
+                            }
+                            if let Some(z) = extent(&mut drawn.iter().flat_map(|s| s.z.iter().copied())) {
+                                ax.zlim = Some(z);
+                            }
+                            if word == "image" {
+                                ax.data_aspect = Some([1.0, 1.0, 1.0]);
+                            }
+                        }
+                        ("axis", "off") => ax.visible_axes = Some(false),
+                        ("axis", "on") => ax.visible_axes = Some(true),
+                        ("axis", "ij") => ax.y_reverse = true,
+                        ("axis", "xy") => ax.y_reverse = false,
+                        ("axis", "manual") => {
+                            let (x, y) = ax.bounds();
+                            ax.xlim = Some(x);
+                            ax.ylim = Some(y);
+                        }
+                        // 'square', 'vis3d' and 'fill' change only the box shape, which is fixed here.
                         _ => {}
                     }
                 }
@@ -593,9 +625,21 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
                 counts[k] += 1.0;
             }
             let centers: Vec<f64> = (0..nbins).map(|k| lo + w * (k as f64 + 0.5)).collect();
-            let mut s = Series::new(SeriesKind::Bar, centers, counts);
+            let mut s = Series::new(SeriesKind::Bar, centers, counts.clone());
             s.bar_width = Some(w);
+            s.class_hint = Some("matlab.graphics.chart.primitive.Histogram");
             let ids = it.add_series(vec![s], XAxisKind::Numeric);
+            if let Some(&id) = ids.first() {
+                let edges: Vec<f64> = (0..=nbins).map(|k| lo + w * k as f64).collect();
+                it.gfx_store.entry(id).or_default().extend([
+                    ("Data".to_string(), Value::Num(data.clone())),
+                    ("Values".to_string(), Value::Num(Matrix::row(counts.clone()))),
+                    ("BinCounts".to_string(), Value::Num(Matrix::row(counts))),
+                    ("BinEdges".to_string(), Value::Num(Matrix::row(edges))),
+                    ("NumBins".to_string(), Value::num(nbins as f64)),
+                    ("BinWidth".to_string(), Value::num(w)),
+                ]);
+            }
             handles_out(it, &ids, nargout)
         }
         _ => Ok(None),

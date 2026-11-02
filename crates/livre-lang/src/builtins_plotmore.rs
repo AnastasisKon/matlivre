@@ -708,7 +708,7 @@ fn pie(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
 }
 
 /// Faces of a box (6 quads, NaN-separated) from (x0, y0, z0) to (x1, y1, z1).
-fn box_faces(x: (f64, f64), y: (f64, f64), z: (f64, f64), out: &mut (Vec<f64>, Vec<f64>, Vec<f64>)) {
+pub(crate) fn box_faces(x: (f64, f64), y: (f64, f64), z: (f64, f64), out: &mut (Vec<f64>, Vec<f64>, Vec<f64>)) {
     let c = |i: usize| -> [f64; 3] { [if i & 1 == 0 { x.0 } else { x.1 }, if i & 2 == 0 { y.0 } else { y.1 }, if i & 4 == 0 { z.0 } else { z.1 }] };
     for face in [[0, 1, 3, 2], [4, 5, 7, 6], [0, 1, 5, 4], [2, 3, 7, 6], [0, 2, 6, 4], [1, 3, 7, 5]] {
         if !out.0.is_empty() {

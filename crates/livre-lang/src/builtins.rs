@@ -36,7 +36,7 @@ const NAMES: &[&str] = &[
 pub fn exists(name: &str) -> bool {
     static ALL: std::sync::OnceLock<std::collections::HashSet<&'static str>> = std::sync::OnceLock::new();
     ALL.get_or_init(|| {
-        [NAMES, crate::builtins_elfun::NAMES, crate::builtins_datafun::NAMES, crate::builtins_lang::NAMES, crate::builtins_strings::NAMES, crate::builtins_types::NAMES, crate::builtins_dates::NAMES, crate::builtins_files::NAMES, crate::builtins_textio::NAMES, crate::builtins_data::NAMES, crate::builtins_media::NAMES, crate::builtins_archive::NAMES, crate::builtins_structio::NAMES, crate::gfx::NAMES, crate::builtins_plotfmt::NAMES, crate::builtins_graph3d::NAMES, crate::builtins_funfun::NAMES, crate::builtins_matfun::NAMES, crate::builtins_elmat::NAMES, crate::builtins_ops::NAMES, crate::builtins_specfun::NAMES, crate::polyshape::NAMES, crate::builtins_polyfun::NAMES, crate::builtins_geom::NAMES, crate::polyfun_classes::NAMES, crate::builtins_text::NAMES, crate::builtins_plot::NAMES, crate::time::NAMES, crate::table::NAMES, crate::sym::NAMES, crate::sym::extra::NAMES, crate::containers::NAMES, crate::table_ops::NAMES, crate::builtins_plotmore::NAMES, crate::patterns::NAMES, crate::builtins_validate::NAMES, crate::graphs::NAMES, crate::graphs::FUNCS, crate::builtins_excel::NAMES, crate::builtins_sparse::NAMES, crate::builtins_ode::NAMES, crate::timetable::NAMES, crate::io_more::NAMES, crate::lang_more::NAMES]
+        [NAMES, crate::builtins_elfun::NAMES, crate::builtins_datafun::NAMES, crate::builtins_lang::NAMES, crate::builtins_strings::NAMES, crate::builtins_types::NAMES, crate::builtins_dates::NAMES, crate::builtins_files::NAMES, crate::builtins_textio::NAMES, crate::builtins_data::NAMES, crate::builtins_media::NAMES, crate::builtins_archive::NAMES, crate::builtins_structio::NAMES, crate::gfx::NAMES, crate::builtins_plotfmt::NAMES, crate::builtins_graph3d::NAMES, crate::builtins_funfun::NAMES, crate::builtins_matfun::NAMES, crate::builtins_elmat::NAMES, crate::builtins_ops::NAMES, crate::builtins_specfun::NAMES, crate::polyshape::NAMES, crate::builtins_polyfun::NAMES, crate::builtins_geom::NAMES, crate::polyfun_classes::NAMES, crate::builtins_text::NAMES, crate::builtins_plot::NAMES, crate::time::NAMES, crate::table::NAMES, crate::sym::NAMES, crate::sym::extra::NAMES, crate::containers::NAMES, crate::table_ops::NAMES, crate::builtins_plotmore::NAMES, crate::patterns::NAMES, crate::builtins_validate::NAMES, crate::graphs::NAMES, crate::graphs::FUNCS, crate::builtins_excel::NAMES, crate::builtins_sparse::NAMES, crate::builtins_ode::NAMES, crate::timetable::NAMES, crate::io_more::NAMES, crate::lang_more::NAMES, crate::plot_extra::NAMES]
             .iter()
             .flat_map(|n| n.iter().copied())
             .collect()
@@ -604,6 +604,11 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             return Ok(Some(r));
         }
     }
+    if crate::plot_extra::NAMES.contains(&name) {
+        if let Some(r) = crate::plot_extra::call(it, name, &args, nargout)? {
+            return Ok(Some(r));
+        }
+    }
     if crate::lang_more::NAMES.contains(&name) {
         if let Some(r) = crate::lang_more::call(it, name, &args, nargout)? {
             return Ok(Some(r));
@@ -868,6 +873,28 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             let (step, hi) = if a.len() >= 3 { (a[1].scalar()?, a[2].scalar()?) } else { (1.0, arg(a, 1, name)?.scalar()?) };
             let n = range_count(lo, step, hi);
             mat(Matrix::row((0..n).map(|i| lo + i as f64 * step).collect()))
+        }
+        "meshgrid" | "ndgrid" if a.len() == 3 || (nargout >= 3 && a.len() == 1) => {
+            // 3-D grids: meshgrid is [ny nx nz] with x along columns; ndgrid is [nx ny nz].
+            let x = m_arg(a, 0, name)?;
+            let y = if a.len() > 1 { m_arg(a, 1, name)? } else { x.clone() };
+            let z = if a.len() > 2 { m_arg(a, 2, name)? } else { x.clone() };
+            let (n0, n1, n2) = if name == "meshgrid" { (y.numel(), x.numel(), z.numel()) } else { (x.numel(), y.numel(), z.numel()) };
+            let total = n0 * n1 * n2;
+            let (mut gx, mut gy, mut gz) = (vec![0.0; total], vec![0.0; total], vec![0.0; total]);
+            for k in 0..n2 {
+                for j in 0..n1 {
+                    for i in 0..n0 {
+                        let p = k * n0 * n1 + j * n0 + i;
+                        let (xi, yi) = if name == "meshgrid" { (j, i) } else { (i, j) };
+                        gx[p] = x.data[xi];
+                        gy[p] = y.data[yi];
+                        gz[p] = z.data[k];
+                    }
+                }
+            }
+            let dims = vec![n0, n1, n2];
+            Ok(Some(vec![Value::Num(Matrix::from_dims(dims.clone(), gx)), Value::Num(Matrix::from_dims(dims.clone(), gy)), Value::Num(Matrix::from_dims(dims, gz))]))
         }
         "meshgrid" | "ndgrid" => {
             let x = m_arg(a, 0, name)?;

@@ -584,7 +584,11 @@ impl Value {
             Value::Object(o) if crate::gfx::is_gfx_class(&o.class.name) => match crate::gfx::ids_of(self).map(|i| i.len()) {
                 Some(1) => vec![1, 1],
                 Some(0) => vec![0, 0],
-                Some(n) => vec![n, 1],
+                // Handle arrays keep the shape of their id matrix (n-by-1 unless reshaped).
+                Some(n) => match o.props.borrow().first() {
+                    Some(Value::Num(m)) if m.numel() == n => m.dims.clone(),
+                    _ => vec![n, 1],
+                },
                 None => vec![1, 1],
             },
             Value::Object(o) if crate::containers::is_container(&o.class.name) => crate::containers::dims(o),

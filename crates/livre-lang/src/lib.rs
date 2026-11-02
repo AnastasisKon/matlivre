@@ -57,6 +57,7 @@ pub mod builtins_ode;
 pub mod timetable;
 pub mod io_more;
 pub mod lang_more;
+pub mod plot_extra;
 pub mod time;
 pub mod value;
 
