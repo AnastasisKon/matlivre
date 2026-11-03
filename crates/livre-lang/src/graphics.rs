@@ -571,6 +571,7 @@ pub fn colormap(name: &str, n: usize) -> Option<Vec<[f64; 3]>> {
         "winter" => gray.iter().map(|&g| [0.0, g, 0.5 + (1.0 - g) / 2.0]).collect(),
         "copper" => gray.iter().map(|&g| [(g * 1.25).min(1.0), (g * 0.7812).min(1.0), (g * 0.4975).min(1.0)]).collect(),
         "white" => vec![[1.0; 3]; n],
+        "colorcube" => colorcube(n),
         "hot" => hot(),
         "bone" => {
             let h = hot();
@@ -609,6 +610,51 @@ pub fn colormap(name: &str, n: usize) -> Option<Vec<[f64; 3]>> {
         }
         _ => return None,
     })
+}
+
+/// An RGB cube without its grays and pure primaries, then red, green and blue ramps and a gray
+/// ramp filling the rest. The cube has k levels for the largest k with k³ < n (k = 2 at n = 8);
+/// at n = 27, 64, 125 and 216 MATLAB uses k = ∛n with one level fewer in blue.
+fn colorcube(n: usize) -> Vec<[f64; 3]> {
+    let root = (1..).find(|k: &usize| k.pow(3) >= n).unwrap_or(1);
+    let (a, b) = match n {
+        8 => (2, 2),
+        27 | 64 | 125 | 216 => (root, root - 1),
+        _ => {
+            let k = (1..).take_while(|k: &usize| k.pow(3) < n).last().unwrap_or(0);
+            (k, k)
+        }
+    };
+    if a < 2 {
+        return (0..n).map(|i| [if n > 1 { i as f64 / (n - 1) as f64 } else { 0.0 }; 3]).collect();
+    }
+    let lv = |i: usize, k: usize| i as f64 / (k - 1) as f64;
+    let mut out = Vec::with_capacity(n);
+    for bi in 0..b {
+        for ri in 0..a {
+            for gi in 0..a {
+                let c = [lv(ri, a), lv(gi, a), lv(bi, b)];
+                let nonzero = c.iter().filter(|&&x| x > 0.0).count();
+                if nonzero > 1 && !(c[0] == c[1] && c[1] == c[2]) {
+                    out.push(c);
+                }
+            }
+        }
+    }
+    let rest = n.saturating_sub(out.len());
+    let s = rest.saturating_sub(1) / 4;
+    for ch in 0..3 {
+        for i in 1..=s {
+            let mut c = [0.0; 3];
+            c[ch] = i as f64 / s as f64;
+            out.push(c);
+        }
+    }
+    let g = rest - 3 * s;
+    for i in 0..g {
+        out.push([if g > 1 { i as f64 / (g - 1) as f64 } else { 0.0 }; 3]);
+    }
+    out
 }
 
 pub fn hsv_to_rgb(h: f64, s: f64, v: f64) -> [f64; 3] {

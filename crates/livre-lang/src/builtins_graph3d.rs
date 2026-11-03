@@ -12,13 +12,13 @@ use crate::value::*;
 
 type R<T> = Result<T, LangError>;
 
-pub const COLORMAPS: &[&str] = &["parula", "turbo", "sky", "abyss", "jet", "hot", "gray", "cool", "spring", "summer", "autumn", "winter", "bone", "copper", "pink", "hsv", "lines", "prism", "flag", "white"];
+pub const COLORMAPS: &[&str] = &["parula", "turbo", "sky", "abyss", "jet", "hot", "gray", "cool", "spring", "summer", "autumn", "winter", "bone", "copper", "pink", "hsv", "lines", "prism", "flag", "white", "colorcube"];
 
 pub const NAMES: &[&str] = &[
     "parula", "turbo", "sky", "abyss", "jet", "hot", "gray", "cool", "spring", "summer", "autumn", "winter", "bone", "copper", "pink", "hsv", "lines", "prism",
     "flag", "white", "colormap", "clim", "caxis", "view", "shading", "plot3", "scatter3", "stem3", "surf", "surfc", "mesh", "meshc", "meshz", "surface", "pcolor",
     "contour", "contourf", "contour3", "contourc", "clabel", "quiver", "quiver3", "peaks", "sphere", "cylinder", "ellipsoid", "image", "imagesc", "imshow",
-    "ind2rgb", "rgb2gray", "im2double", "im2gray", "fsurf", "fmesh", "fcontour", "fplot3", "rotate3d", "hidden",
+    "ind2rgb", "rgb2gray", "im2double", "im2gray", "fsurf", "fmesh", "fcontour", "fplot3", "rotate3d", "hidden", "colorcube",
 ];
 
 fn is_textlike(v: &Value) -> bool {

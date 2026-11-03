@@ -16,6 +16,7 @@ mod files;
 mod funfun;
 mod graph3d;
 mod graphs;
+mod images;
 mod handles;
 mod io_more;
 mod jit;
