@@ -7,6 +7,7 @@ mod containers;
 mod data_files;
 mod datafun;
 mod dates;
+mod dates_types;
 mod elfun;
 mod elmat;
 mod excel;

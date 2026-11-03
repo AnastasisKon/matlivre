@@ -17,8 +17,45 @@ type R<T> = Result<T, LangError>;
 pub const NAMES: &[&str] = &[
     "datestr", "datevec", "clock", "date", "etime", "cputime", "addtodate", "eomday", "eomdate", "weeknum", "calendar", "ymd", "hms", "isweekend",
     "isbetween", "exceltime", "juliandate", "yyyymmdd", "convertTo", "m2xdate", "x2mdate", "months", "calendarDuration", "week", "isdst",
-    "datenum",
+    "datenum", "nweekdate", "lweekdate", "leapseconds", "matlab.datetime.compatibility.convertDatenum",
 ];
+
+/// Leap second insertion dates (all positive so far).
+const LEAP_SECONDS: [(i64, i64, i64); 27] = [
+    (1972, 6, 30), (1972, 12, 31), (1973, 12, 31), (1974, 12, 31), (1975, 12, 31), (1976, 12, 31), (1977, 12, 31), (1978, 12, 31),
+    (1979, 12, 31), (1981, 6, 30), (1982, 6, 30), (1983, 6, 30), (1985, 6, 30), (1987, 12, 31), (1989, 12, 31), (1990, 12, 31),
+    (1992, 6, 30), (1993, 6, 30), (1994, 6, 30), (1995, 12, 31), (1997, 6, 30), (1998, 12, 31), (2005, 12, 31), (2008, 12, 31),
+    (2012, 6, 30), (2015, 6, 30), (2016, 12, 31),
+];
+
+/// The date number of weekday `wkd` (1 = Sunday) in the `n`-th week of month `m` that holds it,
+/// counting only weeks that also hold weekday `g` (0 = any) in the month; `n = 0` picks the last.
+/// Returns 0 when there is no such week.
+fn nth_weekday(n: i64, wkd: i64, y: i64, m: i64, g: i64) -> f64 {
+    let first = days_from_civil(y, m, 1);
+    let len = days_in_month(y, m);
+    let wd = |day: i64| (first + day - 1 + 4).rem_euclid(7) + 1;
+    let mut hits = Vec::new();
+    for day in 1..=len {
+        if wd(day) != wkd {
+            continue;
+        }
+        // The Sunday-to-Saturday week around this day must hold weekday g inside the month.
+        let ok = g == 0 || {
+            let start = day - (wkd - 1);
+            let other = start + g - 1;
+            other >= 1 && other <= len
+        };
+        if ok {
+            hits.push(day);
+        }
+    }
+    let pick = if n == 0 { hits.last() } else { hits.get(n as usize - 1) };
+    match pick {
+        Some(&d) => (first + d - 1) as f64 + EPOCH,
+        None => 0.0,
+    }
+}
 
 const EPOCH: f64 = 719_529.0;
 const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -553,6 +590,55 @@ pub fn call(_it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> R
                 })
                 .collect();
             one(Value::Num(Matrix::col(out)))
+        }
+        "nweekdate" | "lweekdate" => {
+            // nweekdate(n, wkd, y, m[, g]) and lweekdate(wkd, y, m[, g]).
+            let k = if name == "nweekdate" { 1 } else { 0 };
+            if a.len() < k + 3 {
+                return rt("Not enough input arguments.");
+            }
+            let mut ins: Vec<Matrix> = a.iter().take(k + 4).map(|v| v.to_matrix()).collect::<R<_>>()?;
+            if ins.len() < k + 4 {
+                ins.push(Matrix::scalar(0.0));
+            }
+            let dims = ins.iter().find(|m| m.numel() != 1).map(|m| m.dims.clone()).unwrap_or_else(|| vec![1, 1]);
+            let n = dims.iter().product::<usize>();
+            if ins.iter().any(|m| m.numel() != 1 && m.numel() != n) {
+                return rt("Nonscalar arguments must have the same size.");
+            }
+            let at = |m: &Matrix, i: usize| if m.numel() == 1 { m.data[0] } else { m.data[i] } as i64;
+            let out: Vec<f64> = (0..n)
+                .map(|i| {
+                    let nth = if k == 1 { at(&ins[0], i) } else { 0 };
+                    let (wkd, y, m, g) = (at(&ins[k], i), at(&ins[k + 1], i), at(&ins[k + 2], i), at(&ins[k + 3], i));
+                    nth_weekday(nth, wkd, y, m, g)
+                })
+                .collect();
+            if k == 1 && ins[0].data.iter().any(|&x| x < 1.0) {
+                return rt("N must be a positive integer.");
+            }
+            one(Value::Num(Matrix::from_dims(dims, out)))
+        }
+        "leapseconds" => {
+            let ms: Vec<f64> = LEAP_SECONDS.iter().map(|&(y, m, d)| days_from_civil(y, m, d) as f64 * 86_400_000.0).collect();
+            let n = ms.len();
+            let dates = Value::Time(TimeArray::datetimes(vec![n, 1], ms, None, String::new(), "dd-MMM-yyyy".into()));
+            let plus = Value::Cell(CellArray::from_dims(vec![n, 1], vec![Value::chars("+"); n]));
+            let kind = _it.call_function("categorical", vec![plus], 1)?.remove(0);
+            let adj = Value::Time(TimeArray::durations(vec![n, 1], (1..=n).map(|k| k as f64 * 1000.0).collect(), "s"));
+            let mut t = crate::table::Table::new(vec!["Type".into(), "CumulativeAdjustment".into()], vec![kind, adj])?;
+            t.row_times = Some(dates);
+            t.dim_names = ["Date".into(), "Variables".into()];
+            Ok(Some(vec![Value::Table(Box::new(t)), Value::num(65.0)].into_iter().take(nargout.max(1)).collect()))
+        }
+        "matlab.datetime.compatibility.convertDatenum" => {
+            let v = arg(a, 0, name)?;
+            if let Value::Time(_) = v {
+                return one(v.clone());
+            }
+            let m = v.to_matrix()?;
+            let ms = m.data.iter().map(|&x| (x - EPOCH) * 86_400_000.0).collect();
+            one(Value::Time(TimeArray::datetimes(m.dims.clone(), ms, None, String::new(), crate::time::DEFAULT_DT_FORMAT.into())))
         }
         "calendarDuration" => {
             let nums = a.iter().map(|v| v.scalar()).collect::<R<Vec<f64>>>()?;

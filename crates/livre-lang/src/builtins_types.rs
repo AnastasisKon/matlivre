@@ -13,8 +13,14 @@ type R<T> = Result<T, LangError>;
 
 pub const NAMES: &[&str] = &[
     "cell2mat", "mat2cell", "cell2struct", "struct2cell", "structfun", "getfield", "setfield", "orderfields", "typecast", "swapbytes", "allfinite",
-    "anynan", "functions",
+    "anynan", "functions", "underlyingType", "isUnderlyingType", "keyHash", "keyMatch",
 ];
+
+/// FNV-1a over the class and contents, so equal keys of different classes hash apart.
+fn key_hash(v: &Value) -> u64 {
+    let text = format!("{}|{:?}|{:?}", v.class_name(), v.dims(), v);
+    text.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x0100_0000_01b3))
+}
 
 /// Zero-based positions as one subscript.
 fn positions(ix: Vec<usize>) -> IndexArg {
@@ -350,6 +356,30 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         return Ok(None);
     }
     match name {
+        "underlyingType" => {
+            let c = it.call_function("class", vec![arg(a, 0, name)?.clone()], 1)?;
+            one(c.into_iter().next().unwrap_or_else(|| Value::chars("")))
+        }
+        "isUnderlyingType" => {
+            let r = it.call_function("isa", vec![arg(a, 0, name)?.clone(), arg(a, 1, name)?.clone()], 1)?;
+            one(r.into_iter().next().unwrap_or_else(|| Value::bool(false)))
+        }
+        "keyHash" => {
+            if a.is_empty() {
+                return rt("Not enough input arguments.");
+            }
+            // Stored as a double, so keep the hash within the exact integer range.
+            let h = (key_hash(arg(a, 0, name)?) >> 11) as f64;
+            one(Value::Num(Matrix::scalar(h).cast_to(Kind::Int(IntClass::U64))))
+        }
+        "keyMatch" => {
+            let (x, y) = (arg(a, 0, name)?, arg(a, 1, name)?);
+            if x.class_name() != y.class_name() {
+                return one(Value::bool(false));
+            }
+            let r = it.call_function("isequal", vec![x.clone(), y.clone()], 1)?;
+            one(r.into_iter().next().unwrap_or_else(|| Value::bool(false)))
+        }
         "cell2mat" => cell2mat(arg(a, 0, name)?),
         "mat2cell" => mat2cell(a),
         "cell2struct" => cell2struct(a),

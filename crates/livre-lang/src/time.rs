@@ -375,7 +375,7 @@ impl TimeArray {
         match self.kind {
             TimeKind::DateTime => format_datetime(self.wall(i), &self.display_pattern()),
             TimeKind::Duration => format_duration(self.data[i][0], &self.format),
-            TimeKind::CalDuration => format_caldur(self.data[i]),
+            TimeKind::CalDuration => format_caldur(self.data[i], &self.format),
         }
     }
 
@@ -517,22 +517,32 @@ pub fn format_duration(ms: f64, fmt: &str) -> String {
     }
 }
 
-fn format_caldur(p: [f64; 3]) -> String {
+/// `fmt` lists the units shown (`y`, `q`, `m`, `w`, `d`, `t`); empty means `ymdt`.
+fn format_caldur(p: [f64; 3], fmt: &str) -> String {
     let [months, days, ms] = p;
     if months.is_nan() || days.is_nan() || ms.is_nan() {
         return "NaN".into();
     }
+    let fmt = if fmt.is_empty() { "ymdt" } else { fmt };
     let mut parts = Vec::new();
-    let y = (months / 12.0).trunc();
-    let mo = months - y * 12.0;
+    let y = if fmt.contains('y') { (months / 12.0).trunc() } else { 0.0 };
+    let q = if fmt.contains('q') { ((months - y * 12.0) / 3.0).trunc() } else { 0.0 };
+    let mo = months - y * 12.0 - q * 3.0;
     if y != 0.0 {
         parts.push(format!("{}y", y as i64));
+    }
+    if q != 0.0 {
+        parts.push(format!("{}q", q as i64));
     }
     if mo != 0.0 {
         parts.push(format!("{}mo", mo as i64));
     }
-    if days != 0.0 {
-        parts.push(format!("{}d", fmt_g(days, 5)));
+    let w = if fmt.contains('w') { (days / 7.0).trunc() } else { 0.0 };
+    if w != 0.0 {
+        parts.push(format!("{}w", w as i64));
+    }
+    if days - w * 7.0 != 0.0 {
+        parts.push(format!("{}d", fmt_g(days - w * 7.0, 5)));
     }
     if ms != 0.0 {
         // The time part shows as `1h 2m 3s`.
@@ -549,6 +559,63 @@ fn format_caldur(p: [f64; 3]) -> String {
     } else {
         parts.join(" ")
     }
+}
+
+/// The `caldiff`/`between` components as format letters (`y`, `q`, `m`, `w`, `d`, `t`).
+fn cal_units(v: &Value) -> R<String> {
+    let names: Vec<String> = match v {
+        Value::Cell(c) => c.data.iter().map(|x| x.text()).collect::<R<_>>()?,
+        Value::Str(s) => s.data.iter().map(|x| x.clone().unwrap_or_default()).collect(),
+        _ => vec![v.text()?],
+    };
+    let mut out = String::new();
+    for n in names {
+        let c = match n.to_lowercase().as_str() {
+            "years" | "year" => 'y',
+            "quarters" | "quarter" => 'q',
+            "months" | "month" => 'm',
+            "weeks" | "week" => 'w',
+            "days" | "day" => 'd',
+            "time" => 't',
+            _ => return rt("COMPONENTS must be 'Years', 'Quarters', 'Months', 'Weeks', 'Days', or 'Time', or a string array or cell array containing those components."),
+        };
+        if !out.contains(c) {
+            out.push(c);
+        }
+    }
+    // Keep the canonical order so the display matches.
+    Ok("yqmwdt".chars().filter(|c| out.contains(*c)).collect())
+}
+
+/// The calendar difference `w2 - w1` in the given units; parts smaller than the last unit are dropped.
+fn cal_between(w1: f64, w2: f64, units: &str) -> [f64; 3] {
+    if w1.is_nan() || w2.is_nan() {
+        return [f64::NAN; 3];
+    }
+    let has = |c| units.contains(c);
+    let mut months = 0i64;
+    if has('y') || has('q') || has('m') {
+        let (y1, m1, ..) = components(w1);
+        let (y2, m2, ..) = components(w2);
+        months = (y2 - y1) * 12 + (m2 - m1);
+        let sign = if w2 >= w1 { 1 } else { -1 };
+        while months != 0 && (add_calendar(w1, [months as f64, 0.0, 0.0]) - w2) * sign as f64 > 0.0 {
+            months -= sign;
+        }
+        // Whole multiples of the smallest month unit asked for.
+        let unit = if has('m') { 1 } else if has('q') { 3 } else { 12 };
+        months -= months % unit;
+    }
+    let mid = add_calendar(w1, [months as f64, 0.0, 0.0]);
+    let mut days = 0.0;
+    if has('w') || has('d') {
+        days = ((w2 - mid) / MS_DAY).trunc();
+        if !has('d') {
+            days -= days % 7.0;
+        }
+    }
+    let ms = if has('t') { w2 - mid - days * MS_DAY } else { 0.0 };
+    [months as f64, days, ms]
 }
 
 /// Adds calendar months/days (clamping to month end) and exact ms to wall-clock ms.
@@ -739,7 +806,7 @@ pub fn range(start: &Value, step: Option<&Value>, stop: &Value) -> R<Value> {
 pub const NAMES: &[&str] = &[
     "datetime", "NaT", "duration", "years", "days", "hours", "minutes", "seconds", "milliseconds", "calyears", "calquarters", "calmonths", "calweeks",
     "caldays", "between", "year", "month", "day", "hour", "minute", "second", "weekday", "quarter", "isdatetime", "isduration", "iscalendarduration",
-    "isnat", "dateshift", "timeofday", "posixtime", "datenum", "now", "today",
+    "isnat", "dateshift", "timeofday", "posixtime", "datenum", "now", "today", "caldiff", "tzoffset", "time",
 ];
 
 fn opt<'a>(args: &'a [Value], name: &str) -> Option<&'a Value> {
@@ -971,6 +1038,62 @@ pub fn call(name: &str, args: &[Value], nargout: usize) -> R<Option<Vec<Value>>>
                 .collect();
             one(Value::Time(TimeArray::calendar(dims, parts)))
         }
+        "caldiff" => {
+            let t = match args.first() {
+                Some(Value::Time(t)) if t.kind == TimeKind::DateTime => t,
+                Some(v) => return rt(format!("Undefined function 'caldiff' for input arguments of type '{}'.", v.class_name())),
+                None => return rt("Not enough input arguments."),
+            };
+            let units = match args.get(1) {
+                Some(v) => cal_units(v)?,
+                None => "ymdt".to_string(),
+            };
+            let dim = match args.get(2) {
+                Some(v) => v.to_matrix()?.data.first().copied().unwrap_or(1.0) as usize - 1,
+                None => t.dims.iter().position(|&n| n != 1).unwrap_or(0),
+            };
+            let mut dims = t.dims.clone();
+            while dims.len() <= dim {
+                dims.push(1);
+            }
+            let n = dims[dim];
+            let stride: usize = dims[..dim].iter().product();
+            let outer: usize = dims[dim + 1..].iter().product();
+            dims[dim] = n.saturating_sub(1);
+            let mut parts = Vec::new();
+            for o in 0..outer {
+                for k in 0..n.saturating_sub(1) {
+                    for s in 0..stride {
+                        let i = s + stride * (k + n * o);
+                        parts.push(cal_between(t.wall(i), t.wall(i + stride), &units));
+                    }
+                }
+            }
+            let mut out = TimeArray::calendar(dims, parts);
+            out.format = units;
+            one(Value::Time(out))
+        }
+        "time" => match args.first() {
+            Some(Value::Time(t)) if t.kind == TimeKind::CalDuration => {
+                one(Value::Time(TimeArray::durations(t.dims.clone(), t.data.iter().map(|p| p[2]).collect(), "hh:mm:ss")))
+            }
+            Some(v) => rt(format!("Undefined function 'time' for input arguments of type '{}'.", v.class_name())),
+            None => rt("Not enough input arguments."),
+        },
+        "tzoffset" => {
+            let t = match args.first() {
+                Some(Value::Time(t)) if t.kind == TimeKind::DateTime => t,
+                _ => return rt("Input must be a datetime array."),
+            };
+            // Only fixed-offset zones are supported, so there is never a daylight saving shift.
+            let off: Vec<f64> = t.data.iter().map(|e| match t.tz {
+                Some(m) if !e[0].is_nan() => m * MS_MIN,
+                _ => f64::NAN,
+            }).collect();
+            let dst: Vec<f64> = off.iter().map(|o| if o.is_nan() { f64::NAN } else { 0.0 }).collect();
+            let mk = |v: Vec<f64>| Value::Time(TimeArray::durations(t.dims.clone(), v, "hh:mm"));
+            Ok(Some(vec![mk(off), mk(dst)].into_iter().take(nargout.max(1)).collect()))
+        }
         "year" | "month" | "day" | "hour" | "minute" | "second" | "weekday" | "quarter" => {
             let t = time_arg(args, name)?;
             if t.kind != TimeKind::DateTime {
@@ -1083,7 +1206,7 @@ mod tests {
         assert_eq!(parse_auto("2018-06-01 12:05:09"), Some(w));
         assert_eq!(format_duration(1.5 * MS_HOUR, "h"), "1.5 hr");
         assert_eq!(format_duration(5400_000.0, "hh:mm:ss"), "01:30:00");
-        assert_eq!(format_caldur([14.0, 3.0, 0.0]), "1y 2mo 3d");
+        assert_eq!(format_caldur([14.0, 3.0, 0.0], ""), "1y 2mo 3d");
     }
 
     #[test]
