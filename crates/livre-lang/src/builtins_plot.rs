@@ -133,7 +133,7 @@ pub(crate) fn handles_out(it: &Interpreter, ids: &[u64], nargout: usize) -> Ret 
     one(crate::gfx::handles(it, ids))
 }
 
-fn text_of(v: &Value) -> R<String> {
+pub(crate) fn text_of(v: &Value) -> R<String> {
     match v {
         Value::Cell(c) => Ok(c.data.iter().map(|x| x.text()).collect::<R<Vec<_>>>()?.join("\n")),
         Value::Str(s) if !s.is_scalar() => Ok(s.data.iter().map(|x| x.clone().unwrap_or_default()).collect::<Vec<_>>().join("\n")),

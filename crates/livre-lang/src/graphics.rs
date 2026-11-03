@@ -206,6 +206,8 @@ pub struct Axes {
     /// Graphics handle number (assigned when a handle to the axes is first made).
     pub id: u64,
     pub zlabel: String,
+    /// `SecondaryLabel` strings of the x, y and z rulers (`xsecondarylabel`, ...).
+    pub secondary: [String; 3],
     pub zlim: Option<(f64, f64)>,
     pub xticks: Ticks,
     pub yticks: Ticks,

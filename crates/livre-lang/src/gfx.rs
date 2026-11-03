@@ -44,9 +44,26 @@ pub enum Part {
     YAxisRight,
     /// The y label of the inactive side of `yyaxis` axes.
     YLabelOther,
+    /// The `SecondaryLabel` texts of the x, y and z rulers.
+    XSecondary,
+    YSecondary,
+    ZSecondary,
 }
 
-const PARTS: [Part; 11] = [Part::Title, Part::XLabel, Part::YLabel, Part::ZLabel, Part::Subtitle, Part::XAxis, Part::YAxis, Part::ZAxis, Part::Legend, Part::YAxisRight, Part::YLabelOther];
+const PARTS: [Part; 14] = [
+    Part::Title, Part::XLabel, Part::YLabel, Part::ZLabel, Part::Subtitle, Part::XAxis, Part::YAxis, Part::ZAxis, Part::Legend, Part::YAxisRight, Part::YLabelOther,
+    Part::XSecondary, Part::YSecondary, Part::ZSecondary,
+];
+
+/// The secondary label part of a ruler part.
+fn secondary_of(p: Part) -> Option<(Part, usize)> {
+    match p {
+        Part::XAxis => Some((Part::XSecondary, 0)),
+        Part::YAxis | Part::YAxisRight => Some((Part::YSecondary, 1)),
+        Part::ZAxis => Some((Part::ZSecondary, 2)),
+        _ => None,
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Target {
@@ -278,6 +295,10 @@ fn canonical(class: &str, name: &str) -> Option<String> {
     let lower = name.to_ascii_lowercase();
     if class == "matlab.ui.Root" && (lower.starts_with("default") || lower.starts_with("factory")) {
         return Some(name.to_string());
+    }
+    // Hidden properties: readable and settable, but not listed by `get`.
+    if class == "matlab.graphics.axis.decorator.NumericRuler" && lower == "secondarylabel" {
+        return Some("SecondaryLabel".into());
     }
     None
 }
@@ -748,6 +769,10 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
                 (Part::XLabel, "String") => Value::chars(&ax.xlabel),
                 (Part::YLabel, "String") => Value::chars(&ax.ylabel),
                 (Part::ZLabel, "String") => Value::chars(&ax.zlabel),
+                (Part::XSecondary, "String") => Value::chars(&ax.secondary[0]),
+                (Part::YSecondary, "String") => Value::chars(&ax.secondary[1]),
+                (Part::ZSecondary, "String") => Value::chars(&ax.secondary[2]),
+                (Part::XSecondary | Part::YSecondary | Part::ZSecondary, "Type") => Value::chars("text"),
                 (Part::Legend, "String") => {
                     let names = ax.legend.clone().unwrap_or_default();
                     Value::Cell(CellArray::row(names.iter().map(|n| Value::chars(n)).collect()))
@@ -764,6 +789,10 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
                 },
                 (Part::YLabelOther, "String") => Value::chars(ax.yy.as_ref().map(|yy| yy.other.ylabel.as_str()).unwrap_or("")),
                 (Part::YLabelOther, "Type") => Value::chars("text"),
+                (Part::XAxis | Part::YAxis | Part::ZAxis | Part::YAxisRight, "SecondaryLabel") => {
+                    let base = axes_id(it, f, a);
+                    handle(it, base + secondary_of(p).unwrap().0 as u64)
+                }
                 (Part::XAxis | Part::YAxis | Part::YAxisRight, _) => {
                     let x = p == Part::XAxis;
                     // A side of yyaxis axes: its own limits, ticks, label and color.
@@ -1080,6 +1109,9 @@ fn set_prop(it: &mut Interpreter, id: u64, name: &str, v: Value) -> R<()> {
                         }
                     }
                     Part::ZLabel => ax.zlabel = text,
+                    Part::XSecondary => ax.secondary[0] = text,
+                    Part::YSecondary => ax.secondary[1] = text,
+                    Part::ZSecondary => ax.secondary[2] = text,
                     Part::Legend => ax.legend = Some(texts(&v)?),
                     _ => {}
                 }

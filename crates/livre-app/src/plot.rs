@@ -1212,6 +1212,12 @@ fn draw_axes(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, fig_map: Option<&[[f64; 
     c.text(pos2(plot.center().x, cell.top() + m.title_y), Align::Center, &ax.title, TITLE, t.fg, 0.0);
     c.text(pos2(plot.center().x, cell.bottom() - m.xlabel_dy), Align::Center, &ax.xlabel, LABEL, t.text, 0.0);
     c.text(pos2(cell.left() + m.ylabel_x, plot.center().y), Align::Center, &ax.ylabel, LABEL, t.text, -std::f32::consts::FRAC_PI_2);
+    // Secondary labels sit at the far end of their ruler: under the last x tick label, above
+    // the top of the y axis.
+    if show_axes {
+        c.text(pos2(plot.right(), plot.bottom() + m.tick_dy + 13.0), Align::Max, &ax.secondary[0], TICK, t.text, 0.0);
+        c.text(pos2(plot.left(), plot.top() - 8.0), Align::Min, &ax.secondary[1], TICK, t.text, 0.0);
+    }
 
     let grid = Stroke::new(1.0_f32, t.grid);
     let axis = Stroke::new(1.0_f32, t.axis);

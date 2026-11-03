@@ -1,7 +1,8 @@
 //! More plots: the `ez*` function plotters, `fimplicit`, animated lines (`animatedline`,
 //! `addpoints`, `getpoints`, `clearpoints`), `histogram2`, `pie3`, `plotmatrix`, `surfl`,
 //! vector field derivatives (`curl`, `divergence`) and movie frames (`getframe`, `frame2im`,
-//! `im2frame`, `movie`).
+//! `im2frame`, `movie`), surface normals (`surfnorm`), ruler secondary labels
+//! (`xsecondarylabel`, ...) and ruler value conversion (`ruler2num`, `num2ruler`).
 
 use crate::builtins::{arg, none, one, Ret};
 use crate::builtins_plot::{apply_props, handles_out};
@@ -16,7 +17,140 @@ type R<T> = Result<T, LangError>;
 pub const NAMES: &[&str] = &[
     "ezplot", "ezplot3", "ezsurf", "ezsurfc", "ezmesh", "ezmeshc", "ezcontour", "ezcontourf", "fimplicit", "animatedline", "addpoints", "getpoints",
     "clearpoints", "histogram2", "pie3", "plotmatrix", "surfl", "curl", "divergence", "getframe", "frame2im", "im2frame", "movie",
+    "surfnorm", "xsecondarylabel", "ysecondarylabel", "zsecondarylabel", "ruler2num", "num2ruler",
 ];
+
+/// Unit normals of a surface: edges are extended by cubic extrapolation, then the normal at each
+/// point is the cross product of the central differences along the columns and the rows.
+fn surface_normals(x: &Matrix, y: &Matrix, z: &Matrix) -> R<[Matrix; 3]> {
+    let (m, n) = (z.rows(), z.cols());
+    if m < 3 || n < 3 {
+        return rt("Z must be at least 3-by-3.");
+    }
+    let ext = |a: &Matrix| -> Vec<Vec<f64>> {
+        let at = |i: usize, j: usize| a.data[i + m * j];
+        let mut g = vec![vec![0.0; n + 2]; m + 2];
+        for i in 0..m {
+            for j in 0..n {
+                g[i + 1][j + 1] = at(i, j);
+            }
+            g[i + 1][0] = 3.0 * at(i, 0) - 3.0 * at(i, 1) + at(i, 2);
+            g[i + 1][n + 1] = 3.0 * at(i, n - 1) - 3.0 * at(i, n - 2) + at(i, n - 3);
+        }
+        for j in 0..n + 2 {
+            g[0][j] = 3.0 * g[1][j] - 3.0 * g[2][j] + g[3][j];
+            g[m + 1][j] = 3.0 * g[m][j] - 3.0 * g[m - 1][j] + g[m - 2][j];
+        }
+        g
+    };
+    let (gx, gy, gz) = (ext(x), ext(y), ext(z));
+    let mut out = [vec![0.0; m * n], vec![0.0; m * n], vec![0.0; m * n]];
+    for i in 1..=m {
+        for j in 1..=n {
+            let u = [gx[i][j + 1] - gx[i][j - 1], gy[i][j + 1] - gy[i][j - 1], gz[i][j + 1] - gz[i][j - 1]];
+            let v = [gx[i + 1][j] - gx[i - 1][j], gy[i + 1][j] - gy[i - 1][j], gz[i + 1][j] - gz[i - 1][j]];
+            let c = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+            let len = (c[0] * c[0] + c[1] * c[1] + c[2] * c[2]).sqrt();
+            let len = if len == 0.0 { 1.0 } else { len };
+            for k in 0..3 {
+                out[k][(i - 1) + m * (j - 1)] = c[k] / len;
+            }
+        }
+    }
+    let [a, b, c] = out;
+    Ok([Matrix::new(m, n, a), Matrix::new(m, n, b), Matrix::new(m, n, c)])
+}
+
+fn surfnorm(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
+    let a = crate::builtins_plot::select_axes(it, a)?;
+    let (x, y, z) = match a.len() {
+        0 => return rt("Not enough input arguments."),
+        1 | 2 => {
+            let z = a[0].to_matrix()?;
+            let (m, n) = (z.rows(), z.cols());
+            let x = Matrix::new(m, n, (0..m * n).map(|k| (k / m + 1) as f64).collect());
+            let y = Matrix::new(m, n, (0..m * n).map(|k| (k % m + 1) as f64).collect());
+            (x, y, z)
+        }
+        _ => {
+            let (x, y, z) = (a[0].to_matrix()?, a[1].to_matrix()?, a[2].to_matrix()?);
+            let (m, n) = (z.rows(), z.cols());
+            // Vector x and y expand to the grid.
+            let x = if x.numel() == n && m != 1 { Matrix::new(m, n, (0..m * n).map(|k| x.data[k / m]).collect()) } else { x };
+            let y = if y.numel() == m && n != 1 { Matrix::new(m, n, (0..m * n).map(|k| y.data[k % m]).collect()) } else { y };
+            (x, y, z)
+        }
+    };
+    let [nx, ny, nz] = surface_normals(&x, &y, &z)?;
+    if nargout > 0 {
+        return Ok(Some(vec![Value::Num(nx), Value::Num(ny), Value::Num(nz)].into_iter().take(nargout).collect()));
+    }
+    // No outputs: draw the surface with its normals.
+    let held = it.current_figure().axes_mut().hold;
+    let (xv, yv, zv) = (Value::Num(x), Value::Num(y), Value::Num(z));
+    it.call_function("surf", vec![xv.clone(), yv.clone(), zv.clone()], 0)?;
+    it.current_figure().axes_mut().hold = true;
+    it.call_function("quiver3", vec![xv, yv, zv, Value::Num(nx), Value::Num(ny), Value::Num(nz), Value::num(0.0)], 0)?;
+    it.current_figure().axes_mut().hold = held;
+    none()
+}
+
+fn secondary_label(it: &mut Interpreter, name: &str, a: &[Value]) -> Ret {
+    let a = crate::builtins_plot::select_axes(it, a)?;
+    let text = match a.first() {
+        Some(v) => crate::builtins_plot::text_of(v)?,
+        None => return rt("Not enough input arguments."),
+    };
+    let k = match name {
+        "xsecondarylabel" => 0,
+        "ysecondarylabel" => 1,
+        _ => 2,
+    };
+    it.current_figure().axes_mut().secondary[k] = text;
+    let part = [gfx::Part::XSecondary, gfx::Part::YSecondary, gfx::Part::ZSecondary][k];
+    let label = gfx::ids_of(&it.current_axes_handle()).unwrap()[0] + part as u64;
+    if a.len() > 1 {
+        let mut sa = vec![gfx::handle(it, label)];
+        sa.extend(a[1..].iter().cloned());
+        it.call_function("set", sa, 0)?;
+    }
+    none()
+}
+
+/// `ruler2num` / `num2ruler`: numeric rulers pass values through; datetime rulers count days from
+/// the start of the day of the earliest plotted time.
+fn ruler_convert(it: &mut Interpreter, name: &str, a: &[Value]) -> Ret {
+    let v = arg(a, 0, name)?;
+    let ruler = arg(a, 1, name)?;
+    let Some(Target::Part(f, ax, part)) = gfx::ids_of(ruler).and_then(|ids| ids.first().copied()).and_then(|id| gfx::resolve(it, id)) else {
+        return rt("The second argument must be a ruler object.");
+    };
+    if !matches!(part, gfx::Part::XAxis | gfx::Part::YAxis | gfx::Part::ZAxis | gfx::Part::YAxisRight) {
+        return rt("The second argument must be a ruler object.");
+    }
+    let axes = &it.figures[f].axes[ax];
+    if !(part == gfx::Part::XAxis && axes.x_kind == XAxisKind::DateTime) {
+        return match (name, v) {
+            ("ruler2num", Value::Time(_)) => rt("Values must be numeric for a numeric ruler."),
+            _ => one(Value::Num(v.to_matrix()?)),
+        };
+    }
+    const MS_DAY: f64 = 86_400_000.0;
+    let first = axes.series.iter().flat_map(|s| s.x.iter().copied()).filter(|x| x.is_finite()).fold(f64::INFINITY, f64::min);
+    let origin = if first.is_finite() { (first / MS_DAY).floor() * MS_DAY } else { 0.0 };
+    match name {
+        "ruler2num" => {
+            let Value::Time(t) = v else { return rt("Values must be datetime values for a datetime ruler.") };
+            let (m, _) = crate::builtins_plot::x_numeric(&Value::Time(t.clone()))?;
+            one(Value::Num(Matrix::from_dims(m.dims.clone(), m.data.iter().map(|x| (x - origin) / MS_DAY).collect())))
+        }
+        _ => {
+            let m = v.to_matrix()?;
+            let ms = m.data.iter().map(|d| origin + d * MS_DAY).collect();
+            one(Value::Time(crate::time::TimeArray::datetimes(m.dims.clone(), ms, None, String::new(), crate::time::DEFAULT_DT_FORMAT.into())))
+        }
+    }
+}
 
 const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
 
@@ -788,6 +922,9 @@ fn movie(it: &mut Interpreter, a: &[Value]) -> Ret {
 
 pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Ret {
     match name {
+        "surfnorm" => surfnorm(it, a, nargout),
+        "xsecondarylabel" | "ysecondarylabel" | "zsecondarylabel" => secondary_label(it, name, a),
+        "ruler2num" | "num2ruler" => ruler_convert(it, name, a),
         "ezplot" => ezplot(it, a, nargout),
         "ezplot3" => ezplot3(it, a, nargout),
         "ezsurf" | "ezsurfc" | "ezmesh" | "ezmeshc" | "ezcontour" | "ezcontourf" => ez_grid(it, name, a, nargout),

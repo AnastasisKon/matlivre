@@ -28,6 +28,7 @@ mod ode_more;
 mod ops_functions;
 mod patterns;
 mod plot_extra;
+mod plot_helpers;
 mod plotmore;
 mod polyfun;
 mod polyshape;
