@@ -15,7 +15,8 @@ Notes for coding agents (and people) working in this repository.
 
 ## After implementing functions
 
-1. Add tests under `crates/livre-lang/tests/` with expected output recorded from MATLAB.
+1. Add tests under `crates/livre-lang/tests/all/` (one module per area, listed in `main.rs`)
+   with expected output recorded from MATLAB.
 2. Commit the implementation.
 3. Refresh the coverage checklist: `bash tools/coverage/update.sh`, then commit
    "Refresh the coverage checklist".
