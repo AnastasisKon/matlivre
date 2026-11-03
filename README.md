@@ -20,7 +20,7 @@ of MATLAB, written in Rust: no MATLAB installation, license or Java runtime is n
 - **Runs code fast.** On a 12-case benchmark of loops, recursion, array growth, linear
   algebra, sorting, strings, structs and cells, MatLivre is 4.7x faster than MATLAB R2023b and
   65x faster than GNU Octave (geometric mean), with identical results in all three.
-- **Speaks MATLAB.** 1,480 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
+- **Speaks MATLAB.** 1,512 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
   error messages and semantics, checked against MATLAB R2023b output.
 - **One small program.** A single 36 MB executable that depends only on DLLs shipped with
   Windows.
@@ -156,14 +156,14 @@ per-case Octave comparison are in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.m
 
 MATLAB compatibility is the rule: semantics, display and error messages follow MATLAB R2023b.
 [`docs/matlab-coverage.md`](docs/matlab-coverage.md) lists every function of the MATLAB and
-Symbolic Math Toolbox references and its status (1,480 implemented).
+Symbolic Math Toolbox references and its status (1,512 implemented).
 
 - N-D arrays of every numeric type, `logical`, `char` and strings, with implicit expansion,
   saturating integer arithmetic and complex numbers; regular expressions and text patterns
   (`digitsPattern + "-" + lettersPattern`).
 - Cell arrays, struct arrays, function handles and anonymous functions, `containers.Map`,
   `dictionary`, `categorical`, `table` (joins, grouping, reshaping), `timetable`
-  (`retime`, `synchronize`, `timerange`), `datetime`, `duration`
+  (`retime`, `synchronize`, `timerange`), `timeseries` and `tscollection`, `datetime`, `duration`
   and `calendarDuration`.
 - `classdef` classes (properties, methods, static methods, inheritance, handle and value
   semantics, operator overloading, events and listeners, enumerations) and function files from the script's folder; argument
@@ -234,7 +234,7 @@ installation when one is present. Benchmarks: [`benchmarks/run_bench.bat`](bench
 - Rich text in live scripts (bold and italic runs, links, equations, images) is shown as plain
   text.
 - Functions still to implement are listed in [`docs/matlab-coverage.md`](docs/matlab-coverage.md),
-  among them `timeseries` objects, spreadsheet and XML import options, and the `settings` API.
+  among them spreadsheet and XML import options, the `settings` API and charts such as `heatmap` and `boxchart`.
 - Sparse matrices are stored densely: they behave and display as in MATLAB, but matrices
   with more than 2e8 elements are refused.
 - Windows is the only tested platform.
