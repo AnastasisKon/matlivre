@@ -801,7 +801,8 @@ fn draw_axes_3d(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, cs: &ColorScale, cell
                         color
                     }
                 };
-                let pts: Vec<[f64; 3]> = (0..s.x.len()).map(|i| [s.x[i], s.y.get(i).copied().unwrap_or(f64::NAN), zat(i)]).collect();
+                let off = |v: &[f64], i: usize| v.get(i).copied().unwrap_or(0.0);
+                let pts: Vec<[f64; 3]> = (0..s.x.len()).map(|i| [s.x[i] + off(&s.dx, i), s.y.get(i).copied().unwrap_or(f64::NAN) + off(&s.dy, i), zat(i)]).collect();
                 if s.line_style != LineStyle::None {
                     for i in 1..pts.len() {
                         if let (Some(p), Some(q)) = (v.screen(pts[i - 1]), v.screen(pts[i])) {
@@ -853,7 +854,11 @@ fn draw_figure(c: &mut dyn Canvas, skin: &Skin, fig: &Figure, size: Vec2, hover:
     for (i, ax) in fig.axes.iter().enumerate() {
         let (r, col) = (i / gc, i % gc);
         let rect = Rect::from_min_size(pos2(col as f32 * cell.x, top + r as f32 * cell.y), cell);
-        draw_axes(c, &t, ax, fig.colormap.as_deref(), rect, gr * gc > 1, hover);
+        if ax.yy.is_some() && !ax.is_3d() && !ax.polar {
+            draw_axes_yy(c, &t, ax, fig.colormap.as_deref(), rect, gr * gc > 1, hover);
+        } else {
+            draw_axes(c, &t, ax, fig.colormap.as_deref(), rect, gr * gc > 1, hover);
+        }
     }
     for o in fig.objects.iter().filter(|o| o.visible) {
         draw_annotation(c, &t, o, size);
@@ -1113,7 +1118,8 @@ fn in_legend(s: &Series) -> bool {
     !matches!(s.kind, SeriesKind::Text | SeriesKind::ConstantLine | SeriesKind::Region | SeriesKind::Light)
 }
 
-fn draw_axes(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, fig_map: Option<&[[f64; 3]]>, cell: Rect, multi: bool, hover: Option<Pos2>) {
+/// Draws 2-D axes in `cell`; returns the plot box (`None` for 3-D and polar axes).
+fn draw_axes(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, fig_map: Option<&[[f64; 3]]>, cell: Rect, multi: bool, hover: Option<Pos2>) -> Option<Rect> {
     let ordered;
     let t = match &ax.color_order {
         Some(order) if !order.is_empty() => {
@@ -1139,11 +1145,11 @@ fn draw_axes(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, fig_map: Option<&[[f64; 
     }
     if ax.is_3d() {
         draw_axes_3d(c, t, ax, &cs, cell, plot, &m);
-        return;
+        return None;
     }
     if ax.polar || ax.polar_grid {
         draw_axes_polar(c, t, ax, &cs, cell, plot, &m);
-        return;
+        return None;
     }
     let (xt, yt) = (((plot.width() / 82.0) as f64).clamp(2.0, 8.0), ((plot.height() / 44.0) as f64).clamp(2.0, 6.0));
     let ((dx0, dx1), (dy0, dy1)) = ax.bounds();
@@ -1161,7 +1167,7 @@ fn draw_axes(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, fig_map: Option<&[[f64; 
         plot.max.y -= (ax.xticks.angle.to_radians().sin().abs() * 30.0).min(40.0);
     }
     if plot.width() < 20.0 || plot.height() < 20.0 {
-        return;
+        return None;
     }
     // A manual DataAspectRatio: one x unit spans as many pixels as aspect[0]/aspect[1] y units.
     // As in MATLAB, an automatic limit widens to fill the box; with both limits fixed, or when
@@ -1254,7 +1260,7 @@ fn draw_axes(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, fig_map: Option<&[[f64; 
     for (k, s) in ax.series.iter().enumerate().filter(|(_, s)| s.visible) {
         let color = t.color(s, k);
         let stroke = Stroke::new(s.line_width.max(2.0), color);
-        let pts: Vec<Option<Pos2>> = s.x.iter().zip(&s.y).map(|(&x, &y)| at(x, y)).collect();
+        let pts: Vec<Option<Pos2>> = s.x.iter().zip(&s.y).enumerate().map(|(i, (&x, &y))| at(x + s.dx.get(i).copied().unwrap_or(0.0), y + s.dy.get(i).copied().unwrap_or(0.0))).collect();
         match s.kind {
             SeriesKind::Region => {}
             SeriesKind::Stem => {
@@ -1330,8 +1336,10 @@ fn draw_axes(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, fig_map: Option<&[[f64; 
                 if let Some(p) = pts.first().copied().flatten() {
                     let color = s.color.map(|c| Color32::from_rgb(c[0], c[1], c[2])).unwrap_or(t.fg);
                     let font = Font { size: s.font_size.map(|f| f * 1.2).unwrap_or(LABEL.size), bold: false };
-                    for (i, line) in s.label.lines().enumerate() {
-                        c.text(p + vec2(0.0, font.mid() + i as f32 * font.size * 1.25), Align::Min, line, font, color, 0.0);
+                    let lines: Vec<&str> = s.label.lines().collect();
+                    let (align, lift) = if s.centered { (Align::Center, (lines.len() as f32 - 1.0) * font.size * 0.625) } else { (Align::Min, 0.0) };
+                    for (i, line) in lines.iter().enumerate() {
+                        c.text(p + vec2(0.0, font.mid() + i as f32 * font.size * 1.25 - lift), align, line, font, color, 0.0);
                     }
                 }
             }
@@ -1408,7 +1416,15 @@ fn draw_axes(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, fig_map: Option<&[[f64; 
             }
             SeriesKind::Line | SeriesKind::Scatter => draw_polyline(c, &pts, stroke, s.line_style),
         }
-        if let (Some(mk), false) = (s.marker, matches!(s.kind, SeriesKind::Text | SeriesKind::ConstantLine | SeriesKind::Region | SeriesKind::Patch | SeriesKind::Rectangle | SeriesKind::Light)) {
+        if s.kind == SeriesKind::Scatter && !s.sizes.is_empty() {
+            // Bubbles: each its own diameter, with a translucent fill.
+            let fill = color.gamma_multiply(s.face_alpha.clamp(0.0, 1.0));
+            for (i, pt) in pts.iter().enumerate() {
+                if let Some(p) = pt {
+                    c.circle(*p, s.sizes.get(i).copied().unwrap_or(s.marker_size) / 2.0, fill, Stroke::new(1.0_f32, color));
+                }
+            }
+        } else if let (Some(mk), false) = (s.marker, matches!(s.kind, SeriesKind::Text | SeriesKind::ConstantLine | SeriesKind::Region | SeriesKind::Patch | SeriesKind::Rectangle | SeriesKind::Light)) {
             for pt in pts.iter().flatten() {
                 draw_marker(c, mk, *pt, s.marker_size / 2.0 + 1.0, color, s.kind == SeriesKind::Scatter);
             }
@@ -1421,9 +1437,9 @@ fn draw_axes(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, fig_map: Option<&[[f64; 
     }
 
     if sx.log || sy.log {
-        return;
+        return Some(plot);
     }
-    let Some(h) = hover.filter(|h| plot.contains(*h)) else { return };
+    let Some(h) = hover.filter(|h| plot.contains(*h)) else { return Some(plot) };
     c.clip(Some(plot));
     c.line(&[pos2(h.x, plot.top()), pos2(h.x, plot.bottom())], Stroke::new(1.0_f32, t.cross), &[3.0, 3.0]);
     c.clip(None);
@@ -1452,6 +1468,53 @@ fn draw_axes(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, fig_map: Option<&[[f64; 
     c.rect(r, RADIUS, t.badge, Stroke::NONE);
     for (i, l) in lines.iter().enumerate() {
         c.text(pos2(r.left() + 10.0, r.top() + 18.0 + i as f32 * 17.0), Align::Min, l, LABEL, Color32::WHITE, 0.0);
+    }
+    Some(plot)
+}
+
+/// `yyaxis` axes: the right side's objects are drawn rescaled onto the left y axis, and the
+/// right y axis (ticks and label in its color) along the right edge.
+fn draw_axes_yy(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, fig_map: Option<&[[f64; 3]]>, cell: Rect, multi: bool, hover: Option<Pos2>) {
+    let Some(yy) = &ax.yy else { return };
+    let (left, right) = (ax.side(false), ax.side(true));
+    let yt = (((cell.height() - 82.0) / 44.0) as f64).clamp(2.0, 6.0);
+    let scale = |a: &Axes| {
+        let (_, b) = a.bounds();
+        let mut s = Scale::new(b, a.ylim.is_some(), a.ylog, positive_min(a, false), yt, false);
+        if let Some(v) = &a.yticks.values {
+            s.ticks = v.clone();
+        }
+        s
+    };
+    let (ls, rs) = (scale(&left), scale(&right));
+    let mut merged = left.clone();
+    merged.ylim = Some((ls.lo, ls.hi));
+    merged.yticks.values = Some(ls.ticks.clone());
+    for s in merged.series.iter_mut().filter(|s| s.right) {
+        for y in s.y.iter_mut() {
+            *y = match (rs.frac(*y), ls.log) {
+                (Some(f), false) => ls.lo + f * (ls.hi - ls.lo),
+                (Some(f), true) => 10f64.powf(ls.lo.log10() + f * (ls.hi.log10() - ls.lo.log10())),
+                (None, _) => f64::NAN,
+            };
+        }
+    }
+    let label_of = |i: usize, v: f64| tick_text(&right.yticks, &rs, i, v, |v| tick_label(v, rs.step()));
+    let tick_w = rs.ticks.iter().enumerate().map(|(i, &v)| c.text_width(&label_of(i, v), TICK)).fold(0.0, f32::max);
+    let reserve = tick_w + 14.0 + if right.ylabel.is_empty() { 0.0 } else { 22.0 };
+    let inner = Rect::from_min_max(cell.min, pos2(cell.max.x - reserve, cell.max.y));
+    let Some(plot) = draw_axes(c, t, &merged, fig_map, inner, multi, hover) else { return };
+    let color = rgb32(yy.colors[1]);
+    let stroke = Stroke::new(1.0_f32, color);
+    c.line(&[pos2(plot.right(), plot.top()), pos2(plot.right(), plot.bottom())], stroke, &[]);
+    for (i, &v) in rs.ticks.iter().enumerate() {
+        let Some(f) = rs.frac(v).filter(|f| (-1e-6..=1.0 + 1e-6).contains(f)) else { continue };
+        let y = plot.bottom() - f as f32 * plot.height();
+        c.line(&[pos2(plot.right() - 4.0, y), pos2(plot.right(), y)], stroke, &[]);
+        c.text(pos2(plot.right() + 8.0, y + TICK.mid()), Align::Min, &label_of(i, v), TICK, color, 0.0);
+    }
+    if !right.ylabel.is_empty() {
+        c.text(pos2(plot.right() + tick_w + 24.0, plot.center().y), Align::Center, &right.ylabel, LABEL, color, std::f32::consts::FRAC_PI_2);
     }
 }
 

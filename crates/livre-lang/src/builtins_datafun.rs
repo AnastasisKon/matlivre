@@ -4266,7 +4266,7 @@ fn nbins_edges(lo: f64, hi: f64, n: usize) -> Vec<f64> {
 
 /// Automatic bin edges: unit bins centered on integers for integer data with a small range,
 /// otherwise a "nice" width from Scott's rule (n^(-1/3) in 1-D, n^(-1/4) in 2-D).
-fn auto_edges(v: &[f64], two_d: bool) -> Vec<f64> {
+pub(crate) fn auto_edges(v: &[f64], two_d: bool) -> Vec<f64> {
     let vals: Vec<f64> = v.iter().copied().filter(|x| x.is_finite()).collect();
     if vals.is_empty() {
         return vec![0.0, 1.0];

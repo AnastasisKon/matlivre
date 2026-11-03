@@ -60,6 +60,7 @@ pub mod lang_more;
 pub mod plot_extra;
 pub mod volume;
 pub mod timeseries;
+pub mod charts;
 pub mod time;
 pub mod value;
 

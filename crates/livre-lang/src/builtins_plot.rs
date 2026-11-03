@@ -42,7 +42,22 @@ impl Interpreter {
         }
         let ax = self.current_figure().axes_mut();
         let mut removed = Vec::new();
-        if !ax.hold {
+        let mut side_colors = Vec::new();
+        if let Some(yy) = &ax.yy {
+            // yyaxis: a new plot replaces the active side's objects only, in that side's color.
+            let (right, color) = (yy.right_active, yy.colors[yy.right_active as usize]);
+            if !ax.hold {
+                removed = ax.series.iter().filter(|s| s.right == right).map(|s| s.id).collect();
+                ax.series.retain(|s| s.right != right);
+            }
+            for s in &mut series {
+                s.right = right;
+                if s.color.is_none() && matches!(s.kind, SeriesKind::Line | SeriesKind::Scatter | SeriesKind::Stairs | SeriesKind::Stem | SeriesKind::ErrorBar | SeriesKind::Bar | SeriesKind::Area) {
+                    s.color = Some(color.map(|c| (c * 255.0).round() as u8));
+                    side_colors.push((s.id, color));
+                }
+            }
+        } else if !ax.hold {
             let (grid, id) = (ax.grid, ax.id);
             removed = ax.series.iter().map(|s| s.id).collect();
             *ax = Axes { grid, id, ..Axes::default() };
@@ -53,6 +68,9 @@ impl Interpreter {
         ax.series.extend(series);
         for id in removed {
             self.gfx_store.remove(&id);
+        }
+        for (id, c) in side_colors {
+            self.gfx_store.entry(id).or_default().push(("Color".to_string(), Value::Num(Matrix::row(c.to_vec()))));
         }
         ids
     }
@@ -125,7 +143,7 @@ fn text_of(v: &Value) -> R<String> {
 }
 
 /// Numeric x data; datetimes and durations plot by their ms value with a time axis.
-fn x_numeric(v: &Value) -> R<(Matrix, XAxisKind)> {
+pub(crate) fn x_numeric(v: &Value) -> R<(Matrix, XAxisKind)> {
     match v {
         Value::Time(t) => {
             let kind = match t.kind {

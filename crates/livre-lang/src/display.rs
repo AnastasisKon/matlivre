@@ -354,12 +354,15 @@ fn grid(rows: usize, cols: usize, items: &[String], sep: &str) -> String {
     }
     let mut out = String::new();
     for r in 0..rows {
+        let mut line = String::new();
         for c in 0..cols {
             let s = &items[c * rows + r];
-            out.push_str(sep);
-            out.push_str(s);
-            out.push_str(&" ".repeat(widths[c] - s.chars().count()));
+            line.push_str(sep);
+            line.push_str(s);
+            line.push_str(&" ".repeat(widths[c] - s.chars().count()));
         }
+        // The last column is not padded.
+        out.push_str(line.trim_end_matches(' '));
         out.push('\n');
     }
     out
@@ -427,10 +430,18 @@ pub(crate) fn struct_fields_body(s: &StructArray, f: NumFormat) -> String {
             Value::Cell(_) => format!("{{{}}}", summary(v, f)),
             Value::Object(_) if crate::containers::is_categorical(v) && v.numel() == 1 => summary(v, f),
             Value::Struct(_) | Value::Object(_) | Value::Table(_) => format!("[{}]", summary(v, f)),
+            // Empty arrays other than 0×0 show their size.
+            Value::Num(m) if m.kind != Kind::Char && m.is_empty() && m.dims != [0, 0] => format!("[{} {}]", nd::size_text(&m.dims), v.class_name()),
             Value::Num(m) if m.kind != Kind::Char => {
                 let s = summary(v, f);
                 if s.contains('×') && !s.starts_with('[') { format!("[{s}]") } else { s }
             }
+            // String rows show their elements; other string arrays their size.
+            Value::Str(s) if s.dims.len() == 2 && s.dims[0] == 1 && s.data.len() > 1 => {
+                let items: Vec<String> = s.data.iter().map(|x| x.as_ref().map(|t| format!("\"{t}\"")).unwrap_or_else(|| "<missing>".into())).collect();
+                format!("[{}]", items.join("    "))
+            }
+            Value::Str(s) if s.data.len() != 1 => format!("[{} string]", nd::size_text(&s.dims)),
             other => summary(other, f),
         };
         out.push_str(&format!("    {n:>w$}: {shown}\n"));

@@ -40,9 +40,13 @@ pub enum Part {
     YAxis,
     ZAxis,
     Legend,
+    /// The right y ruler of `yyaxis` axes (`YAxis` is then the left one).
+    YAxisRight,
+    /// The y label of the inactive side of `yyaxis` axes.
+    YLabelOther,
 }
 
-const PARTS: [Part; 9] = [Part::Title, Part::XLabel, Part::YLabel, Part::ZLabel, Part::Subtitle, Part::XAxis, Part::YAxis, Part::ZAxis, Part::Legend];
+const PARTS: [Part; 11] = [Part::Title, Part::XLabel, Part::YLabel, Part::ZLabel, Part::Subtitle, Part::XAxis, Part::YAxis, Part::ZAxis, Part::Legend, Part::YAxisRight, Part::YLabelOther];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Target {
@@ -133,7 +137,7 @@ fn class_of(it: &Interpreter, t: Target) -> &'static str {
         Target::Axes(f, a) if it.figures[f].axes[a].polar => "matlab.graphics.axis.PolarAxes",
         Target::Axes(..) => "matlab.graphics.axis.Axes",
         Target::Series(f, a, s) => series_class(&it.figures[f].axes[a].series[s]),
-        Target::Part(_, _, Part::XAxis | Part::YAxis | Part::ZAxis) => "matlab.graphics.axis.decorator.NumericRuler",
+        Target::Part(_, _, Part::XAxis | Part::YAxis | Part::ZAxis | Part::YAxisRight) => "matlab.graphics.axis.decorator.NumericRuler",
         Target::Part(_, _, Part::Legend) => "matlab.graphics.illustration.Legend",
         Target::Part(..) => "matlab.graphics.primitive.Text",
         Target::FigObj(f, k) => it.figures[f].objects[k].kind.class(),
@@ -424,17 +428,30 @@ fn texts(v: &Value) -> R<Vec<String>> {
     })
 }
 
+/// Tick labels as MATLAB returns them: a cell column, or the char matrix they were set as.
+fn label_value(ticks: &graphics::Ticks, items: &[String]) -> Value {
+    if !ticks.as_char {
+        return cell_col(items);
+    }
+    let w = items.iter().map(|s| s.chars().count()).max().unwrap_or(0);
+    let rows: Vec<Vec<char>> = items.iter().map(|s| s.chars().chain(std::iter::repeat(' ')).take(w).collect()).collect();
+    let data: Vec<f64> = (0..w).flat_map(|j| rows.iter().map(move |r| r[j] as u32 as f64)).collect();
+    let mut m = Matrix::new(items.len(), w, data);
+    m.kind = Kind::Char;
+    Value::Num(m)
+}
+
 fn cell_col(items: &[String]) -> Value {
     Value::Cell(CellArray::col(items.iter().map(|s| Value::chars(s)).collect()))
 }
 
 // ---- get / set -------------------------------------------------------------------------------
 
-fn stored(it: &Interpreter, id: u64, name: &str) -> Option<Value> {
+pub(crate) fn stored(it: &Interpreter, id: u64, name: &str) -> Option<Value> {
     it.gfx_store.get(&id).and_then(|m| m.iter().find(|(n, _)| n == name)).map(|(_, v)| v.clone())
 }
 
-fn store(it: &mut Interpreter, id: u64, name: &str, v: Value) {
+pub(crate) fn store(it: &mut Interpreter, id: u64, name: &str, v: Value) {
     let m = it.gfx_store.entry(id).or_default();
     match m.iter_mut().find(|(n, _)| n == name) {
         Some(e) => e.1 = v,
@@ -443,7 +460,7 @@ fn store(it: &mut Interpreter, id: u64, name: &str, v: Value) {
 }
 
 /// Ticks of an axis: set values, or the automatic ones within the limits.
-fn tick_values(ticks: &graphics::Ticks, lo: f64, hi: f64) -> Vec<f64> {
+pub(crate) fn tick_values(ticks: &graphics::Ticks, lo: f64, hi: f64) -> Vec<f64> {
     if let Some(v) = &ticks.values {
         return v.clone();
     }
@@ -478,9 +495,20 @@ pub fn format_tick(format: Option<&str>, v: f64) -> String {
 }
 
 /// Property `name` (MATLAB's spelling) of handle `id`.
-fn get_prop(it: &mut Interpreter, id: u64, name: &str) -> R<Value> {
+pub(crate) fn get_prop(it: &mut Interpreter, id: u64, name: &str) -> R<Value> {
     let t = resolve(it, id).ok_or_else(|| LangError::new("Invalid or deleted object.", 0))?;
     let class = class_of(it, t);
+    // Charts keep their own properties; their drawn parts are rebuilt from them.
+    if crate::charts::is_chart(class) {
+        if let Some(v) = stored(it, id, name) {
+            return Ok(v);
+        }
+        if let (Target::Series(f, a, _), "Parent") = (t, name) {
+            let parent = if crate::charts::in_axes(class) { axes_id(it, f, a) } else { it.figures[f].id as u64 };
+            return Ok(handle(it, parent));
+        }
+        return Ok(default_value(it, class, name));
+    }
     if let Some(v) = computed(it, id, t, name)? {
         return Ok(v);
     }
@@ -564,8 +592,8 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
                 "XGrid" | "YGrid" => on_off_value(ax.grid),
                 "XTick" => row(&tick_values(&ax.xticks, x0, x1)),
                 "YTick" => row(&tick_values(&ax.yticks, y0, y1)),
-                "XTickLabel" => cell_col(&tick_labels(&ax.xticks, &tick_values(&ax.xticks, x0, x1))),
-                "YTickLabel" => cell_col(&tick_labels(&ax.yticks, &tick_values(&ax.yticks, y0, y1))),
+                "XTickLabel" => label_value(&ax.xticks, &tick_labels(&ax.xticks, &tick_values(&ax.xticks, x0, x1))),
+                "YTickLabel" => label_value(&ax.yticks, &tick_labels(&ax.yticks, &tick_values(&ax.yticks, y0, y1))),
                 "XTickMode" => Value::chars(if ax.xticks.values.is_some() { "manual" } else { "auto" }),
                 "YTickMode" => Value::chars(if ax.yticks.values.is_some() { "manual" } else { "auto" }),
                 "XTickLabelRotation" => Value::num(ax.xticks.angle as f64),
@@ -582,6 +610,16 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
                 }
                 "Position" | "InnerPosition" if stored(it, id, name).is_none() => row(&[0.13, 0.11, 0.775, 0.815]),
                 "OuterPosition" if stored(it, id, name).is_none() => row(&[0.0, 0.0, 1.0, 1.0]),
+                "YAxisLocation" if ax.yy.is_some() => Value::chars(if ax.yy.as_ref().unwrap().right_active { "right" } else { "left" }),
+                "YAxis" if ax.yy.is_some() => {
+                    let base = axes_id(it, f, a);
+                    let ids = [base + Part::YAxis as u64, base + Part::YAxisRight as u64];
+                    let v = handles(it, &ids);
+                    if let Value::Object(o) = &v {
+                        o.props.borrow_mut()[0] = Value::Num(Matrix::col(ids.iter().map(|&i| i as f64).collect()));
+                    }
+                    v
+                }
                 "Title" | "XLabel" | "YLabel" | "ZLabel" | "Subtitle" | "XAxis" | "YAxis" | "ZAxis" | "Legend" => {
                     let part = match name {
                         "Title" => Part::Title,
@@ -601,7 +639,9 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
                     handle(it, base + part as u64)
                 }
                 "Children" => {
-                    let ids: Vec<u64> = ax.series.iter().rev().map(|s| s.id).collect();
+                    // yyaxis axes list the active side's objects.
+                    let side = ax.yy.as_ref().map(|yy| yy.right_active);
+                    let ids: Vec<u64> = ax.series.iter().rev().filter(|s| side.map_or(true, |r| s.right == r)).map(|s| s.id).collect();
                     handles(it, &ids)
                 }
                 "Parent" => handle(it, it.figures[f].id as u64),
@@ -638,6 +678,10 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
                 "Curvature" if s.kind == SeriesKind::Rectangle => row(&s.v),
                 "Position" if s.kind == SeriesKind::Light => row(&[s.x[0], s.y[0], s.z.first().copied().unwrap_or(0.0)]),
                 "Style" if s.kind == SeriesKind::Light => Value::chars(&s.label),
+                "CData" if s.kind == SeriesKind::Scatter && stored(it, id, name).is_none() => rgb_value(match s.color {
+                    Some(c) => render_to_rgb(c),
+                    None => COLOR_ORDER[si % COLOR_ORDER.len()],
+                }),
                 "Color" | "FaceColor" if !matches!(s.kind, SeriesKind::Text | SeriesKind::Surface | SeriesKind::Image | SeriesKind::Contour | SeriesKind::Rectangle | SeriesKind::Light) => match stored(it, id, name) {
                     Some(v) => v,
                     None => rgb_value(match s.color {
@@ -718,11 +762,19 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
                     Some(v) => v,
                     None => Value::num(ax.font_size.unwrap_or(10.0) as f64 * if p == Part::Title { 1.1 } else { 1.1 }),
                 },
-                (Part::XAxis | Part::YAxis, _) => {
+                (Part::YLabelOther, "String") => Value::chars(ax.yy.as_ref().map(|yy| yy.other.ylabel.as_str()).unwrap_or("")),
+                (Part::YLabelOther, "Type") => Value::chars("text"),
+                (Part::XAxis | Part::YAxis | Part::YAxisRight, _) => {
                     let x = p == Part::XAxis;
+                    // A side of yyaxis axes: its own limits, ticks, label and color.
+                    let right = p == Part::YAxisRight;
+                    let side = ax.yy.as_ref().filter(|_| !x).map(|yy| (yy.right_active == right, yy.colors[right as usize]));
+                    let view = if side.is_some() { ax.side(right) } else { ax.clone() };
+                    let ax = &view;
                     let ((x0, x1), (y0, y1)) = ax.limits();
                     let (lo, hi, ticks, log) = if x { (x0, x1, &ax.xticks, ax.xlog) } else { (y0, y1, &ax.yticks, ax.ylog) };
                     match name {
+                        "Color" if side.is_some() => row(&side.unwrap().1),
                         "Limits" => row(&[lo, hi]),
                         "TickValues" => row(&tick_values(ticks, lo, hi)),
                         "TickLabels" => cell_col(&tick_labels(ticks, &tick_values(ticks, lo, hi))),
@@ -731,7 +783,12 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
                         "Scale" => Value::chars(if log { "log" } else { "linear" }),
                         "Label" => {
                             let base = axes_id(it, f, a);
-                            handle(it, base + if x { Part::XLabel } else { Part::YLabel } as u64)
+                            let part = match side {
+                                Some((false, _)) => Part::YLabelOther,
+                                _ if x => Part::XLabel,
+                                _ => Part::YLabel,
+                            };
+                            handle(it, base + part as u64)
                         }
                         "FontSize" => Value::num(ax.font_size.unwrap_or(10.0) as f64),
                         "Parent" => {
@@ -800,6 +857,12 @@ fn set_prop(it: &mut Interpreter, id: u64, name: &str, v: Value) -> R<()> {
     let auto = v.text().map(|t| t == "auto").unwrap_or(false);
     let mut save: Option<Value> = None;
     let t = resolve(it, id).ok_or_else(|| LangError::new("Invalid or deleted object.", 0))?;
+    if crate::charts::is_chart(class_of(it, t)) {
+        if let Target::Series(f, ..) = t {
+            mark(it, f);
+        }
+        return crate::charts::set(it, id, name, v);
+    }
     let mut keep = true;
     match t {
         Target::Root | Target::Figure(_) => {
@@ -854,8 +917,14 @@ fn set_prop(it: &mut Interpreter, id: u64, name: &str, v: Value) -> R<()> {
                 "YTick" => ax.yticks.values = Some(v.to_matrix()?.data),
                 "XTickMode" if auto => ax.xticks.values = None,
                 "YTickMode" if auto => ax.yticks.values = None,
-                "XTickLabel" => ax.xticks.labels = Some(texts(&v)?),
-                "YTickLabel" => ax.yticks.labels = Some(texts(&v)?),
+                "XTickLabel" => {
+                    ax.xticks.labels = Some(texts(&v)?);
+                    ax.xticks.as_char = matches!(&v, Value::Num(m) if m.kind == Kind::Char);
+                }
+                "YTickLabel" => {
+                    ax.yticks.labels = Some(texts(&v)?);
+                    ax.yticks.as_char = matches!(&v, Value::Num(m) if m.kind == Kind::Char);
+                }
                 "XTickLabelMode" if auto => ax.xticks.labels = None,
                 "YTickLabelMode" if auto => ax.yticks.labels = None,
                 "XTickLabelRotation" => ax.xticks.angle = v.scalar()? as f32,
@@ -1005,33 +1074,30 @@ fn set_prop(it: &mut Interpreter, id: u64, name: &str, v: Value) -> R<()> {
                     }
                     Part::XLabel => ax.xlabel = text,
                     Part::YLabel => ax.ylabel = text,
+                    Part::YLabelOther => {
+                        if let Some(yy) = ax.yy.as_mut() {
+                            yy.other.ylabel = text;
+                        }
+                    }
                     Part::ZLabel => ax.zlabel = text,
                     Part::Legend => ax.legend = Some(texts(&v)?),
                     _ => {}
                 }
                 keep = false;
-            } else if matches!(p, Part::XAxis | Part::YAxis) {
+            } else if matches!(p, Part::XAxis | Part::YAxis | Part::YAxisRight) {
                 let x = p == Part::XAxis;
                 let ax = &mut it.figures[f].axes[a];
-                let ticks = if x { &mut ax.xticks } else { &mut ax.yticks };
-                keep = false;
-                match name {
-                    "TickLabelFormat" => ticks.format = Some(v.text()?),
-                    "TickValues" => ticks.values = Some(v.to_matrix()?.data),
-                    "TickLabels" => ticks.labels = Some(texts(&v)?),
-                    "TickLabelRotation" => ticks.angle = v.scalar()? as f32,
-                    "Limits" => {
-                        let l = limits_arg(&v)?;
-                        if x { ax.xlim = l } else { ax.ylim = l }
-                    }
-                    "Scale" => {
-                        let log = v.text()? == "log";
-                        if x { ax.xlog = log } else { ax.ylog = log }
-                    }
-                    "FontSize" => ax.font_size = Some(v.scalar()? as f32),
-                    "Label" if is_gfx(&v) => {}
-                    _ => keep = true,
+                // The inactive side of yyaxis axes: made active while it is set.
+                let active = ax.yy.as_ref().map(|yy| yy.right_active);
+                let flip = !x && active.is_some_and(|r| r != (p == Part::YAxisRight));
+                if flip {
+                    ax.switch_side(p == Part::YAxisRight);
                 }
+                let r = set_ruler(ax, x, name, &v);
+                if flip {
+                    ax.switch_side(active.unwrap());
+                }
+                keep = !r?;
             } else if p == Part::Legend && name == "Visible" && !on_off(&v)? {
                 it.figures[f].axes[a].legend = None;
                 keep = false;
@@ -1107,6 +1173,29 @@ fn set_prop(it: &mut Interpreter, id: u64, name: &str, v: Value) -> R<()> {
         store(it, id, name, save.unwrap_or(v));
     }
     Ok(())
+}
+
+/// Sets a property of the x or (active) y ruler of `ax`; false when it is only stored.
+fn set_ruler(ax: &mut graphics::Axes, x: bool, name: &str, v: &Value) -> R<bool> {
+    let ticks = if x { &mut ax.xticks } else { &mut ax.yticks };
+    match name {
+        "TickLabelFormat" => ticks.format = Some(v.text()?),
+        "TickValues" => ticks.values = Some(v.to_matrix()?.data),
+        "TickLabels" => ticks.labels = Some(texts(v)?),
+        "TickLabelRotation" => ticks.angle = v.scalar()? as f32,
+        "Limits" => {
+            let l = limits_arg(v)?;
+            if x { ax.xlim = l } else { ax.ylim = l }
+        }
+        "Scale" => {
+            let log = v.text()? == "log";
+            if x { ax.xlog = log } else { ax.ylog = log }
+        }
+        "FontSize" => ax.font_size = Some(v.scalar()? as f32),
+        "Label" if is_gfx(v) => {}
+        _ => return Ok(false),
+    }
+    Ok(true)
 }
 
 /// Resolves a property name for `set`/`get` (any case) or errors like MATLAB.
@@ -1190,12 +1279,14 @@ fn short_props(class: &str, it: &Interpreter, id: u64) -> Vec<&'static str> {
             let _ = (it, id);
             vec!["Color", "LineStyle", "LineWidth", "Marker", "MarkerSize", "MarkerFaceColor", "XData", "YData"]
         }
-        "matlab.graphics.chart.primitive.Scatter" => vec!["Marker", "MarkerEdgeColor", "MarkerFaceColor", "SizeData", "LineWidth", "XData", "YData"],
+        "matlab.graphics.chart.primitive.Scatter" => vec!["Marker", "MarkerEdgeColor", "MarkerFaceColor", "LineWidth", "XData", "YData", "SizeData", "CData"],
+        "matlab.graphics.chart.primitive.BubbleChart" => vec!["MarkerEdgeColor", "MarkerFaceColor", "LineWidth", "XData", "YData", "SizeData", "CData"],
         "matlab.graphics.chart.primitive.Bar" => vec!["BarLayout", "BarWidth", "FaceColor", "EdgeColor", "BaseValue", "XData", "YData"],
         "matlab.graphics.chart.primitive.ErrorBar" => vec!["Color", "LineStyle", "LineWidth", "Marker", "XData", "YData", "YNegativeDelta", "YPositiveDelta"],
         "matlab.graphics.primitive.Patch" => vec!["FaceColor", "FaceAlpha", "EdgeColor", "LineStyle", "Faces", "Vertices"],
         "matlab.graphics.axis.decorator.NumericRuler" => vec!["Limits", "Scale", "Exponent", "TickValues", "TickLabelFormat"],
         "matlab.graphics.illustration.Legend" => vec!["String", "Location", "Orientation", "FontSize", "Position", "Units"],
+        c if crate::charts::is_chart(c) => crate::charts::short_props(c, it, id),
         c => props_of(c).iter().map(|p| p.0).filter(|n| !n.ends_with("Mode")).take(6).collect(),
     }
 }
@@ -1225,6 +1316,7 @@ pub fn display(it: &mut Interpreter, name: &str, v: &Value) -> R<String> {
                 None => format!("Figure ({n})"),
             }
         }
+        _ if crate::charts::is_chart(&class) => crate::charts::display_title(it, id, short(&class)),
         _ if class.ends_with(".Text") => {
             let s = get_prop(it, id, "String")?.text().unwrap_or_default();
             if s.is_empty() { "Text".to_string() } else { format!("Text ({s})") }

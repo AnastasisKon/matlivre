@@ -124,3 +124,10 @@ fn cell_columns_pad_inside_the_braces() {
     assert!(out[1].ends_with("    {'x'        }    {[ 22]}\n    {'long text'}    {[1 2]}"), "{:?}", out[1]);
     assert!(out[2].ends_with("    {[       1]}\n    {[\"str\"   ]}\n    {0×0 double}"), "{:?}", out[2]);
 }
+
+#[test]
+fn a_byte_order_mark_is_not_code() {
+    // Files saved by Notepad or PowerShell start with one; MATLAB runs them.
+    let (it, _) = run("\u{feff}x = 2 + 3;");
+    assert_eq!(num(&it, "x"), [5.0]);
+}

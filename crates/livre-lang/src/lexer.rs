@@ -84,6 +84,8 @@ const OPS: [&str; 30] = [
 ];
 
 pub fn tokenize(src: &str) -> Result<Vec<Token>, LangError> {
+    // A UTF-8 byte order mark (files saved by Notepad or PowerShell) is not code.
+    let src = src.strip_prefix('\u{feff}').unwrap_or(src);
     Lexer { s: src.as_bytes(), src, i: 0, line: 1, out: Vec::new(), brackets: Vec::new() }.run()
 }
 

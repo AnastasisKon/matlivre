@@ -121,6 +121,15 @@ pub struct Series {
     pub w: Vec<f64>,
     /// The MATLAB class of the object when it differs from its kind's (`polarhistogram`).
     pub class_hint: Option<&'static str>,
+    /// Marker diameter of each point in points (bubble charts); empty = `marker_size`.
+    pub sizes: Vec<f32>,
+    /// Offsets added to x and y where the points are drawn (`swarmchart` jitter).
+    pub dx: Vec<f64>,
+    pub dy: Vec<f64>,
+    /// Plotted against the right y axis of `yyaxis` axes.
+    pub right: bool,
+    /// Text centered on its position (chart labels) rather than starting there.
+    pub centered: bool,
 }
 
 impl Series {
@@ -159,6 +168,11 @@ impl Series {
             v: Vec::new(),
             w: Vec::new(),
             class_hint: None,
+            sizes: Vec::new(),
+            dx: Vec::new(),
+            dy: Vec::new(),
+            right: false,
+            centered: false,
         }
     }
 }
@@ -171,6 +185,8 @@ pub struct Ticks {
     /// `xtickformat` format: a printf format such as `'%.2f'`, or `'usd'`, `'percentage'`, ...
     pub format: Option<String>,
     pub angle: f32,
+    /// The labels were set as a char matrix (`datetick`) and read back as one.
+    pub as_char: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -222,6 +238,25 @@ pub struct Axes {
     pub theta_zero: f64,
     /// Angle of the r tick labels in degrees (`RAxisLocation`); `None` is 80.
     pub r_axis_angle: Option<f64>,
+    /// Two y axes (`yyaxis`). `ylim`, `yticks`, `ylabel` and `ylog` belong to the active side.
+    pub yy: Option<Box<Yy>>,
+}
+
+/// The y axis of one side of `yyaxis` axes.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct YySide {
+    pub ylim: Option<(f64, f64)>,
+    pub yticks: Ticks,
+    pub ylabel: String,
+    pub ylog: bool,
+}
+
+/// `yyaxis` state: the active side, the inactive side's axis and the colors of both sides.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Yy {
+    pub right_active: bool,
+    pub other: YySide,
+    pub colors: [[f64; 3]; 2],
 }
 
 /// Figure-level objects: a tiled layout or annotations (in normalized figure units, origin at
@@ -320,6 +355,11 @@ impl Axes {
         let mut xs: Vec<f64> = Vec::new();
         let mut ys: Vec<f64> = Vec::new();
         for s in self.series.iter().filter(|s| s.visible) {
+            // With two y axes only the active side's objects set the y limits.
+            if self.yy.as_ref().is_some_and(|yy| yy.right_active != s.right) {
+                xs.extend(&s.x);
+                continue;
+            }
             match s.kind {
                 // Constant lines and regions do not affect the limits.
                 SeriesKind::ConstantLine | SeriesKind::Region | SeriesKind::Text | SeriesKind::Light => continue,
@@ -385,7 +425,31 @@ impl Axes {
             y0 -= d;
             y1 += d;
         }
+        // Bubbles (markers sized per point) get room around them.
+        if self.series.iter().any(|s| s.visible && !s.sizes.is_empty()) {
+            let (dx, dy) = ((x1 - x0) * 0.1, (y1 - y0) * 0.1);
+            (x0, x1, y0, y1) = (x0 - dx, x1 + dx, y0 - dy, y1 + dy);
+        }
         (self.xlim.unwrap_or((x0, x1)), self.ylim.unwrap_or((y0, y1)))
+    }
+
+    /// The axes as seen from one side of `yyaxis` axes: that side's y axis is the active one.
+    pub fn side(&self, right: bool) -> Axes {
+        let mut a = self.clone();
+        if let Some(yy) = a.yy.as_mut() {
+            if yy.right_active != right {
+                yy.right_active = right;
+                let other = YySide { ylim: a.ylim, yticks: a.yticks.clone(), ylabel: a.ylabel.clone(), ylog: a.ylog };
+                let side = std::mem::replace(&mut yy.other, other);
+                (a.ylim, a.yticks, a.ylabel, a.ylog) = (side.ylim, side.yticks, side.ylabel, side.ylog);
+            }
+        }
+        a
+    }
+
+    /// Makes the other side of `yyaxis` axes active (swapping the y axis settings).
+    pub fn switch_side(&mut self, right: bool) {
+        *self = self.side(right);
     }
 
     /// The limits MATLAB reports for `XLim`/`YLim`: set limits, or the data range rounded

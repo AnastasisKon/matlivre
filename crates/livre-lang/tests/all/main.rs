@@ -1,6 +1,7 @@
 //! Every livre-lang integration test, built as one test program so it links once.
 
 mod archive;
+mod charts;
 mod classes_more;
 mod containers;
 mod data_files;

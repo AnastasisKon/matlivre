@@ -1276,6 +1276,15 @@ fn cat_display(name: &str, c: &Cat) -> String {
 
 // ---- display and dims hooks ----------------------------------------------------------------
 
+/// What `disp` shows for a categorical array: its elements without the header.
+pub fn cat_disp(v: &Value) -> Option<String> {
+    let Value::Object(o) = v else { return None };
+    (o.class.name == CAT).then(|| {
+        let c = Cat::of(o);
+        if c.codes.data.is_empty() { String::new() } else { cat_body(&c) }
+    })
+}
+
 /// `name = ...` for an unsuppressed value of these classes.
 pub fn display(name: &str, v: &Value, f: NumFormat) -> Option<String> {
     if let Some(text) = crate::patterns::display(name, v) {
