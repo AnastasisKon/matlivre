@@ -20,7 +20,7 @@ of MATLAB, written in Rust: no MATLAB installation, license or Java runtime is n
 - **Runs code fast.** On a 12-case benchmark of loops, recursion, array growth, linear
   algebra, sorting, strings, structs and cells, MatLivre is 4.7x faster than MATLAB R2023b and
   65x faster than GNU Octave (geometric mean), with identical results in all three.
-- **Speaks MATLAB.** 1,512 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
+- **Speaks MATLAB.** 1,533 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
   error messages and semantics, checked against MATLAB R2023b output.
 - **One small program.** A single 36 MB executable that depends only on DLLs shipped with
   Windows.
@@ -123,8 +123,10 @@ per-case Octave comparison are in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.m
   statements.
 - Live controls (sliders, drop-downs, check boxes, edit fields) in `.mlx` files.
 - Figures drawn inline: 2-D and 3-D plots, surfaces with lighting, contours, images, bar, pie,
-  histogram, polar plots and more, tiled layouts, annotations and colorbars, with a crosshair
-  that reads values off the plot. `saveas`, `print` and `exportgraphics` write PNG and SVG.
+  histogram, polar plots and more; charts (heatmaps, box, swarm and bubble charts, pie and
+  donut charts, word clouds, stacked and parallel coordinates plots); two y axes (`yyaxis`),
+  date ticks, tiled layouts, annotations and colorbars, with a crosshair that reads values off
+  the plot. `saveas`, `print` and `exportgraphics` write PNG and SVG.
 - A files panel, workspace browser, command window and floating figure windows; tabs that can
   be dragged between windows; light and dark themes.
 - Code runs on its own engine thread, so the editor never freezes while a script runs.
@@ -156,7 +158,7 @@ per-case Octave comparison are in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.m
 
 MATLAB compatibility is the rule: semantics, display and error messages follow MATLAB R2023b.
 [`docs/matlab-coverage.md`](docs/matlab-coverage.md) lists every function of the MATLAB and
-Symbolic Math Toolbox references and its status (1,512 implemented).
+Symbolic Math Toolbox references and its status (1,533 implemented).
 
 - N-D arrays of every numeric type, `logical`, `char` and strings, with implicit expansion,
   saturating integer arithmetic and complex numbers; regular expressions and text patterns
@@ -234,7 +236,9 @@ installation when one is present. Benchmarks: [`benchmarks/run_bench.bat`](bench
 - Rich text in live scripts (bold and italic runs, links, equations, images) is shown as plain
   text.
 - Functions still to implement are listed in [`docs/matlab-coverage.md`](docs/matlab-coverage.md),
-  among them spreadsheet and XML import options, the `settings` API and charts such as `heatmap` and `boxchart`.
+  among them symbolic special functions, spreadsheet and XML import options and the `settings` API.
+- Chart layouts that MATLAB fits to the screen (word clouds, bubble clouds, automatic
+  `binscatter` bins) are approximated, and `geobubble` draws no basemap.
 - Sparse matrices are stored densely: they behave and display as in MATLAB, but matrices
   with more than 2e8 elements are refused.
 - Windows is the only tested platform.
