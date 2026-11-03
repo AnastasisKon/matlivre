@@ -1296,6 +1296,9 @@ pub fn display(name: &str, v: &Value, f: NumFormat) -> Option<String> {
     if let Some(text) = crate::io_more::display(name, v) {
         return Some(text);
     }
+    if let Some(text) = crate::timeseries::display(name, v) {
+        return Some(text);
+    }
     let Value::Object(o) = v else { return None };
     Some(match o.class.name.as_str() {
         MAP => map_display(name, o),

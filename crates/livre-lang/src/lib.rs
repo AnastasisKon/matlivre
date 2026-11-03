@@ -59,6 +59,7 @@ pub mod io_more;
 pub mod lang_more;
 pub mod plot_extra;
 pub mod volume;
+pub mod timeseries;
 pub mod time;
 pub mod value;
 
