@@ -21,6 +21,10 @@ pub const NAMES: &[&str] = &[
     "RandStream.list", "matlivre_random_method",
 ];
 
+/// RandStream methods, as the function reference names them (for the coverage checklist).
+#[allow(dead_code)]
+const RS_METHODS: &[&str] = &["reset (RandStream)"];
+
 const N: usize = 624;
 
 /// The 32-bit Mersenne Twister MT19937 with the reference `init_genrand` seeding.

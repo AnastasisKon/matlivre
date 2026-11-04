@@ -321,6 +321,8 @@ enum CellAlign {
     Left,
     NumBrackets,
     StrBrackets,
+    /// Function handles: right-aligned inside the braces.
+    Right,
 }
 
 /// The text between the braces of a cell element.
@@ -342,6 +344,7 @@ fn cell_item(v: &Value, f: NumFormat) -> (String, CellAlign) {
             (inner, CellAlign::NumBrackets)
         }
         Value::Str(s) if s.data.len() == 1 => (summary(v, f), CellAlign::StrBrackets),
+        Value::Func(fv) => (func_text(fv), CellAlign::Right),
         Value::Object(_) if crate::containers::is_categorical(v) && !summary(v, f).ends_with("categorical") => (summary(v, f), CellAlign::NumBrackets),
         other => (summary(other, f), CellAlign::Left),
     }
@@ -374,7 +377,7 @@ fn cell_body(c: &CellArray, f: NumFormat) -> String {
     let (rows, cols) = (c.rows(), c.cols());
     let raw: Vec<(String, CellAlign)> = c.data.iter().map(|v| cell_item(v, f)).collect();
     // Width between the braces, brackets included.
-    let len = |s: &str, a: &CellAlign| s.chars().count() + if matches!(a, CellAlign::Left) { 0 } else { 2 };
+    let len = |s: &str, a: &CellAlign| s.chars().count() + if matches!(a, CellAlign::Left | CellAlign::Right) { 0 } else { 2 };
     // Each column is as wide as its widest element.
     let widths: Vec<usize> = (0..cols).map(|j| (0..rows).map(|i| { let (s, a) = &raw[j * rows + i]; len(s, a) }).max().unwrap_or(0)).collect();
     let items: Vec<String> = raw
@@ -387,6 +390,7 @@ fn cell_body(c: &CellArray, f: NumFormat) -> String {
                 CellAlign::Left => format!("{{{s}{pad}}}"),
                 CellAlign::NumBrackets => format!("{{[{pad}{s}]}}"),
                 CellAlign::StrBrackets => format!("{{[{s}{pad}]}}"),
+                CellAlign::Right => format!("{{{pad}{s}}}"),
             }
         })
         .collect();

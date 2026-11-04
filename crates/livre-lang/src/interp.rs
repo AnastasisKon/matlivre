@@ -102,6 +102,12 @@ pub struct Interpreter {
     cancel: Option<Arc<AtomicBool>>,
     pub(crate) tic: Instant,
     pub(crate) rng: crate::random::Streams,
+    pub(crate) timers: crate::timers::Timers,
+    /// `diary`: whether output is being copied to the diary file, and the file.
+    pub(crate) diary: (bool, String),
+    /// The functions of each loaded file, in file order: (the first is the file's main
+    /// function, names) — for `localfunctions`.
+    pub(crate) local_groups: Vec<(bool, Vec<String>)>,
     end_stack: Vec<f64>,
     depth: usize,
     /// Source names of the arguments of the builtin being called (`table` uses them).
@@ -157,6 +163,9 @@ impl Interpreter {
             cancel: None,
             tic: Instant::now(),
             rng: crate::random::Streams::new(),
+            timers: Default::default(),
+            diary: (false, "diary".into()),
+            local_groups: Vec::new(),
             end_stack: Vec::new(),
             depth: 0,
             arg_names: Vec::new(),
@@ -235,6 +244,9 @@ impl Interpreter {
         for f in &prog.functions {
             self.functions.insert(f.name.clone(), f.clone());
         }
+        if !prog.functions.is_empty() {
+            self.local_groups.push((false, prog.functions.iter().map(|f| f.name.clone()).collect()));
+        }
     }
 
     pub fn clear_functions(&mut self) {
@@ -306,7 +318,9 @@ impl Interpreter {
                     }
                     self.last_error = (e.message.clone(), e.identifier.clone());
                     let line = self.top_line.max(1);
-                    self.pending.push(Output { line, kind: OutputKind::Error(e.message.clone()) });
+                    let kind = OutputKind::Error(e.message.clone());
+                    self.diary_write(&kind);
+                    self.pending.push(Output { line, kind });
                     self.flush_outputs();
                     return Err(e);
                 }
@@ -316,7 +330,29 @@ impl Interpreter {
     }
 
     pub(crate) fn emit(&mut self, kind: OutputKind) {
+        self.diary_write(&kind);
         self.pending.push(Output { line: self.top_line, kind });
+    }
+
+    /// Appends output to the diary file while `diary` is on.
+    fn diary_write(&mut self, kind: &OutputKind) {
+        if !self.diary.0 {
+            return;
+        }
+        let text = match kind {
+            OutputKind::Text(t) => t.clone(),
+            OutputKind::Value { text, .. } => format!("{text}
+"),
+            OutputKind::Warning(w) => format!("Warning: {w}
+"),
+            OutputKind::Error(e) => format!("{e}
+"),
+            OutputKind::Figure(_) => return,
+        };
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&self.diary.1) {
+            let _ = f.write_all(text.as_bytes());
+        }
     }
 
     pub(crate) fn mark_figure_dirty(&mut self, id: u32) {
@@ -491,6 +527,7 @@ impl Interpreter {
             return None;
         }
         let main = prog.functions[0].clone();
+        self.local_groups.push((true, prog.functions.iter().map(|f| f.name.clone()).collect()));
         // Subfunctions are visible to the file's main function (registered globally here).
         for f in &prog.functions[1..] {
             self.path_functions.entry(f.name.clone()).or_insert_with(|| f.clone());
@@ -626,6 +663,33 @@ impl Interpreter {
     /// script or the command line).
     pub(crate) fn current_function(&self) -> Option<String> {
         self.frames.iter().rev().find_map(|f| f.func.clone())
+    }
+
+    /// Whether a class method or constructor is running.
+    pub(crate) fn in_method(&self) -> bool {
+        !self.class_stack.is_empty()
+    }
+
+    /// The user functions and classes loaded so far (`inmem`), sorted.
+    pub(crate) fn loaded_names(&self) -> (Vec<String>, Vec<String>) {
+        let mut f: Vec<String> = self.functions.keys().chain(self.path_functions.keys()).cloned().collect();
+        f.sort();
+        f.dedup();
+        let mut c: Vec<String> = self.classes.keys().cloned().collect();
+        c.sort();
+        (f, c)
+    }
+
+    /// The local functions of the file whose code is running (`localfunctions`).
+    pub(crate) fn local_function_names(&self) -> Vec<String> {
+        match self.current_function() {
+            Some(cur) => match self.local_groups.iter().rev().find(|(_, names)| names.contains(&cur)) {
+                Some((true, names)) => names[1..].to_vec(),
+                Some((false, names)) => names.clone(),
+                None => Vec::new(),
+            },
+            None => self.local_groups.iter().rev().find(|(main, _)| !main).map(|(_, n)| n.clone()).unwrap_or_default(),
+        }
     }
 
     /// `run(name)`: a script found on the search path (or at a path) run in the current
@@ -1072,6 +1136,7 @@ impl Interpreter {
                     }
                     let sub = o.get(f);
                     let new = self.apply_assign(sub, rest, rhs)?;
+                    let new = if o.class.name == "timer" { crate::timers::check_prop(self, f, new)? } else { new };
                     Ok(Value::Object(o.set(f, new)?))
                 }
                 Some(Value::Table(mut t)) => {

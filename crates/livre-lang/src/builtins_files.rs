@@ -577,7 +577,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
             }
         }
         "delete" => {
-            for v in a {
+            for v in a.iter().filter(|v| !matches!(v, Value::Num(m) if m.is_empty())) {
                 // Graphics handles are deleted by the graphics code; here only files.
                 let pat = v.text()?;
                 let hits = glob(&pat);

@@ -300,6 +300,9 @@ fn canonical(class: &str, name: &str) -> Option<String> {
     if class == "matlab.graphics.axis.decorator.NumericRuler" && lower == "secondarylabel" {
         return Some("SecondaryLabel".into());
     }
+    if class == "matlab.ui.Root" && (lower == "diary" || lower == "diaryfile") {
+        return Some(if lower == "diary" { "Diary" } else { "DiaryFile" }.into());
+    }
     None
 }
 
@@ -552,6 +555,8 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
                 handles(it, &ids)
             }
             "Type" => Value::chars("root"),
+            "Diary" => Value::chars(if it.diary.0 { "on" } else { "off" }),
+            "DiaryFile" => Value::chars(&it.diary.1),
             _ => return Ok(None),
         },
         Target::Figure(f) => match name {

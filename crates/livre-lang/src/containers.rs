@@ -32,7 +32,7 @@ pub const NAMES: &[&str] = &[
     "types", "entries", "insert", "lookup", "categories", "countcats", "addcats", "removecats", "renamecats", "mergecats", "reordercats", "setcats", "isordinal",
     "isundefined", "iscategory", "isprotected", "matlivre_container_method", "double.empty", "single.empty", "logical.empty", "char.empty", "string.empty",
     "cell.empty", "struct.empty", "int8.empty", "int16.empty", "int32.empty", "int64.empty", "uint8.empty", "uint16.empty", "uint32.empty", "uint64.empty",
-    "categorical.empty",
+    "categorical.empty", "datetime.empty", "duration.empty", "calendarDuration.empty",
 ];
 
 /// `T.empty` / `T.empty(m, n, ...)`: an empty array of a built-in class (0×0 by default).
@@ -45,6 +45,12 @@ fn empty_of(class: &str, a: &[Value]) -> Ret {
         "string" => Value::Str(StrArray::from_dims(dims, Vec::new())),
         "cell" => Value::Cell(CellArray::from_dims(dims, Vec::new())),
         "struct" => Value::Struct(StructArray { dims, ..StructArray::empty_with(Vec::new()) }),
+        "datetime" => Value::Time(crate::time::TimeArray::datetimes(dims, Vec::new(), None, String::new(), crate::time::DEFAULT_DT_FORMAT.into())),
+        "duration" | "calendarDuration" => {
+            let f = if class == "duration" { "seconds" } else { "calmonths" };
+            let v = crate::time::call(f, &[Value::Num(Matrix::from_dims(dims, Vec::new()))], 1)?;
+            return Ok(v);
+        }
         "categorical" => Cat { codes: Matrix::from_dims(dims, Vec::new()), cats: Vec::new(), ordinal: false, protected: false }.value(),
         k => Value::Num(Matrix::from_dims(dims, Vec::new()).with_kind(Kind::from_name(k).unwrap_or(Kind::Double))),
     })
@@ -54,6 +60,9 @@ const MAP: &str = "containers.Map";
 const DICT: &str = "dictionary";
 const CAT: &str = "categorical";
 
+/// `T.empty` is a static method of every class.
+#[allow(dead_code)]
+const EMPTY_METHODS: &[&str] = &["empty"];
 const MAP_METHODS: &[&str] = &["keys", "values", "isKey", "remove", "length", "isempty"];
 const DICT_METHODS: &[&str] = &["keys", "values", "isKey", "remove", "numEntries", "isConfigured", "types", "entries", "insert", "lookup", "isequal"];
 const CAT_METHODS: &[&str] = &[

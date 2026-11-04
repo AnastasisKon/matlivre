@@ -66,6 +66,8 @@ pub mod math_more;
 pub mod func_objects;
 pub mod files_more;
 pub mod random;
+pub mod session_more;
+pub mod timers;
 pub mod zones;
 pub mod time;
 pub mod value;

@@ -86,7 +86,7 @@ const OPS: [&str; 30] = [
 pub fn tokenize(src: &str) -> Result<Vec<Token>, LangError> {
     // A UTF-8 byte order mark (files saved by Notepad or PowerShell) is not code.
     let src = src.strip_prefix('\u{feff}').unwrap_or(src);
-    Lexer { s: src.as_bytes(), src, i: 0, line: 1, out: Vec::new(), brackets: Vec::new() }.run()
+    Lexer { s: src.as_bytes(), src, i: 0, line: 1, out: Vec::new(), brackets: Vec::new(), after_params: false }.run()
 }
 
 struct Lexer<'a> {
@@ -95,8 +95,11 @@ struct Lexer<'a> {
     i: usize,
     line: usize,
     out: Vec<Token>,
-    /// Open bracket stack: b'(', b'[', b'{'.
+    /// Open bracket stack: b'(', b'[', b'{' (b'@' for the parameter list of `@(x)`).
     brackets: Vec<u8>,
+    /// The last token closed the parameter list of an anonymous function, whose body
+    /// follows even after a space inside brackets (`{@(x) x+1, 2}`).
+    after_params: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -105,6 +108,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn push(&mut self, tok: Tok, space_before: bool) {
+        self.after_params = false;
         self.out.push(Token { tok, line: self.line, space_before });
     }
 
@@ -115,6 +119,9 @@ impl<'a> Lexer<'a> {
     /// The previous token ends a value, so `'` is a transpose and whitespace before a new
     /// value inside brackets separates elements.
     fn prev_is_value(&self) -> bool {
+        if self.after_params {
+            return false;
+        }
         match self.out.last().map(|t| &t.tok) {
             Some(Tok::Num(_)) | Some(Tok::Imag(_)) | Some(Tok::Chars(_)) | Some(Tok::Str(_)) | Some(Tok::Ident(_)) => true,
             Some(Tok::Kw(Kw::End)) => !self.brackets.is_empty(),
@@ -232,14 +239,15 @@ impl<'a> Lexer<'a> {
             }
             match c {
                 b'(' | b'[' | b'{' => {
-                    self.brackets.push(c);
+                    let anon = c == b'(' && matches!(self.out.last().map(|t| &t.tok), Some(Tok::Op("@")));
+                    self.brackets.push(if anon { b'@' } else { c });
                     self.i += 1;
                     let op = match c { b'(' => "(", b'[' => "[", _ => "{" };
                     self.push(Tok::Op(op), space);
                     continue;
                 }
                 b')' | b']' | b'}' => {
-                    self.brackets.pop();
+                    let params = self.brackets.pop() == Some(b'@');
                     // Drop a trailing row separator such as `[1 2\n]`.
                     if c != b')' && matches!(self.out.last().map(|t| &t.tok), Some(Tok::Sep(_))) {
                         self.out.pop();
@@ -247,6 +255,7 @@ impl<'a> Lexer<'a> {
                     self.i += 1;
                     let op = match c { b')' => ")", b']' => "]", _ => "}" };
                     self.push(Tok::Op(op), space);
+                    self.after_params = params;
                     continue;
                 }
                 b',' => {

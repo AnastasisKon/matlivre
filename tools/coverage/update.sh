@@ -18,10 +18,11 @@ cli="$root/target/release/matlivre-cli.exe"
 awk '{gsub(/\x27/, "\x27\x27"); printf "if ~exist(\x27%s\x27), disp(\x27%s\x27); end\n", $0, $0}' "$tmp/names.txt" > "$tmp/check.m"
 "$cli" "$tmp/check.m" | tr -d '\r' | grep -v '^Error' | sort -u > "$tmp/missing.txt" || true
 
-# Methods of built-in classes (exist() is 0 for them in MATLAB too): the *METHODS lists.
+# Methods of built-in classes (exist() is 0 for them in MATLAB too): the *METHODS lists,
+# where a name may carry its class as the reference lists it (`reset (RandStream)`).
 for f in "$root"/crates/livre-lang/src/*.rs; do
   awk '/const [A-Z_]*METHODS: &\[&str\] = &\[/,/\];/' "$f"
-done | { grep -oE '"[A-Za-z0-9_]+"' || true; } | tr -d '"' | sort -u > "$tmp/methods.txt"
+done | { grep -oE '"[A-Za-z0-9_]+( \([A-Za-z0-9_.]+\))?"' || true; } | tr -d '"' | sort -u > "$tmp/methods.txt"
 grep -vxFf "$tmp/methods.txt" "$tmp/missing.txt" > "$tmp/missing2.txt" || true
 mv "$tmp/missing2.txt" "$tmp/missing.txt"
 
