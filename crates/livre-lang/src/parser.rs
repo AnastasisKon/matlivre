@@ -583,6 +583,14 @@ impl Parser {
             return Ok(out);
         }
         loop {
+            // `f(Name=Value)` passes the name as a string scalar followed by the value.
+            if close == ")" {
+                if let (Tok::Ident(n), Tok::Op("=")) = (self.peek().clone(), self.peek_at(1).clone()) {
+                    self.bump();
+                    self.bump();
+                    out.push(Expr::Str(n));
+                }
+            }
             out.push(self.expr()?);
             if self.eat_op(close) {
                 break;

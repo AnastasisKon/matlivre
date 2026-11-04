@@ -1793,13 +1793,20 @@ impl Interpreter {
         match f {
             FuncValue::Named(n) => self.call_function(n, args, nargout),
             FuncValue::Anon { f, captured } => {
-                if args.len() > f.params.len() {
+                let has_varargin = f.params.last().is_some_and(|p| p == "varargin");
+                let fixed = f.params.len() - usize::from(has_varargin);
+                if args.len() > fixed && !has_varargin {
                     return rt("Too many input arguments.");
                 }
                 self.enter()?;
                 let mut vars: HashMap<String, Value> = captured.iter().cloned().collect();
+                let mut args = args;
+                let rest = if args.len() > fixed { args.split_off(fixed) } else { Vec::new() };
                 for (p, a) in f.params.iter().zip(args) {
                     vars.insert(p.clone(), a);
+                }
+                if has_varargin {
+                    vars.insert("varargin".into(), Value::Cell(CellArray::row(rest)));
                 }
                 self.frames.push(Frame { vars, globals: HashSet::new(), func: None });
                 let r = self.eval_multi(&f.body, nargout.max(1));

@@ -1,7 +1,8 @@
 //! Elementary and matrix extras (`sinpi`, `cospi`, `rms`, `residue`, `matchpairs`, `pageinv`,
 //! `pagenorm`, `expmv`, `combinations`, `interp1q`, `padecoef`), the state-space helpers
-//! `ss2tf` and `ltitr`, and platform queries (`ismac`, `ispc`, `isunix`, `isstudent`,
-//! `usejava`, `javachk`, `version`).
+//! `ss2tf` and `ltitr`, kernel density estimates (`kde`), `svdappend`, `superiorfloat`,
+//! `inner2outer`, small helpers (`getcolumn`, `setstr`, `vectorize`, `is2D`), and platform
+//! queries (`ismac`, `ispc`, `isunix`, `isstudent`, `usejava`, `javachk`, `version`).
 
 use crate::builtins::{arg, m_arg, Ret};
 use crate::cplx::{poly_roots, C};
@@ -14,7 +15,8 @@ type R<T> = Result<T, LangError>;
 
 pub const NAMES: &[&str] = &[
     "sinpi", "cospi", "rms", "residue", "matchpairs", "pageinv", "pagenorm", "expmv", "combinations", "interp1q", "padecoef", "ss2tf", "ltitr",
-    "ismac", "ispc", "isunix", "isstudent", "usejava", "javachk", "version",
+    "ismac", "ispc", "isunix", "isstudent", "usejava", "javachk", "version", "kde", "svdappend", "superiorfloat", "inner2outer", "getcolumn", "setstr",
+    "vectorize", "is2D",
 ];
 
 const VERSION: &str = "23.2.0.2409890 (R2023b) Update 3";
@@ -639,6 +641,200 @@ fn ltitr(a: &[Value]) -> R<Value> {
     Ok(Value::Num(Matrix::from_dims(vec![steps, n], out)))
 }
 
+// ---- kde, svdappend, superiorfloat, inner2outer ---------------------------------------
+
+/// Name-value options after the positional arguments, names lowercased.
+fn options<'a>(a: &'a [Value], name: &str) -> R<Vec<(String, &'a Value)>> {
+    if a.len() % 2 != 0 {
+        return rt(format!("Name-value arguments of {name} must come in pairs."));
+    }
+    a.chunks(2).map(|p| Ok((p[0].text()?.to_lowercase(), &p[1]))).collect()
+}
+
+fn median_of(mut v: Vec<f64>) -> f64 {
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let m = v.len();
+    if m == 0 {
+        f64::NAN
+    } else if m % 2 == 1 {
+        v[m / 2]
+    } else {
+        (v[m / 2 - 1] + v[m / 2]) / 2.0
+    }
+}
+
+fn kde(a: &[Value], nargout: usize) -> R<Vec<Value>> {
+    let x = m_arg(a, 0, "kde")?;
+    let column = x.cols() == 1 && x.rows() > 1;
+    let (mut weight, mut points, mut num_points, mut bw, mut kernel, mut cdf) = (None, None, 100usize, None, "normal".to_string(), false);
+    for (k, v) in options(&a[1..], "kde")? {
+        match k.as_str() {
+            "evaluationpoints" => points = Some(v.to_matrix()?),
+            "numpoints" => num_points = v.scalar()? as usize,
+            "bandwidth" => bw = Some(v.scalar()?),
+            "weight" => weight = Some(v.to_matrix()?.data),
+            "kernel" => {
+                kernel = v.text()?.to_lowercase();
+                if !["normal", "box", "triangle", "epanechnikov"].contains(&kernel.as_str()) {
+                    return rt(format!("Expected Kernel to match one of these values:\n'normal', 'box', 'triangle', 'epanechnikov'\nThe input, '{}', did not match any of the valid values.", v.text()?));
+                }
+            }
+            "probabilityfcn" => match v.text()?.to_lowercase().as_str() {
+                "pdf" => cdf = false,
+                "cdf" => cdf = true,
+                _ => return rt(format!("Expected ProbabilityFcn to match one of these values:\n'pdf', 'cdf'\nThe input, '{}', did not match any of the valid values.", v.text()?)),
+            },
+            _ => return rt(format!("'{k}' is not a recognized parameter. For a list of valid name-value pair arguments, see the documentation for this function.")),
+        }
+    }
+    let w_all = weight.unwrap_or_else(|| vec![1.0; x.numel()]);
+    if w_all.len() != x.numel() {
+        return rt("The weights must have one element per data value.");
+    }
+    let (data, w): (Vec<f64>, Vec<f64>) = x.data.iter().zip(&w_all).filter(|(v, w)| !v.is_nan() && !w.is_nan()).map(|(v, w)| (*v, *w)).unzip();
+    let n = data.len();
+    // The normal reference rule on the median absolute deviation; weights do not enter it.
+    let bw = bw.unwrap_or_else(|| {
+        let med = median_of(data.clone());
+        let mad = median_of(data.iter().map(|v| (v - med).abs()).collect());
+        mad / 0.6745 * (4.0 / (3.0 * n as f64)).powf(0.2)
+    });
+    let (lo, hi) = data.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), &v| (l.min(v), h.max(v)));
+    let xs = match points {
+        Some(p) => p,
+        None => {
+            // From three bandwidths below the data to three above.
+            let (a0, b0, k) = (lo - 3.0 * bw, hi + 3.0 * bw, num_points);
+            let v: Vec<f64> = (0..k).map(|i| if i + 1 == k { b0 } else { a0 + (b0 - a0) * i as f64 / (k - 1) as f64 }).collect();
+            Matrix::from_dims(if column { vec![k, 1] } else { vec![1, k] }, v)
+        }
+    };
+    let (s3, s5, s6) = (3f64.sqrt(), 5f64.sqrt(), 6f64.sqrt());
+    // Kernels with unit variance, as MATLAB scales them.
+    let pdf = |u: f64| match kernel.as_str() {
+        "box" => if u.abs() <= s3 { 0.5 / s3 } else { 0.0 },
+        "triangle" => if u.abs() < s6 { (1.0 - u.abs() / s6) / s6 } else { 0.0 },
+        "epanechnikov" => if u.abs() < s5 { 0.75 * (1.0 - u * u / 5.0) / s5 } else { 0.0 },
+        _ => (-0.5 * u * u).exp() / (2.0 * std::f64::consts::PI).sqrt(),
+    };
+    let cdf_of = |u: f64| match kernel.as_str() {
+        "box" => ((u + s3) / (2.0 * s3)).clamp(0.0, 1.0),
+        "triangle" => {
+            let t = (u / s6).clamp(-1.0, 1.0);
+            if t <= 0.0 { 0.5 * (1.0 + t) * (1.0 + t) } else { 1.0 - 0.5 * (1.0 - t) * (1.0 - t) }
+        }
+        "epanechnikov" => {
+            let t = (u / s5).clamp(-1.0, 1.0);
+            0.25 * (2.0 + 3.0 * t - t * t * t)
+        }
+        _ => 0.5 * crate::builtins_specfun::erfc(-u / std::f64::consts::SQRT_2),
+    };
+    let total: f64 = w.iter().sum();
+    let f: Vec<f64> = xs
+        .data
+        .iter()
+        .map(|&q| data.iter().zip(&w).map(|(xi, wi)| wi * if cdf { cdf_of((q - xi) / bw) } else { pdf((q - xi) / bw) / bw }).sum::<f64>() / total)
+        .collect();
+    let mut out = vec![Value::Num(Matrix::from_dims(xs.dims.clone(), f)), Value::Num(xs), Value::num(bw)];
+    out.truncate(nargout.max(1));
+    Ok(out)
+}
+
+/// `svdappend`: the economy SVD of `U*diag(S)*V'` with columns (or rows) `D` appended.
+fn svdappend(it: &mut Interpreter, a: &[Value], nargout: usize) -> R<Vec<Value>> {
+    let u = arg(a, 0, "svdappend")?.clone();
+    let s = m_arg(a, 1, "svdappend")?;
+    let v = arg(a, 2, "svdappend")?.clone();
+    let d = arg(a, 3, "svdappend")?.clone();
+    let mut rows = false;
+    for (k, val) in options(&a[4..], "svdappend")? {
+        match k.as_str() {
+            "shape" => rows = val.text()?.to_lowercase() == "rows",
+            _ => return rt(format!("'{k}' is not a recognized parameter. For a list of valid name-value pair arguments, see the documentation for this function.")),
+        }
+    }
+    let sm = if s.is_vector() || s.is_scalar() { call1(it, "diag", vec![Value::Num(s)])? } else { Value::Num(s) };
+    let vt = call1(it, "ctranspose", vec![v.clone()])?;
+    let us = call1(it, "mtimes", vec![u, sm])?;
+    let base = call1(it, "mtimes", vec![us, vt])?;
+    let full = if rows {
+        if d.dims().get(1).copied().unwrap_or(1) != v.dims()[0] {
+            return rt("When \"rows\" is specified, the fourth argument must have as many columns as the number of rows in the third argument.");
+        }
+        crate::indexing::vconcat(vec![base, d])?
+    } else {
+        if d.dims()[0] != base.dims()[0] {
+            return rt("When \"columns\" is specified, the fourth argument must have as many rows as the first argument.");
+        }
+        crate::indexing::hconcat(vec![base, d])?
+    };
+    let mut r = it.call_function("svd", vec![full, Value::chars("econ")], 3)?;
+    let sv = call1(it, "diag", vec![r.remove(1)])?;
+    let mut out = vec![r.remove(0), sv, r.remove(0)];
+    if nargout <= 1 {
+        return Ok(vec![out.remove(1)]);
+    }
+    out.truncate(nargout);
+    Ok(out)
+}
+
+fn superiorfloat(a: &[Value]) -> R<Value> {
+    let mut single = false;
+    for v in a {
+        match v {
+            Value::Num(m) if m.kind == Kind::Single => single = true,
+            Value::Num(m) if !matches!(m.kind, Kind::Int(_)) => {}
+            _ => return rt("Inputs must be floats, namely single or double."),
+        }
+    }
+    Ok(Value::chars(if single { "single" } else { "double" }))
+}
+
+/// `inner2outer`: a table of tables regrouped by the inner variable names.
+fn inner2outer(a: &[Value]) -> R<Value> {
+    let Value::Table(t) = arg(a, 0, "inner2outer")? else {
+        return rt("Incorrect number or types of inputs or outputs for function inner2outer.");
+    };
+    let mut inner: Vec<(String, Vec<String>, Vec<Value>)> = Vec::new();
+    for (outer, v) in t.names.iter().zip(&t.vars) {
+        let Value::Table(sub) = v else {
+            return rt("All variables of the input table must be tables or timetables.");
+        };
+        for (n, col) in sub.names.iter().zip(&sub.vars) {
+            match inner.iter_mut().find(|e| &e.0 == n) {
+                Some(e) => {
+                    e.1.push(outer.clone());
+                    e.2.push(col.clone());
+                }
+                None => inner.push((n.clone(), vec![outer.clone()], vec![col.clone()])),
+            }
+        }
+    }
+    let (mut names, mut vars) = (Vec::new(), Vec::new());
+    for (n, outers, cols) in inner {
+        names.push(n);
+        vars.push(Value::Table(Box::new(crate::table::Table::new(outers, cols)?)));
+    }
+    let mut out = (**t).clone();
+    out.names = names;
+    out.vars = vars;
+    Ok(Value::Table(Box::new(out)))
+}
+
+/// `vectorize`: the elementwise forms of `*`, `/`, `\` and `^`.
+fn vectorize(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    let mut prev = '\0';
+    for c in s.chars() {
+        if matches!(c, '*' | '/' | '\\' | '^') && prev != '.' {
+            out.push('.');
+        }
+        out.push(c);
+        prev = c;
+    }
+    out
+}
+
 // ---- platform ------------------------------------------------------------------------------
 
 fn javachk(a: &[Value]) -> R<Value> {
@@ -701,6 +897,29 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         }
         "javachk" => vec![javachk(a)?],
         "version" => version(a, nargout)?,
+        "kde" => kde(a, nargout)?,
+        "svdappend" => svdappend(it, a, nargout)?,
+        "superiorfloat" => vec![superiorfloat(a)?],
+        "inner2outer" => vec![inner2outer(a)?],
+        "getcolumn" => {
+            let data = arg(a, 0, name)?;
+            let cols = crate::indexing::to_index_arg(arg(a, 1, name)?)?;
+            vec![crate::indexing::index(data, &[IndexArg::All, cols])?]
+        }
+        "setstr" => vec![call1(it, "char", a.to_vec())?],
+        "vectorize" => {
+            let v = arg(a, 0, name)?;
+            let text = match v {
+                Value::Func(_) => call1(it, "func2str", vec![v.clone()])?.text()?,
+                _ => v.text()?,
+            };
+            vec![Value::chars(&vectorize(&text))]
+        }
+        "is2D" => {
+            let view = call1(it, "get", vec![arg(a, 0, name)?.clone(), Value::chars("View")])?.to_matrix()?;
+            let (az, el) = (view.data.first().copied().unwrap_or(0.0), view.data.get(1).copied().unwrap_or(90.0));
+            vec![Value::bool(az % 360.0 == 0.0 && el.abs() == 90.0)]
+        }
         _ => return Ok(None),
     };
     Ok(Some(outs))

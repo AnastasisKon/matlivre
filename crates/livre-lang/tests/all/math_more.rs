@@ -1,6 +1,7 @@
 //! sinpi, cospi, rms, residue, matchpairs, pageinv, pagenorm, combinations, ss2tf, ltitr,
-//! interp1q, padecoef, expmv, platform queries, and the display and norm fixes found with them,
-//! against MATLAB R2023b.
+//! interp1q, padecoef, expmv, kde, svdappend, superiorfloat, inner2outer, small helpers, platform
+//! queries, Name=Value arguments, and the display and norm fixes found with them, against MATLAB
+//! R2023b.
 
 use livre_lang::{Interpreter, OutputKind};
 
@@ -198,6 +199,81 @@ fn norms_singular_inverse_and_empty_display() {
             "f = 0×0 empty char array",
             "h = 0×1 empty logical array",
             "k = 0×2×2 empty double array",
+        ]
+    );
+}
+
+#[test]
+fn kernel_density_estimates() {
+    assert_eq!(
+        shown(concat!(
+            "[f,xf] = kde([1 2 2 3 7]); sz = size(f), xf([1 50 100])\n",
+            "[f2,xf2,bw] = kde([1 2 2 3 7], EvaluationPoints=[0 2 4]); f2, bw\n",
+            "f4 = kde([1 2 2 3 7], EvaluationPoints=[0 2 4], ProbabilityFcn=\"cdf\", Bandwidth=1)\n",
+            "f5 = kde([1 2 2 3 7], EvaluationPoints=[0 2 4], Kernel=\"epanechnikov\", Bandwidth=2)\n",
+            "[f6,~,bw6] = kde([1;5;9], EvaluationPoints=5, Weight=[1 2 1])\n",
+            "f9 = kde([1 2 2 3 7], EvaluationPoints=[0 2 4], Kernel=\"box\", Bandwidth=1)\n",
+            "f10 = kde([1 2 2 3 7], EvaluationPoints=[0 2 4], Kernel=\"triangle\", Bandwidth=1)\n",
+            "f11 = kde([1 2 NaN 3], EvaluationPoints=2, Bandwidth=1)\n",
+            "[f8,x8] = kde([1 2 2 3 7]', NumPoints=2); size(x8)\n",
+        )),
+        [
+            "sz = 1×2\n\n     1   100",
+            "ans = 1×3\n\n   -2.4145    3.9352   10.4145",
+            "f2 = 1×3\n\n    0.0798    0.2355    0.0819",
+            "bw = 1.1382",
+            "f4 = 1×3\n\n    0.0411    0.4000    0.7592",
+            "f5 = 1×3\n\n    0.1040    0.1308    0.1224",
+            "f6 = 0.0684",
+            "bw6 = 5.0424",
+            "f9 = 1×3\n\n    0.0577    0.2309    0.0577",
+            "f10 = 1×3\n\n    0.0783    0.2599    0.0783",
+            "f11 = 0.2943",
+            "ans = 1×2\n\n     2     1",
+        ]
+    );
+}
+
+#[test]
+fn svdappend_superiorfloat_and_helpers() {
+    assert_eq!(
+        shown(concat!(
+            "[U,S,V] = svdappend([1 0;0 2], [1 0;0 1], [1 0;0 1], [3;4]); S\nA = round(U*diag(S)*V', 10)\n",
+            "[U2,S2,V2] = svdappend([1 0;0 1;0 0], [2 0;0 1], [1 0;0 1], [0 5], 'Shape', 'rows'); size(U2)\n",
+            "c1 = superiorfloat(1, single(2))\nc2 = superiorfloat(1, 2)\ntry, superiorfloat(int8(1), 2), catch e, disp(e.message), end\n",
+            "A = table([1;2],[3;4],'VariableNames',{'x','y'}); B = table([5;6],[7;8],'VariableNames',{'x','y'});\n",
+            "T2 = inner2outer(table(A,B,'VariableNames',{'a','b'})); T2.Properties.VariableNames\nT2.x\n",
+            "q2 = getcolumn([1 2 3;4 5 6], [1 3])\nst = setstr([72 105])\nvz = vectorize('x^2*y/z')\nvz2 = vectorize(@(x) x^2)\n",
+            "figure('Visible','off'); ax = axes; i2 = is2D(ax)\nview(3); i3 = is2D(ax)\n",
+        )),
+        [
+            "S = 2×1\n\n    5.2915\n    1.4142",
+            "A = 2×3\n\n     1     0     3\n     0     2     4",
+            "ans = 1×2\n\n     4     2",
+            "c1 = 'single'",
+            "c2 = 'double'",
+            "Inputs must be floats, namely single or double.\n",
+            "ans = 1×2 cell\n\n    {'x'}    {'y'}",
+            "ans = 2×2 table\n\n    a    b\n    _    _\n\n    1    5\n    2    6",
+            "q2 = 2×2\n\n     1     3\n     4     6",
+            "st = 'Hi'",
+            "vz = 'x.^2.*y./z'",
+            "vz2 = '@(x)x.^2'",
+            "i2 = logical\n   1",
+            "i3 = logical\n   0",
+        ]
+    );
+}
+
+#[test]
+fn name_value_arguments_and_anonymous_varargin() {
+    assert_eq!(
+        shown("f = @(varargin) varargin;\nc = f(1, Alpha=2, beta=\"x\")\nclass(c{2})\nc2 = f(A=1==1)\ns.k = @(varargin) numel(varargin);\nn = s.k(X=1)\n"),
+        [
+            "c = 1×5 cell\n\n    {[1]}    {[\"Alpha\"]}    {[2]}    {[\"beta\"]}    {[\"x\"]}",
+            "ans = 'string'",
+            "c2 = 1×2 cell\n\n    {[\"A\"]}    {[1]}",
+            "n = 2",
         ]
     );
 }
