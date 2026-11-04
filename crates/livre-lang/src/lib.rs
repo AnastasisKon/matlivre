@@ -67,6 +67,7 @@ pub mod func_objects;
 pub mod files_more;
 pub mod random;
 pub mod session_more;
+pub mod settings;
 pub mod timers;
 pub mod zones;
 pub mod time;

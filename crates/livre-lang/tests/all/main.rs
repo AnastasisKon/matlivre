@@ -38,6 +38,7 @@ mod polyshape;
 mod polyshape_more;
 mod random;
 mod session_more;
+mod settings;
 mod sparse;
 mod specfun;
 mod strings;

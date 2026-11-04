@@ -103,6 +103,7 @@ pub struct Interpreter {
     pub(crate) tic: Instant,
     pub(crate) rng: crate::random::Streams,
     pub(crate) timers: crate::timers::Timers,
+    pub(crate) settings: crate::settings::Tree,
     /// `diary`: whether output is being copied to the diary file, and the file.
     pub(crate) diary: (bool, String),
     /// The functions of each loaded file, in file order: (the first is the file's main
@@ -164,6 +165,7 @@ impl Interpreter {
             tic: Instant::now(),
             rng: crate::random::Streams::new(),
             timers: Default::default(),
+            settings: Default::default(),
             diary: (false, "diary".into()),
             local_groups: Vec::new(),
             end_stack: Vec::new(),
@@ -743,6 +745,10 @@ impl Interpreter {
             return Ok(());
         }
         if let Value::Object(o) = v {
+            if let Some(t) = crate::settings::node_text(self, o) {
+                self.emit(OutputKind::Value { name: name.to_string(), text: format!("{name} = \n{t}") });
+                return Ok(());
+            }
             if let Some(t) = crate::func_objects::object_text(name, o, Some(crate::random::global_id(self))) {
                 self.emit(OutputKind::Value { name: name.to_string(), text: format!("{name} = \n{t}") });
                 return Ok(());
@@ -1128,6 +1134,12 @@ impl Interpreter {
                     let sub = if rest.is_empty() { None } else { Some(crate::gfx::member(self, &h, f)?) };
                     let new = self.apply_assign(sub, rest, rhs)?;
                     crate::gfx::set_member(self, &h, f, new)?;
+                    Ok(h)
+                }
+                Some(h @ Value::Object(_)) if matches!(&h, Value::Object(o) if crate::settings::is_node(&o.class.name)) => {
+                    let sub = if rest.is_empty() { None } else { Some(crate::settings::member(self, &h, f)?) };
+                    let new = self.apply_assign(sub, rest, rhs)?;
+                    crate::settings::set_member(self, &h, f, new)?;
                     Ok(h)
                 }
                 Some(Value::Object(o)) => {
@@ -1684,6 +1696,7 @@ impl Interpreter {
                 s.get(name).cloned().ok_or_else(|| LangError::new(format!("Unrecognized field name \"{name}\"."), 0))
             }
             Value::Object(o) if crate::gfx::is_gfx_class(&o.class.name) => crate::gfx::member(self, v, name),
+            Value::Object(o) if crate::settings::is_node(&o.class.name) => crate::settings::member(self, v, name),
             Value::Object(o) => {
                 let Some(i) = o.class.prop_index(name) else {
                     return rt(format!("Unrecognized method, property, or field '{name}' for class '{}'.", o.class.name));
