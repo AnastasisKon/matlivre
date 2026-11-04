@@ -17,7 +17,7 @@ type R<T> = Result<T, LangError>;
 pub const NAMES: &[&str] = &[
     "datestr", "datevec", "clock", "date", "etime", "cputime", "addtodate", "eomday", "eomdate", "weeknum", "calendar", "ymd", "hms", "isweekend",
     "isbetween", "exceltime", "juliandate", "yyyymmdd", "convertTo", "m2xdate", "x2mdate", "months", "calendarDuration", "week", "isdst",
-    "datenum", "nweekdate", "lweekdate", "leapseconds", "matlab.datetime.compatibility.convertDatenum",
+    "datenum", "nweekdate", "lweekdate", "leapseconds", "matlab.datetime.compatibility.convertDatenum", "timezones",
 ];
 
 /// Leap second insertion dates (all positive so far).
@@ -520,7 +520,8 @@ pub fn call(_it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> R
         }
         "isdst" => {
             let t = time_arg(a, 0, name)?;
-            one(Value::Num(Matrix::from_dims(t.dims.clone(), vec![0.0; t.data.len()]).cast_to(Kind::Logical)))
+            let dst = t.data.iter().map(|e| if t.tz.is_some_and(|z| !e[0].is_nan() && z.dst_at(e[0]) != 0.0) { 1.0 } else { 0.0 }).collect();
+            one(Value::Num(Matrix::from_dims(t.dims.clone(), dst).cast_to(Kind::Logical)))
         }
         "isbetween" => {
             let t = time_arg(a, 0, name)?;
@@ -630,6 +631,17 @@ pub fn call(_it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> R
             t.row_times = Some(dates);
             t.dim_names = ["Date".into(), "Variables".into()];
             Ok(Some(vec![Value::Table(Box::new(t)), Value::num(65.0)].into_iter().take(nargout.max(1)).collect()))
+        }
+        "timezones" => {
+            let area = a.first().map(|v| v.text()).transpose()?;
+            let (names, areas, utc, dst) = crate::zones::timezones(area.as_deref())?;
+            let n = names.len();
+            let col = |v: Vec<f64>| Value::Num(Matrix::from_dims(vec![n, 1], v));
+            let name_col = Value::Cell(CellArray::from_dims(vec![n, 1], names.iter().map(|s| Value::chars(s)).collect()));
+            let area_cells = Value::Cell(CellArray::from_dims(vec![n, 1], areas.iter().map(|s| Value::chars(s)).collect()));
+            let area_col = _it.call_function("categorical", vec![area_cells], 1)?.remove(0);
+            let t = crate::table::Table::new(vec!["Name".into(), "Area".into(), "UTCOffset".into(), "DSTOffset".into()], vec![name_col, area_col, col(utc), col(dst)])?;
+            one(Value::Table(Box::new(t)))
         }
         "matlab.datetime.compatibility.convertDatenum" => {
             let v = arg(a, 0, name)?;

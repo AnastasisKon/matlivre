@@ -150,10 +150,10 @@ pub(crate) fn x_numeric(v: &Value) -> R<(Matrix, XAxisKind)> {
                 crate::time::TimeKind::DateTime => XAxisKind::DateTime,
                 _ => XAxisKind::Duration,
             };
-            let offset = t.tz.unwrap_or(0.0) * 60_000.0;
             let mut m = crate::time::to_numeric(t);
             if kind == XAxisKind::DateTime {
-                m.data.iter_mut().for_each(|x| *x += offset);
+                // Plotted at their wall-clock time.
+                m.data = (0..t.data.len()).map(|i| t.wall(i)).collect();
             }
             Ok((m, kind))
         }

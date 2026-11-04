@@ -15,6 +15,7 @@ use crate::indexing;
 use crate::interp::Interpreter;
 use crate::nd::IndexArg;
 use crate::table::Table;
+use crate::zones::Zone;
 use crate::time::{self, TimeArray, TimeKind};
 use crate::value::*;
 
@@ -386,8 +387,8 @@ fn columns_of(m: &Value) -> R<Vec<Value>> {
 
 const AGGREGATES: &[&str] = &["sum", "mean", "prod", "min", "max", "count", "firstvalue", "lastvalue", "median", "mode", "nnz"];
 
-fn floor_calendar(ms: f64, unit: &str, tz_ms: f64) -> R<f64> {
-    let w = ms + tz_ms;
+fn floor_calendar(ms: f64, unit: &str, tz: Option<Zone>) -> R<f64> {
+    let w = ms + tz.map_or(0.0, |z| z.offset_at(ms));
     let (y, mo, d, h, mi, s) = time::components(w);
     let wall = match unit {
         "yearly" => time::wall_ms(y as f64, 1.0, 1.0, 0.0, 0.0, 0.0),
@@ -404,11 +405,11 @@ fn floor_calendar(ms: f64, unit: &str, tz_ms: f64) -> R<f64> {
         "secondly" => time::wall_ms(y as f64, mo as f64, d as f64, h as f64, mi as f64, s.floor()),
         other => return rt(format!("'{other}' is not a valid time step.")),
     };
-    Ok(wall - tz_ms)
+    Ok(tz.map_or(wall, |z| z.to_utc(wall)))
 }
 
-fn next_calendar(ms: f64, unit: &str, tz_ms: f64) -> f64 {
-    let w = ms + tz_ms;
+fn next_calendar(ms: f64, unit: &str, tz: Option<Zone>) -> f64 {
+    let w = ms + tz.map_or(0.0, |z| z.offset_at(ms));
     let (y, mo, d, h, mi, s) = time::components(w);
     let wall = match unit {
         "yearly" => time::wall_ms(y as f64 + 1.0, mo as f64, d as f64, h as f64, mi as f64, s),
@@ -420,7 +421,7 @@ fn next_calendar(ms: f64, unit: &str, tz_ms: f64) -> f64 {
         "minutely" => w + MS_MIN,
         _ => w + MS_SEC,
     };
-    wall - tz_ms
+    tz.map_or(wall, |z| z.to_utc(wall))
 }
 
 /// The new time vector of `retime`/`synchronize` and whether its last bin is a full period.
@@ -452,7 +453,7 @@ fn new_times(times: &[f64], spec: &Value, template: &Value, opts: &[(String, Val
         return Ok((out, Some(step), None));
     }
     let tz = match template {
-        Value::Time(t) if t.kind == TimeKind::DateTime => t.tz.unwrap_or(0.0) * MS_MIN,
+        Value::Time(t) if t.kind == TimeKind::DateTime => t.tz,
         Value::Time(_) => {
             // Durations: fixed periods.
             let step = match unit.as_str() {
@@ -471,7 +472,7 @@ fn new_times(times: &[f64], spec: &Value, template: &Value, opts: &[(String, Val
             }
             return Ok((out, Some(step), None));
         }
-        _ => 0.0,
+        _ => None,
     };
     let mut t = floor_calendar(lo, &unit, tz)?;
     let mut out = Vec::new();
@@ -539,8 +540,8 @@ fn resample(it: &mut Interpreter, t: &Table, target: &[f64], last_bin: Option<f6
     let constant = opt(opts, "Constant").cloned();
     let end_values = opt(opts, "EndValues").cloned();
     let tz = match times {
-        Value::Time(tt) => tt.tz.unwrap_or(0.0) * MS_MIN,
-        _ => 0.0,
+        Value::Time(tt) => tt.tz,
+        _ => None,
     };
     if AGGREGATES.contains(&mname.as_str()) || mname == "function" {
         let bins: Vec<Vec<usize>> = (0..n)

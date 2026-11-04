@@ -62,6 +62,7 @@ pub mod volume;
 pub mod timeseries;
 pub mod charts;
 pub mod images;
+pub mod zones;
 pub mod time;
 pub mod value;
 

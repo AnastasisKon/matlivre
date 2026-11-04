@@ -40,6 +40,7 @@ mod structio;
 mod symbolic_extra;
 mod table_ops;
 mod textio;
+mod time_zones;
 mod timeseries;
 mod timetable;
 mod types;

@@ -6,6 +6,7 @@ use crate::display::fmt_g;
 use crate::error::{rt, LangError};
 use crate::nd::{self, Dims, IndexArg};
 use crate::value::{Kind, Matrix, StrArray, Value};
+use crate::zones::Zone;
 
 type R<T> = Result<T, LangError>;
 
@@ -30,8 +31,8 @@ pub struct TimeArray {
     pub dims: Dims,
     pub kind: TimeKind,
     pub data: Vec<[f64; 3]>,
-    /// datetime: UTC offset in minutes (`None` = unzoned).
-    pub tz: Option<f64>,
+    /// datetime: the time zone (`None` = unzoned, where the stored value is the wall clock).
+    pub tz: Option<Zone>,
     pub tz_name: String,
     /// Display format (datetime pattern, or duration `hh:mm:ss`, `h`, `m`, `s`, `d`, `y`).
     pub format: String,
@@ -90,33 +91,12 @@ pub fn components(ms: f64) -> (i64, i64, i64, i64, i64, f64) {
     (y, m, d, h as i64, mi as i64, s)
 }
 
-fn parse_tz(name: &str) -> R<Option<f64>> {
-    let n = name.trim();
-    if n.is_empty() {
-        return Ok(None);
-    }
-    let up = n.to_ascii_uppercase();
-    if up == "UTC" || up == "GMT" || up == "Z" {
-        return Ok(Some(0.0));
-    }
-    if up == "LOCAL" {
-        return Ok(Some(0.0));
-    }
-    let off = up.strip_prefix("UTC").or_else(|| up.strip_prefix("GMT")).unwrap_or(&up);
-    let (sign, rest) = match off.chars().next() {
-        Some('+') => (1.0, &off[1..]),
-        Some('-') => (-1.0, &off[1..]),
-        _ => return rt(format!("Unable to use '{name}' as a time zone. Use 'UTC', 'UTC+HH:mm' or a fixed offset in this version.")),
-    };
-    let (h, m) = match rest.split_once(':') {
-        Some((h, m)) => (h.parse::<f64>().unwrap_or(f64::NAN), m.parse::<f64>().unwrap_or(f64::NAN)),
-        None if rest.len() == 4 => (rest[..2].parse::<f64>().unwrap_or(f64::NAN), rest[2..].parse::<f64>().unwrap_or(f64::NAN)),
-        None => (rest.parse::<f64>().unwrap_or(f64::NAN), 0.0),
-    };
-    if h.is_nan() || m.is_nan() {
-        return rt(format!("Unable to use '{name}' as a time zone."));
-    }
-    Ok(Some(sign * (h * 60.0 + m)))
+/// A `TimeZone` value as a zone and the name the property shows.
+fn parse_tz(name: &str) -> R<(Option<Zone>, String)> {
+    Ok(match crate::zones::parse(name)? {
+        Some((z, n)) => (Some(z), n),
+        None => (None, String::new()),
+    })
 }
 
 pub fn now_utc_ms() -> f64 {
@@ -136,6 +116,11 @@ pub fn process_cpu_seconds() -> f64 {
 
 /// Formats wall-clock ms with a MATLAB/Unicode datetime pattern.
 pub fn format_datetime(ms: f64, pattern: &str) -> String {
+    format_datetime_in(ms, pattern, None)
+}
+
+/// Formats wall-clock ms; `zone` (offset ms, short name) fills the `z`, `Z`, `x` and `X` fields.
+pub fn format_datetime_in(ms: f64, pattern: &str, zone: Option<&(f64, String)>) -> String {
     if ms.is_nan() {
         return "NaT".into();
     }
@@ -187,6 +172,8 @@ pub fn format_datetime(ms: f64, pattern: &str) -> String {
             }
             'a' => (if h < 12 { "AM" } else { "PM" }).to_string(),
             'Q' => format!("Q{}", (mo - 1) / 3 + 1),
+            'z' => zone.map(|z| z.1.clone()).unwrap_or_default(),
+            'Z' | 'x' | 'X' => zone.map(|z| crate::zones::offset_token(c, n, z.0)).unwrap_or_default(),
             _ => std::iter::repeat(c).take(n).collect(),
         };
         out.push_str(&piece);
@@ -312,7 +299,7 @@ fn parse_auto(text: &str) -> Option<f64> {
 // ---- array model ---------------------------------------------------------------------------
 
 impl TimeArray {
-    pub fn datetimes(dims: Dims, utc: Vec<f64>, tz: Option<f64>, tz_name: String, format: String) -> Self {
+    pub fn datetimes(dims: Dims, utc: Vec<f64>, tz: Option<Zone>, tz_name: String, format: String) -> Self {
         Self { dims: nd::normalize(dims), kind: TimeKind::DateTime, data: utc.into_iter().map(|x| [x, 0.0, 0.0]).collect(), tz, tz_name, format }
     }
 
@@ -332,13 +319,23 @@ impl TimeArray {
         }
     }
 
-    fn offset_ms(&self) -> f64 {
-        self.tz.unwrap_or(0.0) * MS_MIN
+    /// UTC offset at stored value `utc` (0 when unzoned).
+    fn offset_at(&self, utc: f64) -> f64 {
+        self.tz.map_or(0.0, |z| z.offset_at(utc))
     }
 
     /// Wall-clock ms of element `i` (datetime).
     pub fn wall(&self, i: usize) -> f64 {
-        self.data[i][0] + self.offset_ms()
+        let u = self.data[i][0];
+        u + self.offset_at(u)
+    }
+
+    /// The stored value for wall-clock time `w` in this array's zone.
+    pub fn from_wall(&self, w: f64) -> f64 {
+        match self.tz {
+            Some(z) => z.to_utc(w),
+            None => w,
+        }
     }
 
     pub fn ms(&self) -> Vec<f64> {
@@ -373,7 +370,11 @@ impl TimeArray {
 
     pub fn format_elem(&self, i: usize) -> String {
         match self.kind {
-            TimeKind::DateTime => format_datetime(self.wall(i), &self.display_pattern()),
+            TimeKind::DateTime => {
+                let u = self.data[i][0];
+                let zone = self.tz.map(|z| (z.offset_at(u), z.short_name(u)));
+                format_datetime_in(self.wall(i), &self.display_pattern(), zone.as_ref())
+            }
             TimeKind::Duration => format_duration(self.data[i][0], &self.format),
             TimeKind::CalDuration => format_caldur(self.data[i], &self.format),
         }
@@ -454,14 +455,16 @@ impl TimeArray {
         match name {
             "Format" => self.format = v.text()?,
             "TimeZone" if self.kind == TimeKind::DateTime => {
-                let tz_name = v.text()?;
-                let new_tz = parse_tz(&tz_name)?;
-                if self.tz.is_none() {
-                    // Unzoned values keep their wall-clock time when a zone is assigned.
-                    let off = new_tz.unwrap_or(0.0) * MS_MIN;
-                    for e in self.data.iter_mut() {
-                        e[0] -= off;
+                let (new_tz, tz_name) = parse_tz(&v.text()?)?;
+                // Values keep their wall-clock time when a zone is added or removed, and their
+                // instant when it changes.
+                match (self.tz, new_tz) {
+                    (None, Some(z)) => self.data.iter_mut().for_each(|e| e[0] = z.to_utc(e[0])),
+                    (Some(_), None) => {
+                        let walls: Vec<f64> = (0..self.data.len()).map(|i| self.wall(i)).collect();
+                        self.data.iter_mut().zip(walls).for_each(|(e, w)| e[0] = w);
                     }
+                    _ => {}
                 }
                 self.tz = new_tz;
                 self.tz_name = tz_name;
@@ -472,10 +475,10 @@ impl TimeArray {
                     let w = self.wall(i);
                     let (y, mo, d, h, mi, s) = components(w);
                     let x = if vals.numel() == 1 { vals.data[0] } else { vals.data[i] };
-                    let (mut c, off) = ([y as f64, mo as f64, d as f64, h as f64, mi as f64, s], self.offset_ms());
+                    let mut c = [y as f64, mo as f64, d as f64, h as f64, mi as f64, s];
                     let k = ["Year", "Month", "Day", "Hour", "Minute", "Second"].iter().position(|n| *n == name).unwrap();
                     c[k] = x;
-                    self.data[i][0] = wall_ms(c[0], c[1], c[2], c[3], c[4], c[5]) - off;
+                    self.data[i][0] = self.from_wall(wall_ms(c[0], c[1], c[2], c[3], c[4], c[5]));
                 }
             }
             _ => return rt(format!("Unable to set the '{name}' property of class '{}'.", self.class_name())),
@@ -633,7 +636,12 @@ fn add_calendar(wall: f64, p: [f64; 3]) -> f64 {
 /// Converts `v` to the same kind of time array as `like` (text → datetime, numbers → days).
 fn coerce_like(like: &TimeArray, v: &Value) -> R<TimeArray> {
     match v {
-        Value::Time(t) if t.kind == like.kind => Ok(t.clone()),
+        Value::Time(t) if t.kind == like.kind => {
+            if t.kind == TimeKind::DateTime && t.tz.is_some() != like.tz.is_some() {
+                return rt("Cannot combine or compare a datetime array with a time zone with one without a time zone.");
+            }
+            Ok(t.clone())
+        }
         Value::Time(t) => rt(format!("Unable to combine a {} with a {}.", like.class_name(), t.class_name())),
         Value::Num(m) if m.is_empty() => Ok(like.empty_like()),
         _ if like.kind == TimeKind::DateTime && (v.is_text() || matches!(v, Value::Str(_) | Value::Cell(_))) => {
@@ -641,7 +649,7 @@ fn coerce_like(like: &TimeArray, v: &Value) -> R<TimeArray> {
             let mut ms = Vec::with_capacity(texts.data.len());
             for t in &texts.data {
                 let w = t.as_deref().and_then(parse_auto).ok_or_else(|| LangError::new(format!("Could not recognize the date/time format of '{}'.", t.clone().unwrap_or_default()), 0))?;
-                ms.push(w - like.offset_ms());
+                ms.push(like.from_wall(w));
             }
             Ok(like.with_ms(texts.dims, ms))
         }
@@ -683,6 +691,7 @@ pub fn binary(op: BinOp, a: &Value, b: &Value) -> R<Value> {
     let is_cmp = matches!(op, Eq | Ne | Lt | Le | Gt | Ge);
     match (a, b) {
         (Value::Time(x), Value::Time(y)) => match (x.kind, y.kind, op) {
+            (DateTime, DateTime, _) if x.tz.is_some() != y.tz.is_some() => rt("Cannot combine or compare a datetime array with a time zone with one without a time zone."),
             (DateTime, DateTime, Sub) => {
                 let (d, v) = pair_ms(x, y, |p, q| [p[0] - q[0], 0.0, 0.0])?;
                 Ok(Value::Time(TimeArray { dims: d, kind: Duration, data: v, tz: None, tz_name: String::new(), format: "hh:mm:ss".into() }))
@@ -694,8 +703,8 @@ pub fn binary(op: BinOp, a: &Value, b: &Value) -> R<Value> {
             }
             (DateTime, CalDuration, Add | Sub) | (CalDuration, DateTime, Add) => {
                 let (dt, cd, sign) = if x.kind == DateTime { (x, y, if op == Sub { -1.0 } else { 1.0 }) } else { (y, x, 1.0) };
-                let off = dt.offset_ms();
-                let (d, v) = pair_ms(dt, cd, |p, q| [add_calendar(p[0] + off, [sign * q[0], sign * q[1], sign * q[2]]) - off, 0.0, 0.0])?;
+                // Calendar units move the wall clock, then the zone maps it back to an instant.
+                let (d, v) = pair_ms(dt, cd, |p, q| [dt.from_wall(add_calendar(p[0] + dt.offset_at(p[0]), [sign * q[0], sign * q[1], sign * q[2]])), 0.0, 0.0])?;
                 Ok(Value::Time(TimeArray { dims: d, data: v, ..dt.clone() }))
             }
             (Duration, Duration, Add | Sub) => {
@@ -781,10 +790,10 @@ pub fn range(start: &Value, step: Option<&Value>, stop: &Value) -> R<Value> {
         Some(Value::Time(st)) if st.kind == TimeKind::Duration => st.data[0][0],
         Some(Value::Time(st)) if st.kind == TimeKind::CalDuration => {
             let mut out = Vec::new();
-            let off = s.offset_ms();
+            let w0 = s.wall(0);
             let mut k = 0.0;
             loop {
-                let w = add_calendar(s.data[0][0] + off, [st.data[0][0] * k, st.data[0][1] * k, st.data[0][2] * k]) - off;
+                let w = s.from_wall(add_calendar(w0, [st.data[0][0] * k, st.data[0][1] * k, st.data[0][2] * k]));
                 if w > stop.data[0][0] || out.len() > 1_000_000 {
                     break;
                 }
@@ -845,11 +854,10 @@ pub fn call(name: &str, args: &[Value], nargout: usize) -> R<Option<Vec<Value>>>
     match name {
         "datetime" => {
             let pos = positional(args);
-            let tz_name = opt(args, "TimeZone").map(|v| v.text()).transpose()?.unwrap_or_default();
-            let tz = parse_tz(&tz_name)?;
+            let (tz, tz_name) = parse_tz(&opt(args, "TimeZone").map(|v| v.text()).transpose()?.unwrap_or_default())?;
             let format = opt(args, "Format").map(|v| v.text()).transpose()?.unwrap_or_else(|| DEFAULT_DT_FORMAT.into());
-            let off = tz.unwrap_or(0.0) * MS_MIN;
-            let mk = |dims: Dims, wall: Vec<f64>| Value::Time(TimeArray::datetimes(dims, wall.into_iter().map(|w| w - off).collect(), tz, tz_name.clone(), format.clone()));
+            let to_utc = |w: f64| tz.map_or(w, |z| z.to_utc(w));
+            let mk = |dims: Dims, wall: Vec<f64>| Value::Time(TimeArray::datetimes(dims, wall.into_iter().map(to_utc).collect(), tz, tz_name.clone(), format.clone()));
             if pos.is_empty() {
                 // Unzoned: local wall-clock time; zoned: the UTC instant.
                 let now = if tz.is_none() { now_utc_ms() + local_offset_ms() } else { now_utc_ms() };
@@ -874,7 +882,8 @@ pub fn call(name: &str, args: &[Value], nargout: usize) -> R<Option<Vec<Value>>>
             if pos[0].is_text() || matches!(pos[0], Value::Str(_) | Value::Cell(_)) {
                 let texts = crate::ops::to_str_array(&pos[0])?;
                 let input_fmt = opt(args, "InputFormat").map(|v| v.text()).transpose()?;
-                let now_wall = now_utc_ms() + if tz.is_none() { local_offset_ms() } else { off };
+                let now = now_utc_ms();
+                let now_wall = now + tz.map_or(local_offset_ms(), |z| z.offset_at(now));
                 let mut walls = Vec::with_capacity(texts.data.len());
                 for t in &texts.data {
                     let t = t.clone().unwrap_or_default();
@@ -1085,12 +1094,14 @@ pub fn call(name: &str, args: &[Value], nargout: usize) -> R<Option<Vec<Value>>>
                 Some(Value::Time(t)) if t.kind == TimeKind::DateTime => t,
                 _ => return rt("Input must be a datetime array."),
             };
-            // Only fixed-offset zones are supported, so there is never a daylight saving shift.
-            let off: Vec<f64> = t.data.iter().map(|e| match t.tz {
-                Some(m) if !e[0].is_nan() => m * MS_MIN,
-                _ => f64::NAN,
-            }).collect();
-            let dst: Vec<f64> = off.iter().map(|o| if o.is_nan() { f64::NAN } else { 0.0 }).collect();
+            let at = |f: &dyn Fn(Zone, f64) -> f64| -> Vec<f64> {
+                t.data.iter().map(|e| match t.tz {
+                    Some(z) if !e[0].is_nan() => f(z, e[0]),
+                    _ => f64::NAN,
+                }).collect()
+            };
+            let off = at(&|z, u| z.offset_at(u));
+            let dst = at(&|z, u| z.dst_at(u));
             let mk = |v: Vec<f64>| Value::Time(TimeArray::durations(t.dims.clone(), v, "hh:mm"));
             Ok(Some(vec![mk(off), mk(dst)].into_iter().take(nargout.max(1)).collect()))
         }
@@ -1122,7 +1133,6 @@ pub fn call(name: &str, args: &[Value], nargout: usize) -> R<Option<Vec<Value>>>
             let t = time_arg(args, name)?;
             let rule = args.get(1).map(|v| v.text()).transpose()?.unwrap_or_default().to_lowercase();
             let unit = args.get(2).map(|v| v.text()).transpose()?.unwrap_or_default().to_lowercase();
-            let off = t.offset_ms();
             let shift = |w: f64| -> f64 {
                 let (y, mo, d, h, mi, _) = components(w);
                 let start = match unit.as_str() {
@@ -1155,7 +1165,7 @@ pub fn call(name: &str, args: &[Value], nargout: usize) -> R<Option<Vec<Value>>>
                     start
                 }
             };
-            let ms = (0..t.data.len()).map(|i| shift(t.wall(i)) - off).collect();
+            let ms = (0..t.data.len()).map(|i| t.from_wall(shift(t.wall(i)))).collect();
             one(Value::Time(t.with_ms(t.dims.clone(), ms)))
         }
         "timeofday" => {

@@ -10,6 +10,8 @@ rayon = "1.12"
 rustfft = "6"
 fancy-regex = "0.14"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chrono-tz = "0.10"
+iana-time-zone = "0.1"
 cpu-time = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 flate2 = "1"
