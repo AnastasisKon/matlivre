@@ -27,7 +27,7 @@ const NAMES: &[&str] = &[
     "polyval", "power", "primes", "prod", "properties", "rad2deg", "rand", "randi", "randn", "randperm", "real", "realmax", "realmin", "rem", "repmat",
     "reshape", "rmfield", "rng", "roots", "round", "sign", "sin", "sind", "single", "sinh", "size", "sort", "sortrows", "sqrt", "squeeze", "std",
     "str2func", "struct", "sum", "tan", "tand", "tanh", "tic", "toc", "trace", "transpose", "trapz", "true", "uint16", "uint32", "uint64", "uint8",
-    "unique", "var", "vertcat", "warning", "zeros", "histcounts", "addpath", "rmpath", "path", "pwd", "drawnow", "clc", "isspace", "fprintf",
+    "unique", "var", "vertcat", "warning", "zeros", "histcounts", "pwd", "drawnow", "clc", "isspace", "fprintf",
     "sprintf", "newline", "blanks", "accumarray", "cumtrapz", "validateattributes", "inputname", "nargchk", "narginchk", "isdiag", "istril",
     "istriu", "issorted", "triu", "tril", "floor", "ctranspose", "uminus", "uplus", "plus", "minus", "times", "mtimes", "rdivide", "ldivide",
     "mrdivide", "mldivide", "mpower", "eq", "ne", "lt", "le", "gt", "ge", "and", "or", "not", "xor", "colon", "isobject", "isstring",
@@ -36,7 +36,7 @@ const NAMES: &[&str] = &[
 pub fn exists(name: &str) -> bool {
     static ALL: std::sync::OnceLock<std::collections::HashSet<&'static str>> = std::sync::OnceLock::new();
     ALL.get_or_init(|| {
-        [NAMES, crate::builtins_elfun::NAMES, crate::builtins_datafun::NAMES, crate::builtins_lang::NAMES, crate::builtins_strings::NAMES, crate::builtins_types::NAMES, crate::builtins_dates::NAMES, crate::builtins_files::NAMES, crate::builtins_textio::NAMES, crate::builtins_data::NAMES, crate::builtins_media::NAMES, crate::builtins_archive::NAMES, crate::builtins_structio::NAMES, crate::gfx::NAMES, crate::builtins_plotfmt::NAMES, crate::builtins_graph3d::NAMES, crate::builtins_funfun::NAMES, crate::builtins_matfun::NAMES, crate::builtins_elmat::NAMES, crate::builtins_ops::NAMES, crate::builtins_specfun::NAMES, crate::polyshape::NAMES, crate::builtins_polyfun::NAMES, crate::builtins_geom::NAMES, crate::polyfun_classes::NAMES, crate::builtins_text::NAMES, crate::builtins_plot::NAMES, crate::time::NAMES, crate::table::NAMES, crate::sym::NAMES, crate::sym::extra::NAMES, crate::containers::NAMES, crate::table_ops::NAMES, crate::builtins_plotmore::NAMES, crate::patterns::NAMES, crate::builtins_validate::NAMES, crate::graphs::NAMES, crate::graphs::FUNCS, crate::builtins_excel::NAMES, crate::builtins_sparse::NAMES, crate::builtins_ode::NAMES, crate::timetable::NAMES, crate::io_more::NAMES, crate::lang_more::NAMES, crate::plot_extra::NAMES, crate::volume::NAMES, crate::timeseries::NAMES, crate::charts::NAMES, crate::images::NAMES, crate::math_more::NAMES, crate::func_objects::NAMES]
+        [NAMES, crate::builtins_elfun::NAMES, crate::builtins_datafun::NAMES, crate::builtins_lang::NAMES, crate::builtins_strings::NAMES, crate::builtins_types::NAMES, crate::builtins_dates::NAMES, crate::builtins_files::NAMES, crate::builtins_textio::NAMES, crate::builtins_data::NAMES, crate::builtins_media::NAMES, crate::builtins_archive::NAMES, crate::builtins_structio::NAMES, crate::gfx::NAMES, crate::builtins_plotfmt::NAMES, crate::builtins_graph3d::NAMES, crate::builtins_funfun::NAMES, crate::builtins_matfun::NAMES, crate::builtins_elmat::NAMES, crate::builtins_ops::NAMES, crate::builtins_specfun::NAMES, crate::polyshape::NAMES, crate::builtins_polyfun::NAMES, crate::builtins_geom::NAMES, crate::polyfun_classes::NAMES, crate::builtins_text::NAMES, crate::builtins_plot::NAMES, crate::time::NAMES, crate::table::NAMES, crate::sym::NAMES, crate::sym::extra::NAMES, crate::containers::NAMES, crate::table_ops::NAMES, crate::builtins_plotmore::NAMES, crate::patterns::NAMES, crate::builtins_validate::NAMES, crate::graphs::NAMES, crate::graphs::FUNCS, crate::builtins_excel::NAMES, crate::builtins_sparse::NAMES, crate::builtins_ode::NAMES, crate::timetable::NAMES, crate::io_more::NAMES, crate::lang_more::NAMES, crate::plot_extra::NAMES, crate::volume::NAMES, crate::timeseries::NAMES, crate::charts::NAMES, crate::images::NAMES, crate::math_more::NAMES, crate::func_objects::NAMES, crate::files_more::NAMES]
             .iter()
             .flat_map(|n| n.iter().copied())
             .collect()
@@ -627,6 +627,11 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
     }
     if crate::func_objects::NAMES.contains(&name) {
         if let Some(r) = crate::func_objects::call(it, name, &args, nargout)? {
+            return Ok(Some(r));
+        }
+    }
+    if crate::files_more::NAMES.contains(&name) {
+        if let Some(r) = crate::files_more::call(it, name, &args, nargout)? {
             return Ok(Some(r));
         }
     }
@@ -2077,17 +2082,6 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             none()
         }
         "pause" | "drawnow" | "clc" | "validateattributes" | "narginchk" | "nargchk" => none(),
-        "addpath" => {
-            for v in a {
-                if let Ok(p) = v.text() {
-                    for part in p.split(';').filter(|s| !s.is_empty()) {
-                        it.add_path(std::path::PathBuf::from(part));
-                    }
-                }
-            }
-            none()
-        }
-        "rmpath" | "path" => none(),
         "pwd" => one(Value::chars(&std::env::current_dir().map(|p| p.display().to_string()).unwrap_or_default())),
         "clear" => {
             if a.is_empty() || a.iter().any(|v| v.text().map(|s| s == "all" || s == "variables").unwrap_or(false)) {

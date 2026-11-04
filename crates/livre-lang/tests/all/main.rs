@@ -13,6 +13,7 @@ mod elmat;
 mod excel;
 mod extended;
 mod files;
+mod files_more;
 mod func_objects;
 mod funfun;
 mod graph3d;

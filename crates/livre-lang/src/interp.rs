@@ -77,6 +77,8 @@ pub struct Interpreter {
     global_vars: HashMap<String, Value>,
     functions: HashMap<String, Rc<Function>>,
     search_path: Vec<PathBuf>,
+    /// The search path the host set, which `restoredefaultpath` returns to.
+    default_path: Vec<PathBuf>,
     path_functions: HashMap<String, Rc<Function>>,
     path_scripts: HashMap<String, Rc<Program>>,
     classes: HashMap<String, Rc<ClassDef>>,
@@ -135,6 +137,7 @@ impl Interpreter {
             global_vars: HashMap::new(),
             functions: HashMap::new(),
             search_path: Vec::new(),
+            default_path: Vec::new(),
             path_functions: HashMap::new(),
             path_scripts: HashMap::new(),
             classes: HashMap::new(),
@@ -192,8 +195,24 @@ impl Interpreter {
     /// Folders searched for function and classdef files (`name.m`). Clears cached lookups so
     /// edited files are picked up.
     pub fn set_search_path(&mut self, dirs: Vec<PathBuf>) {
+        self.default_path = dirs.clone();
         self.search_path = dirs;
         self.reset_path_cache();
+    }
+
+    pub fn search_path(&self) -> &[PathBuf] {
+        &self.search_path
+    }
+
+    /// Replaces the search path from `path`, `rmpath` or `restoredefaultpath`, keeping the
+    /// host's default.
+    pub fn replace_search_path(&mut self, dirs: Vec<PathBuf>) {
+        self.search_path = dirs;
+        self.reset_path_cache();
+    }
+
+    pub fn default_search_path(&self) -> Vec<PathBuf> {
+        self.default_path.clone()
     }
 
     pub fn add_path(&mut self, dir: PathBuf) {
