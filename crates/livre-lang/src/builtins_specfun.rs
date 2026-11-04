@@ -322,7 +322,7 @@ fn erfinv(y: f64) -> f64 {
     x.copysign(y)
 }
 
-fn erfcinv(q: f64) -> f64 {
+pub(crate) fn erfcinv(q: f64) -> f64 {
     if q.is_nan() || !(0.0..=2.0).contains(&q) {
         return NAN;
     }

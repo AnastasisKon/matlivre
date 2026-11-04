@@ -36,7 +36,7 @@ const NAMES: &[&str] = &[
 pub fn exists(name: &str) -> bool {
     static ALL: std::sync::OnceLock<std::collections::HashSet<&'static str>> = std::sync::OnceLock::new();
     ALL.get_or_init(|| {
-        [NAMES, crate::builtins_elfun::NAMES, crate::builtins_datafun::NAMES, crate::builtins_lang::NAMES, crate::builtins_strings::NAMES, crate::builtins_types::NAMES, crate::builtins_dates::NAMES, crate::builtins_files::NAMES, crate::builtins_textio::NAMES, crate::builtins_data::NAMES, crate::builtins_media::NAMES, crate::builtins_archive::NAMES, crate::builtins_structio::NAMES, crate::gfx::NAMES, crate::builtins_plotfmt::NAMES, crate::builtins_graph3d::NAMES, crate::builtins_funfun::NAMES, crate::builtins_matfun::NAMES, crate::builtins_elmat::NAMES, crate::builtins_ops::NAMES, crate::builtins_specfun::NAMES, crate::polyshape::NAMES, crate::builtins_polyfun::NAMES, crate::builtins_geom::NAMES, crate::polyfun_classes::NAMES, crate::builtins_text::NAMES, crate::builtins_plot::NAMES, crate::time::NAMES, crate::table::NAMES, crate::sym::NAMES, crate::sym::extra::NAMES, crate::containers::NAMES, crate::table_ops::NAMES, crate::builtins_plotmore::NAMES, crate::patterns::NAMES, crate::builtins_validate::NAMES, crate::graphs::NAMES, crate::graphs::FUNCS, crate::builtins_excel::NAMES, crate::builtins_sparse::NAMES, crate::builtins_ode::NAMES, crate::timetable::NAMES, crate::io_more::NAMES, crate::lang_more::NAMES, crate::plot_extra::NAMES, crate::volume::NAMES, crate::timeseries::NAMES, crate::charts::NAMES, crate::images::NAMES, crate::math_more::NAMES, crate::func_objects::NAMES, crate::files_more::NAMES]
+        [NAMES, crate::builtins_elfun::NAMES, crate::builtins_datafun::NAMES, crate::builtins_lang::NAMES, crate::builtins_strings::NAMES, crate::builtins_types::NAMES, crate::builtins_dates::NAMES, crate::builtins_files::NAMES, crate::builtins_textio::NAMES, crate::builtins_data::NAMES, crate::builtins_media::NAMES, crate::builtins_archive::NAMES, crate::builtins_structio::NAMES, crate::gfx::NAMES, crate::builtins_plotfmt::NAMES, crate::builtins_graph3d::NAMES, crate::builtins_funfun::NAMES, crate::builtins_matfun::NAMES, crate::builtins_elmat::NAMES, crate::builtins_ops::NAMES, crate::builtins_specfun::NAMES, crate::polyshape::NAMES, crate::builtins_polyfun::NAMES, crate::builtins_geom::NAMES, crate::polyfun_classes::NAMES, crate::builtins_text::NAMES, crate::builtins_plot::NAMES, crate::time::NAMES, crate::table::NAMES, crate::sym::NAMES, crate::sym::extra::NAMES, crate::containers::NAMES, crate::table_ops::NAMES, crate::builtins_plotmore::NAMES, crate::patterns::NAMES, crate::builtins_validate::NAMES, crate::graphs::NAMES, crate::graphs::FUNCS, crate::builtins_excel::NAMES, crate::builtins_sparse::NAMES, crate::builtins_ode::NAMES, crate::timetable::NAMES, crate::io_more::NAMES, crate::lang_more::NAMES, crate::plot_extra::NAMES, crate::volume::NAMES, crate::timeseries::NAMES, crate::charts::NAMES, crate::images::NAMES, crate::math_more::NAMES, crate::func_objects::NAMES, crate::files_more::NAMES, crate::random::NAMES]
             .iter()
             .flat_map(|n| n.iter().copied())
             .collect()
@@ -77,7 +77,7 @@ fn bool_mat(m: &Matrix, f: impl Fn(f64) -> bool) -> Matrix {
 }
 
 /// Trailing class name in constructor calls: `zeros(2, 'int8')`, `ones(3, 'like', x)`.
-fn class_option(args: &[Value]) -> R<(Vec<Value>, Kind)> {
+pub(crate) fn class_option(args: &[Value]) -> R<(Vec<Value>, Kind)> {
     let mut kind = Kind::Double;
     let mut rest = Vec::new();
     let mut i = 0;
@@ -496,22 +496,6 @@ fn real_branch(name: &str, x: f64) -> (f64, f64) {
 }
 
 impl Interpreter {
-    fn next_rand(&mut self) -> f64 {
-        let mut x = self.rng_state;
-        x ^= x >> 12;
-        x ^= x << 25;
-        x ^= x >> 27;
-        self.rng_state = x;
-        let r = x.wrapping_mul(0x2545_F491_4F6C_DD1D);
-        ((r >> 11) as f64 + 0.5) / (1u64 << 53) as f64
-    }
-
-    fn next_randn(&mut self) -> f64 {
-        let u1 = self.next_rand();
-        let u2 = self.next_rand();
-        (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
-    }
-
     pub(crate) fn call_func_value(&mut self, f: &Value, args: Vec<Value>, nargout: usize) -> R<Vec<Value>> {
         match f {
             Value::Func(fv) => self.call_value(fv, args, nargout),
@@ -632,6 +616,11 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
     }
     if crate::files_more::NAMES.contains(&name) {
         if let Some(r) = crate::files_more::call(it, name, &args, nargout)? {
+            return Ok(Some(r));
+        }
+    }
+    if crate::random::NAMES.contains(&name) {
+        if let Some(r) = crate::random::call(it, name, &args, nargout)? {
             return Ok(Some(r));
         }
     }
@@ -841,44 +830,6 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 }
             }
             mat(m.cast_to(kind))
-        }
-        "rand" | "randn" => {
-            let (rest, kind) = class_option(a)?;
-            let d = size_args(&rest)?;
-            let n = nd::numel(&d);
-            let data = (0..n).map(|_| if name == "rand" { it.next_rand() } else { it.next_randn() }).collect();
-            mat(Matrix::from_dims(d, data).cast_to(kind))
-        }
-        "randi" => {
-            let lim = m_arg(a, 0, name)?;
-            let (lo, hi) = if lim.numel() >= 2 { (lim.data[0], lim.data[1]) } else { (1.0, lim.data[0]) };
-            let (rest, kind) = class_option(&a[1..])?;
-            let d = size_args(&rest)?;
-            let n = nd::numel(&d);
-            let data = (0..n).map(|_| (lo + (it.next_rand() * (hi - lo + 1.0)).floor()).min(hi)).collect();
-            mat(Matrix::from_dims(d, data).cast_to(kind))
-        }
-        "randperm" => {
-            let n = arg(a, 0, name)?.as_usize()?;
-            let mut v: Vec<f64> = (1..=n).map(|x| x as f64).collect();
-            for i in (1..n).rev() {
-                let j = (it.next_rand() * (i + 1) as f64) as usize;
-                v.swap(i, j.min(i));
-            }
-            if let Some(k) = a.get(1) {
-                v.truncate(k.as_usize()?);
-            }
-            mat(Matrix::row(v))
-        }
-        "rng" => {
-            if let Some(v) = a.first() {
-                if !v.is_text() {
-                    it.rng_state = (v.scalar()? as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
-                } else if v.text()? == "default" {
-                    it.rng_state = 0x2545_F491_4F6C_DD1D;
-                }
-            }
-            none()
         }
         "linspace" => {
             if let Some(Value::Time(t)) = a.first() {
@@ -2119,7 +2070,7 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                     it.call_method(&f, &class, vec![v.clone()], 0)?;
                     return none();
                 }
-                if let Some(t) = crate::func_objects::inline_text("", o) {
+                if let Some(t) = crate::func_objects::object_text("", o, Some(crate::random::global_id(it))) {
                     it.emit(OutputKind::Text(t + "\n"));
                     return none();
                 }

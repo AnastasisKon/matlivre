@@ -101,7 +101,7 @@ pub struct Interpreter {
     flush: Option<Box<dyn FnMut(Vec<Output>)>>,
     cancel: Option<Arc<AtomicBool>>,
     pub(crate) tic: Instant,
-    pub(crate) rng_state: u64,
+    pub(crate) rng: crate::random::Streams,
     end_stack: Vec<f64>,
     depth: usize,
     /// Source names of the arguments of the builtin being called (`table` uses them).
@@ -156,7 +156,7 @@ impl Interpreter {
             flush: None,
             cancel: None,
             tic: Instant::now(),
-            rng_state: 0x2545_F491_4F6C_DD1D,
+            rng: crate::random::Streams::new(),
             end_stack: Vec::new(),
             depth: 0,
             arg_names: Vec::new(),
@@ -679,7 +679,7 @@ impl Interpreter {
             return Ok(());
         }
         if let Value::Object(o) = v {
-            if let Some(t) = crate::func_objects::inline_text(name, o) {
+            if let Some(t) = crate::func_objects::object_text(name, o, Some(crate::random::global_id(self))) {
                 self.emit(OutputKind::Value { name: name.to_string(), text: format!("{name} = \n{t}") });
                 return Ok(());
             }

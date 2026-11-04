@@ -36,6 +36,7 @@ mod plotmore;
 mod polyfun;
 mod polyshape;
 mod polyshape_more;
+mod random;
 mod sparse;
 mod specfun;
 mod strings;

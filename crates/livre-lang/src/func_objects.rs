@@ -405,3 +405,9 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], _nargout: usize) -> R
     };
     Ok(Some(outs))
 }
+
+/// The display text of the built-in objects shown in their own format (inline functions and
+/// random streams); `global` is the current global stream.
+pub fn object_text(name: &str, o: &Object, global: Option<u64>) -> Option<String> {
+    inline_text(name, o).or_else(|| crate::random::stream_text(global, o))
+}

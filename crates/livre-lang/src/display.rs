@@ -524,7 +524,7 @@ pub fn display_value(name: &str, v: &Value, f: NumFormat) -> String {
             format!("{name} = {what} with fields:\n\n{}", struct_names_body(s).trim_end_matches('\n'))
         }
         Value::Func(fv) => format!("{name} = function_handle with value:\n\n    {}", func_text(fv)),
-        Value::Object(o) => crate::func_objects::inline_text(name, o)
+        Value::Object(o) => crate::func_objects::object_text(name, o, None)
             .map(|t| format!("{name} = \n{t}"))
             .or_else(|| crate::containers::display(name, v, f))
             .unwrap_or_else(|| crate::class::display_object(name, o, f)),
@@ -578,7 +578,7 @@ pub fn disp_value(v: &Value, f: NumFormat) -> String {
             }
         }
         Value::Func(fv) => func_text(fv),
-        Value::Object(o) => crate::func_objects::inline_text("", o)
+        Value::Object(o) => crate::func_objects::object_text("", o, None)
             .or_else(|| crate::containers::disp(v, f))
             .unwrap_or_else(|| crate::class::display_object("", o, f).trim_start_matches(" = ").to_string()),
         Value::Time(t) => t.disp(),
