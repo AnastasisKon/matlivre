@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1594 |
+| Implemented | 1601 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **428** |
+| **To implement** | **421** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -531,25 +531,19 @@ Implemented: `addlistener`, `builtin`, `enumeration`, `eq`, `event.hasListener`,
 
 ## MATLAB > Programming > Files and Folders
 
-Implemented: 32. To implement: 13. In a branch: 0. Out of scope: 0.
+Implemented: 38. To implement: 7. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `fileattrib`
 - [ ] `filebrowser`
 - [ ] `matlabdrive`
 - [ ] `path2rc`
 - [ ] `pathtool`
-- [ ] `recycle`
-- [ ] `rehash`
-- [ ] `restoredefaultpath`
 - [ ] `savepath`
-- [ ] `toolboxdir`
 - [ ] `visdiff`
-- [ ] `what`
 - [ ] `winopen`
 
-Implemented: `addpath`, `cd`, `copyfile`, `dir`, `exist`, `filemarker`, `fileparts`, `filesep`, `fullfile`, `genpath`, `gunzip`, `gzip`, `isdir`, `isfile`, `isfolder`, `ls`, `matlabroot`, `mkdir`, `movefile`, `path`, `pathsep`, `pwd`, `rmdir`, `rmpath`, `tar`, `tempdir`, `tempname`, `untar`, `unzip`, `userpath`, `which`, `zip`
+Implemented: `addpath`, `cd`, `copyfile`, `dir`, `exist`, `fileattrib`, `filemarker`, `fileparts`, `filesep`, `fullfile`, `genpath`, `gunzip`, `gzip`, `isdir`, `isfile`, `isfolder`, `ls`, `matlabroot`, `mkdir`, `movefile`, `path`, `pathsep`, `pwd`, `recycle`, `rehash`, `restoredefaultpath`, `rmdir`, `rmpath`, `tar`, `tempdir`, `tempname`, `toolboxdir`, `untar`, `unzip`, `userpath`, `what`, `which`, `zip`
 
 ## MATLAB > Programming > Functions
 
@@ -714,12 +708,13 @@ Out of scope: `amp1dae` (MATLAB example file), `ballode` (MATLAB example file), 
 
 ## Not in the function reference > matlab/general
 
-Implemented: 0. To implement: 2. In a branch: 0. Out of scope: 15.
+Implemented: 1. To implement: 1. In a branch: 0. Out of scope: 15.
 
 To implement:
 
 - [ ] `matlab`
-- [ ] `matlabpath`
+
+Implemented: `matlabpath`
 
 Out of scope: `callgraphviz` (desktop, IDE, GUI, printing or interactive tool), `depfunprophelper` (desktop, IDE, GUI, printing or interactive tool), `desktop` (desktop, IDE, GUI, printing or interactive tool), `findfile` (desktop, IDE, GUI, printing or interactive tool), `finfo` (desktop, IDE, GUI, printing or interactive tool), `getmcruserdata` (desktop, IDE, GUI, printing or interactive tool), `isdeployed` (desktop, IDE, GUI, printing or interactive tool), `ismcc` (desktop, IDE, GUI, printing or interactive tool), `java` (Java/.NET/COM/C/Perl interop or MEX), `logo` (desktop, IDE, GUI, printing or interactive tool), `membrane` (desktop, IDE, GUI, printing or interactive tool), `mexdebug` (Java/.NET/COM/C/Perl interop or MEX), `preferences` (desktop, IDE, GUI, printing or interactive tool), `setmcruserdata` (desktop, IDE, GUI, printing or interactive tool), `syntax` (desktop, IDE, GUI, printing or interactive tool)
 
