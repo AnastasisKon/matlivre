@@ -144,6 +144,8 @@ pub fn size_text(rows: usize, cols: usize) -> String {
 fn page_body(m: &Matrix, page: usize, rows: usize, cols: usize, f: NumFormat) -> String {
     let mut out = String::new();
     let at = |r: usize, c: usize| page + c * rows + r;
+    // Each page of an N-D array picks its own format, as in MATLAB.
+    let data = &m.data[page..page + rows * cols];
     match m.kind {
         Kind::Logical => {
             for r in 0..rows {
@@ -162,7 +164,7 @@ fn page_body(m: &Matrix, page: usize, rows: usize, cols: usize, f: NumFormat) ->
             return out;
         }
         Kind::Int(_) => {
-            let w = (0..m.numel()).map(|i| format!("{}", m.data[i] as i64).len()).max().unwrap_or(1) + 3;
+            let w = data.iter().map(|&v| format!("{}", v as i64).len()).max().unwrap_or(1) + 3;
             for r in 0..rows {
                 for c in 0..cols {
                     out.push_str(&format!("{:>w$}", m.data[at(r, c)] as i64));
@@ -184,13 +186,13 @@ fn page_body(m: &Matrix, page: usize, rows: usize, cols: usize, f: NumFormat) ->
         }
         return out;
     }
-    let finite: Vec<f64> = m.data.iter().copied().filter(|v| v.is_finite()).collect();
-    let all_int = m.data.iter().all(|&v| is_int(v) || !v.is_finite());
+    let finite: Vec<f64> = data.iter().copied().filter(|v| v.is_finite()).collect();
+    let all_int = data.iter().all(|&v| is_int(v) || !v.is_finite());
     let max_abs = finite.iter().fold(0.0f64, |a, &v| a.max(v.abs()));
-    let any_neg = m.data.iter().any(|&v| v < 0.0);
+    let any_neg = data.iter().any(|&v| v < 0.0);
     if all_int && max_abs < 1e9 {
         // Columns are 6 wide below 1000 and 12 wide from there (MATLAB's integer layout).
-        let w = if max_abs < 1e3 { 6 } else { 12 }.max(m.data.iter().map(|&v| fmt_short_scalar(v).len()).max().unwrap_or(1) + 2);
+        let w = if max_abs < 1e3 { 6 } else { 12 }.max(data.iter().map(|&v| fmt_short_scalar(v).len()).max().unwrap_or(1) + 2);
         for r in 0..rows {
             for c in 0..cols {
                 out.push_str(&format!("{:>w$}", fmt_short_scalar(m.data[at(r, c)])));
@@ -458,14 +460,21 @@ pub fn display_value(name: &str, v: &Value, f: NumFormat) -> String {
     match v {
         Value::Num(m) if m.sparse => crate::builtins_sparse::display(name, m, f),
         Value::Num(m) => {
-            if m.kind == Kind::Char && m.is_2d() && m.rows() <= 1 {
-                return format!("{name} = '{}'", m.to_string_lossy());
+            if m.kind == Kind::Char && m.is_2d() && m.rows() == 1 && m.cols() > 0 {
+                let text = m.to_string_lossy();
+                // Text with line breaks goes below the name, continuation lines aligned past the quote.
+                if text.contains('\n') {
+                    return format!("{name} = \n    '{}'", text.replace('\n', "\n     "));
+                }
+                return format!("{name} = '{text}'");
             }
             if m.is_empty() {
                 if m.dims == [0, 0] && m.kind == Kind::Double {
                     return format!("{name} = []");
                 }
-                return format!("{name} = {} empty {} array", nd::size_text(&m.dims), m.kind.name());
+                // Numeric classes name the shape (column vector, matrix, ...); char and logical say array.
+                let word = if matches!(m.kind, Kind::Char | Kind::Logical) { "array" } else { shape_word(&m.dims) };
+                return format!("{name} = {} empty {} {word}", nd::size_text(&m.dims), m.kind.name());
             }
             if m.is_scalar() {
                 return match m.kind {

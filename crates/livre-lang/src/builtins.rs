@@ -36,7 +36,7 @@ const NAMES: &[&str] = &[
 pub fn exists(name: &str) -> bool {
     static ALL: std::sync::OnceLock<std::collections::HashSet<&'static str>> = std::sync::OnceLock::new();
     ALL.get_or_init(|| {
-        [NAMES, crate::builtins_elfun::NAMES, crate::builtins_datafun::NAMES, crate::builtins_lang::NAMES, crate::builtins_strings::NAMES, crate::builtins_types::NAMES, crate::builtins_dates::NAMES, crate::builtins_files::NAMES, crate::builtins_textio::NAMES, crate::builtins_data::NAMES, crate::builtins_media::NAMES, crate::builtins_archive::NAMES, crate::builtins_structio::NAMES, crate::gfx::NAMES, crate::builtins_plotfmt::NAMES, crate::builtins_graph3d::NAMES, crate::builtins_funfun::NAMES, crate::builtins_matfun::NAMES, crate::builtins_elmat::NAMES, crate::builtins_ops::NAMES, crate::builtins_specfun::NAMES, crate::polyshape::NAMES, crate::builtins_polyfun::NAMES, crate::builtins_geom::NAMES, crate::polyfun_classes::NAMES, crate::builtins_text::NAMES, crate::builtins_plot::NAMES, crate::time::NAMES, crate::table::NAMES, crate::sym::NAMES, crate::sym::extra::NAMES, crate::containers::NAMES, crate::table_ops::NAMES, crate::builtins_plotmore::NAMES, crate::patterns::NAMES, crate::builtins_validate::NAMES, crate::graphs::NAMES, crate::graphs::FUNCS, crate::builtins_excel::NAMES, crate::builtins_sparse::NAMES, crate::builtins_ode::NAMES, crate::timetable::NAMES, crate::io_more::NAMES, crate::lang_more::NAMES, crate::plot_extra::NAMES, crate::volume::NAMES, crate::timeseries::NAMES, crate::charts::NAMES, crate::images::NAMES]
+        [NAMES, crate::builtins_elfun::NAMES, crate::builtins_datafun::NAMES, crate::builtins_lang::NAMES, crate::builtins_strings::NAMES, crate::builtins_types::NAMES, crate::builtins_dates::NAMES, crate::builtins_files::NAMES, crate::builtins_textio::NAMES, crate::builtins_data::NAMES, crate::builtins_media::NAMES, crate::builtins_archive::NAMES, crate::builtins_structio::NAMES, crate::gfx::NAMES, crate::builtins_plotfmt::NAMES, crate::builtins_graph3d::NAMES, crate::builtins_funfun::NAMES, crate::builtins_matfun::NAMES, crate::builtins_elmat::NAMES, crate::builtins_ops::NAMES, crate::builtins_specfun::NAMES, crate::polyshape::NAMES, crate::builtins_polyfun::NAMES, crate::builtins_geom::NAMES, crate::polyfun_classes::NAMES, crate::builtins_text::NAMES, crate::builtins_plot::NAMES, crate::time::NAMES, crate::table::NAMES, crate::sym::NAMES, crate::sym::extra::NAMES, crate::containers::NAMES, crate::table_ops::NAMES, crate::builtins_plotmore::NAMES, crate::patterns::NAMES, crate::builtins_validate::NAMES, crate::graphs::NAMES, crate::graphs::FUNCS, crate::builtins_excel::NAMES, crate::builtins_sparse::NAMES, crate::builtins_ode::NAMES, crate::timetable::NAMES, crate::io_more::NAMES, crate::lang_more::NAMES, crate::plot_extra::NAMES, crate::volume::NAMES, crate::timeseries::NAMES, crate::charts::NAMES, crate::images::NAMES, crate::math_more::NAMES]
             .iter()
             .flat_map(|n| n.iter().copied())
             .collect()
@@ -617,6 +617,11 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
     }
     if crate::images::NAMES.contains(&name) {
         if let Some(r) = crate::images::call(it, name, &args, nargout)? {
+            return Ok(Some(r));
+        }
+    }
+    if crate::math_more::NAMES.contains(&name) {
+        if let Some(r) = crate::math_more::call(it, name, &args, nargout)? {
             return Ok(Some(r));
         }
     }
@@ -1696,12 +1701,49 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             if matches!(p, Some(v) if v.text().map(|s| s == "fro").unwrap_or(false)) {
                 return num(mag.iter().map(|x| x * x).sum::<f64>().sqrt());
             }
+            if m.dims.len() > 2 {
+                return rt("Input must be 2-D.");
+            }
+            let pv = match p {
+                Some(v) if v.is_text() => match v.text()?.to_lowercase().as_str() {
+                    "inf" => f64::INFINITY,
+                    _ => return rt("The only matrix norms available are 1, 2, inf, and 'fro'."),
+                },
+                Some(v) => v.scalar()?,
+                None => 2.0,
+            };
+            let (r, c) = (m.rows(), m.cols());
+            if pv == 1.0 {
+                return num((0..c).map(|j| mag[j * r..(j + 1) * r].iter().sum::<f64>()).fold(0.0, f64::max));
+            }
+            if pv == f64::INFINITY {
+                return num((0..r).map(|i| (0..c).map(|j| mag[j * r + i]).sum::<f64>()).fold(0.0, f64::max));
+            }
+            if pv != 2.0 {
+                return rt("The only matrix norms available are 1, 2, inf, and 'fro'.");
+            }
+            if m.is_complex() {
+                let s = it.call_function("svd", vec![Value::Num(m.clone())], 1)?.remove(0);
+                return num(s.to_matrix()?.data.iter().copied().fold(0.0, f64::max));
+            }
             let real = Matrix::from_dims(m.dims.clone(), m.data.clone());
             let ata = ops::matmul(&real.transpose(), &real)?;
             num(sym_eigs(&ata).into_iter().fold(0.0f64, f64::max).max(0.0).sqrt())
         }
         "det" => num(ops::det(&m_arg(a, 0, name)?)?),
-        "inv" => mat(ops::inv_any(&m_arg(a, 0, name)?)?),
+        "inv" => {
+            let m = m_arg(a, 0, name)?;
+            match ops::inv_any(&m) {
+                Ok(x) => mat(x),
+                // A singular matrix gives a warning and an Inf result, as in MATLAB.
+                Err(e) if e.message.contains("singular") => {
+                    it.emit(crate::interp::OutputKind::Warning("Matrix is singular to working precision.".into()));
+                    let n = m.rows();
+                    mat(Matrix::from_dims(vec![n, n], vec![f64::INFINITY; n * n]))
+                }
+                Err(e) => Err(e),
+            }
+        }
         "trace" => {
             let m = m_arg(a, 0, name)?;
             num((0..m.rows().min(m.cols())).map(|i| m.get(i, i)).sum())
