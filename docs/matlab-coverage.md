@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1589 |
+| Implemented | 1594 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **433** |
+| **To implement** | **428** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -386,15 +386,11 @@ Implemented: `clc`, `commandwindow`, `format`, `home`, `iskeyword`
 
 ## MATLAB > Language Fundamentals > Matrices and Arrays
 
-Implemented: 56. To implement: 1. In a branch: 0. Out of scope: 0.
-
-To implement:
-
-- [ ] `inline`
+Implemented: 57. To implement: 0. In a branch: 0. Out of scope: 0.
 
 Language keywords to check: `end`
 
-Implemented: `blkdiag`, `cat`, `circshift`, `colon`, `combinations`, `ctranspose`, `diag`, `eye`, `false`, `flip`, `flipdim`, `fliplr`, `flipud`, `freqspace`, `head`, `horzcat`, `ind2sub`, `ipermute`, `iscolumn`, `isempty`, `ismatrix`, `isrow`, `isscalar`, `issorted`, `issortedrows`, `isuniform`, `isvector`, `length`, `linspace`, `logspace`, `meshgrid`, `ndgrid`, `ndims`, `numel`, `ones`, `paddata`, `permute`, `rand`, `repelem`, `repmat`, `reshape`, `resize`, `rot90`, `shiftdim`, `size`, `sort`, `sortrows`, `squeeze`, `sub2ind`, `tail`, `transpose`, `trimdata`, `true`, `vectorize`, `vertcat`, `zeros`
+Implemented: `blkdiag`, `cat`, `circshift`, `colon`, `combinations`, `ctranspose`, `diag`, `eye`, `false`, `flip`, `flipdim`, `fliplr`, `flipud`, `freqspace`, `head`, `horzcat`, `ind2sub`, `inline`, `ipermute`, `iscolumn`, `isempty`, `ismatrix`, `isrow`, `isscalar`, `issorted`, `issortedrows`, `isuniform`, `isvector`, `length`, `linspace`, `logspace`, `meshgrid`, `ndgrid`, `ndims`, `numel`, `ones`, `paddata`, `permute`, `rand`, `repelem`, `repmat`, `reshape`, `resize`, `rot90`, `shiftdim`, `size`, `sort`, `sortrows`, `squeeze`, `sub2ind`, `tail`, `transpose`, `trimdata`, `true`, `vectorize`, `vertcat`, `zeros`
 
 ## MATLAB > Language Fundamentals > Operators and Elementary Operations
 
@@ -628,23 +624,20 @@ Out of scope: `analyzeCodeCompatibility` (Software Development Tools > Debugging
 
 ## MATLAB > Software Development Tools > Performance and Memory
 
-Implemented: 3. To implement: 11. In a branch: 0. Out of scope: 0.
+Implemented: 6. To implement: 8. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `bench`
-- [ ] `clearAllMemoizedCaches`
 - [ ] `clearCache`
 - [ ] `inmem`
-- [ ] `memoize`
 - [ ] `MemoizedFunction`
 - [ ] `memory`
 - [ ] `profile`
 - [ ] `profsave`
 - [ ] `stats`
-- [ ] `timeit`
 
-Implemented: `cputime`, `tic`, `toc`
+Implemented: `clearAllMemoizedCaches`, `cputime`, `memoize`, `tic`, `timeit`, `toc`
 
 ## MATLAB > Software Development Tools > Projects
 
@@ -699,11 +692,10 @@ Implemented: `inf`, `nan`
 
 ## Not in the function reference > matlab/funfun
 
-Implemented: 0. To implement: 12. In a branch: 0. Out of scope: 47.
+Implemented: 1. To implement: 11. In a branch: 0. Out of scope: 47.
 
 To implement:
 
-- [ ] `fcnchk`
 - [ ] `inlineeval`
 - [ ] `numjac`
 - [ ] `ode`
@@ -715,6 +707,8 @@ To implement:
 - [ ] `odeplot`
 - [ ] `odeprint`
 - [ ] `pde`
+
+Implemented: `fcnchk`
 
 Out of scope: `amp1dae` (MATLAB example file), `ballode` (MATLAB example file), `batonode` (MATLAB example file), `brussode` (MATLAB example file), `burgersode` (MATLAB example file), `ddex1` (MATLAB example file), `ddex1de` (MATLAB example file), `ddex1delays` (MATLAB example file), `ddex1hist` (MATLAB example file), `ddex2` (MATLAB example file), `ddex3` (MATLAB example file), `ddex4` (MATLAB example file), `ddex5` (MATLAB example file), `emdenbvp` (MATLAB example file), `fem1ode` (MATLAB example file), `fem2ode` (MATLAB example file), `fsbvp` (MATLAB example file), `hb1dae` (MATLAB example file), `hb1ode` (MATLAB example file), `iburgersode` (MATLAB example file), `ihb1dae` (MATLAB example file), `kneeode` (MATLAB example file), `lorenz` (MATLAB example file), `lotka` (MATLAB example file), `mat4bvp` (MATLAB example file), `odeexamples` (MATLAB example file), `orbitode` (MATLAB example file), `pdex1` (MATLAB example file), `pdex1bc` (MATLAB example file), `pdex1ic` (MATLAB example file), `pdex1pde` (MATLAB example file), `pdex2` (MATLAB example file), `pdex3` (MATLAB example file), `pdex4` (MATLAB example file), `pdex5` (MATLAB example file), `rcbvp` (MATLAB example file), `rigidode` (MATLAB example file), `shockbvp` (MATLAB example file), `threebvp` (MATLAB example file), `twobc` (MATLAB example file), `twobvp` (MATLAB example file), `twoode` (MATLAB example file), `vanderpoldemo` (MATLAB example file), `vdp1` (MATLAB example file), `vdp1000` (MATLAB example file), `vdpode` (MATLAB example file), `weissinger` (MATLAB example file)
 
