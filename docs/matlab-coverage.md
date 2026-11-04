@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1561 |
+| Implemented | 1581 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **461** |
+| **To implement** | **441** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -113,14 +113,13 @@ Out of scope: `accellog` (Data Import and Analysis > Data Import and Export > Ha
 
 ## MATLAB > Data Import and Analysis > Descriptive Statistics
 
-Implemented: 19. To implement: 2. In a branch: 0. Out of scope: 0.
+Implemented: 20. To implement: 1. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `kde`
-- [ ] `rms`
 
-Implemented: `bounds`, `corrcoef`, `cov`, `cummax`, `cummin`, `mape`, `maxk`, `mink`, `mode`, `movmax`, `movmin`, `movprod`, `movstd`, `movvar`, `prctile`, `quantile`, `rmse`, `xcorr`, `xcov`
+Implemented: `bounds`, `corrcoef`, `cov`, `cummax`, `cummin`, `mape`, `maxk`, `mink`, `mode`, `movmax`, `movmin`, `movprod`, `movstd`, `movvar`, `prctile`, `quantile`, `rms`, `rmse`, `xcorr`, `xcov`
 
 ## MATLAB > Data Import and Analysis > Large Files and Big Data
 
@@ -160,19 +159,9 @@ Out of scope: `demo` (Environment and Settings > Help and Support), `doc` (Envir
 
 ## MATLAB > Environment and Settings > Platform and License
 
-Implemented: 6. To implement: 7. In a branch: 0. Out of scope: 0.
+Implemented: 13. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `ismac`
-- [ ] `ispc`
-- [ ] `isstudent`
-- [ ] `isunix`
-- [ ] `javachk`
-- [ ] `usejava`
-- [ ] `version`
-
-Implemented: `computer`, `isMATLABReleaseOlderThan`, `license`, `matlabRelease`, `ver`, `verLessThan`
+Implemented: `computer`, `ismac`, `isMATLABReleaseOlderThan`, `ispc`, `isstudent`, `isunix`, `javachk`, `license`, `matlabRelease`, `usejava`, `ver`, `verLessThan`, `version`
 
 ## MATLAB > Environment and Settings > Startup and Shutdown
 
@@ -402,17 +391,16 @@ Implemented: `clc`, `commandwindow`, `format`, `home`, `iskeyword`
 
 ## MATLAB > Language Fundamentals > Matrices and Arrays
 
-Implemented: 54. To implement: 3. In a branch: 0. Out of scope: 0.
+Implemented: 55. To implement: 2. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `combinations`
 - [ ] `inline`
 - [ ] `vectorize`
 
 Language keywords to check: `end`
 
-Implemented: `blkdiag`, `cat`, `circshift`, `colon`, `ctranspose`, `diag`, `eye`, `false`, `flip`, `flipdim`, `fliplr`, `flipud`, `freqspace`, `head`, `horzcat`, `ind2sub`, `ipermute`, `iscolumn`, `isempty`, `ismatrix`, `isrow`, `isscalar`, `issorted`, `issortedrows`, `isuniform`, `isvector`, `length`, `linspace`, `logspace`, `meshgrid`, `ndgrid`, `ndims`, `numel`, `ones`, `paddata`, `permute`, `rand`, `repelem`, `repmat`, `reshape`, `resize`, `rot90`, `shiftdim`, `size`, `sort`, `sortrows`, `squeeze`, `sub2ind`, `tail`, `transpose`, `trimdata`, `true`, `vertcat`, `zeros`
+Implemented: `blkdiag`, `cat`, `circshift`, `colon`, `combinations`, `ctranspose`, `diag`, `eye`, `false`, `flip`, `flipdim`, `fliplr`, `flipud`, `freqspace`, `head`, `horzcat`, `ind2sub`, `ipermute`, `iscolumn`, `isempty`, `ismatrix`, `isrow`, `isscalar`, `issorted`, `issortedrows`, `isuniform`, `isvector`, `length`, `linspace`, `logspace`, `meshgrid`, `ndgrid`, `ndims`, `numel`, `ones`, `paddata`, `permute`, `rand`, `repelem`, `repmat`, `reshape`, `resize`, `rot90`, `shiftdim`, `size`, `sort`, `sortrows`, `squeeze`, `sub2ind`, `tail`, `transpose`, `trimdata`, `true`, `vertcat`, `zeros`
 
 ## MATLAB > Language Fundamentals > Operators and Elementary Operations
 
@@ -428,26 +416,15 @@ Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`,
 
 ## MATLAB > Mathematics > Elementary Math
 
-Implemented: 126. To implement: 4. In a branch: 0. Out of scope: 0.
+Implemented: 130. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `cospi`
-- [ ] `matchpairs`
-- [ ] `residue`
-- [ ] `sinpi`
-
-Implemented: `abs`, `acos`, `acosd`, `acosh`, `acot`, `acotd`, `acoth`, `acsc`, `acscd`, `acsch`, `airy`, `angle`, `asec`, `asecd`, `asech`, `asin`, `asind`, `asinh`, `atan`, `atan2`, `atan2d`, `atand`, `atanh`, `besselh`, `besseli`, `besselj`, `besselk`, `bessely`, `beta`, `betainc`, `betaincinv`, `betaln`, `cart2pol`, `cart2sph`, `compan`, `complex`, `conj`, `conv`, `cos`, `cosd`, `cosh`, `cot`, `cotd`, `coth`, `cplxpair`, `csc`, `cscd`, `csch`, `deconv`, `deg2rad`, `ellipj`, `ellipke`, `erf`, `erfc`, `erfcinv`, `erfcx`, `erfinv`, `exp`, `expint`, `expm1`, `factor`, `factorial`, `gallery`, `gamma`, `gammainc`, `gammaincinv`, `gammaln`, `gcd`, `hadamard`, `hankel`, `hilb`, `hypot`, `i`, `imag`, `invhilb`, `isprime`, `j`, `lcm`, `legendre`, `log`, `log10`, `log1p`, `log2`, `magic`, `nchoosek`, `nextpow2`, `nthroot`, `pascal`, `perms`, `pi`, `pol2cart`, `poly`, `polyder`, `polyeig`, `polyfit`, `polyint`, `polyval`, `polyvalm`, `pow2`, `primes`, `psi`, `rad2deg`, `rat`, `rats`, `real`, `reallog`, `realpow`, `realsqrt`, `roots`, `rosser`, `sec`, `secd`, `sech`, `sign`, `sin`, `sind`, `sinh`, `sph2cart`, `sqrt`, `tan`, `tand`, `tanh`, `toeplitz`, `unwrap`, `vander`, `wilkinson`
+Implemented: `abs`, `acos`, `acosd`, `acosh`, `acot`, `acotd`, `acoth`, `acsc`, `acscd`, `acsch`, `airy`, `angle`, `asec`, `asecd`, `asech`, `asin`, `asind`, `asinh`, `atan`, `atan2`, `atan2d`, `atand`, `atanh`, `besselh`, `besseli`, `besselj`, `besselk`, `bessely`, `beta`, `betainc`, `betaincinv`, `betaln`, `cart2pol`, `cart2sph`, `compan`, `complex`, `conj`, `conv`, `cos`, `cosd`, `cosh`, `cospi`, `cot`, `cotd`, `coth`, `cplxpair`, `csc`, `cscd`, `csch`, `deconv`, `deg2rad`, `ellipj`, `ellipke`, `erf`, `erfc`, `erfcinv`, `erfcx`, `erfinv`, `exp`, `expint`, `expm1`, `factor`, `factorial`, `gallery`, `gamma`, `gammainc`, `gammaincinv`, `gammaln`, `gcd`, `hadamard`, `hankel`, `hilb`, `hypot`, `i`, `imag`, `invhilb`, `isprime`, `j`, `lcm`, `legendre`, `log`, `log10`, `log1p`, `log2`, `magic`, `matchpairs`, `nchoosek`, `nextpow2`, `nthroot`, `pascal`, `perms`, `pi`, `pol2cart`, `poly`, `polyder`, `polyeig`, `polyfit`, `polyint`, `polyval`, `polyvalm`, `pow2`, `primes`, `psi`, `rad2deg`, `rat`, `rats`, `real`, `reallog`, `realpow`, `realsqrt`, `residue`, `roots`, `rosser`, `sec`, `secd`, `sech`, `sign`, `sin`, `sind`, `sinh`, `sinpi`, `sph2cart`, `sqrt`, `tan`, `tand`, `tanh`, `toeplitz`, `unwrap`, `vander`, `wilkinson`
 
 ## MATLAB > Mathematics > Fourier Analysis and Filtering
 
-Implemented: 14. To implement: 1. In a branch: 0. Out of scope: 0.
+Implemented: 15. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `ss2tf`
-
-Implemented: `conv2`, `convn`, `fft`, `fft2`, `fftn`, `fftshift`, `fftw`, `filter2`, `ifft`, `ifft2`, `ifftn`, `ifftshift`, `nufft`, `nufftn`
+Implemented: `conv2`, `convn`, `fft`, `fft2`, `fftn`, `fftshift`, `fftw`, `filter2`, `ifft`, `ifft2`, `ifftn`, `ifftshift`, `nufft`, `nufftn`, `ss2tf`
 
 ## MATLAB > Mathematics > Graph and Network Algorithms
 
@@ -464,31 +441,26 @@ Implemented: `addedge`, `addnode`, `adjacency`, `allcycles`, `allpaths`, `bctree
 
 ## MATLAB > Mathematics > Interpolation
 
-Implemented: 15. To implement: 3. In a branch: 0. Out of scope: 0.
+Implemented: 17. To implement: 1. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `interp1q`
-- [ ] `padecoef`
 - [ ] `TriScatteredInterp`
 
-Implemented: `griddata`, `griddatan`, `griddedInterpolant`, `interp1`, `interp2`, `interp3`, `interpft`, `interpn`, `makima`, `mkpp`, `pchip`, `ppval`, `scatteredInterpolant`, `spline`, `unmkpp`
+Implemented: `griddata`, `griddatan`, `griddedInterpolant`, `interp1`, `interp1q`, `interp2`, `interp3`, `interpft`, `interpn`, `makima`, `mkpp`, `padecoef`, `pchip`, `ppval`, `scatteredInterpolant`, `spline`, `unmkpp`
 
 ## MATLAB > Mathematics > Linear Algebra
 
-Implemented: 66. To implement: 7. In a branch: 0. Out of scope: 0.
+Implemented: 69. To implement: 4. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `decomposition`
-- [ ] `expmv`
 - [ ] `isIllConditioned`
-- [ ] `pageinv`
-- [ ] `pagenorm`
 - [ ] `svdappend`
 - [ ] `svdsketch`
 
-Implemented: `balance`, `bandwidth`, `cdf2rdf`, `chol`, `cholupdate`, `cond`, `condeig`, `condest`, `cross`, `det`, `dot`, `eig`, `eigs`, `expm`, `funm`, `gsvd`, `hess`, `inv`, `isbanded`, `isdiag`, `ishermitian`, `issymmetric`, `istril`, `istriu`, `kron`, `ldl`, `linsolve`, `logm`, `lscov`, `lsqminnorm`, `lsqnonneg`, `lu`, `mldivide`, `mpower`, `mrdivide`, `mtimes`, `norm`, `normest`, `null`, `ordeig`, `ordqz`, `ordschur`, `orth`, `pageeig`, `pagesvd`, `pinv`, `planerot`, `qr`, `qrdelete`, `qrinsert`, `qrupdate`, `qz`, `rank`, `rcond`, `rref`, `rsf2csf`, `schur`, `sqrtm`, `subspace`, `svd`, `svds`, `sylvester`, `trace`, `tril`, `triu`, `vecnorm`
+Implemented: `balance`, `bandwidth`, `cdf2rdf`, `chol`, `cholupdate`, `cond`, `condeig`, `condest`, `cross`, `det`, `dot`, `eig`, `eigs`, `expm`, `expmv`, `funm`, `gsvd`, `hess`, `inv`, `isbanded`, `isdiag`, `ishermitian`, `issymmetric`, `istril`, `istriu`, `kron`, `ldl`, `linsolve`, `logm`, `lscov`, `lsqminnorm`, `lsqnonneg`, `lu`, `mldivide`, `mpower`, `mrdivide`, `mtimes`, `norm`, `normest`, `null`, `ordeig`, `ordqz`, `ordschur`, `orth`, `pageeig`, `pageinv`, `pagenorm`, `pagesvd`, `pinv`, `planerot`, `qr`, `qrdelete`, `qrinsert`, `qrupdate`, `qz`, `rank`, `rcond`, `rref`, `rsf2csf`, `schur`, `sqrtm`, `subspace`, `svd`, `svds`, `sylvester`, `trace`, `tril`, `triu`, `vecnorm`
 
 ## MATLAB > Mathematics > Numerical Integration and Differential Equations
 
@@ -843,13 +815,9 @@ Out of scope: `checkSyntacticWarnings` (internal helper, not a user function), `
 
 ## Not in the function reference > matlab/matfun
 
-Implemented: 1. To implement: 1. In a branch: 0. Out of scope: 0.
+Implemented: 2. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `ltitr`
-
-Implemented: `normest1`
+Implemented: `ltitr`, `normest1`
 
 ## Not in the function reference > matlab/ops
 
