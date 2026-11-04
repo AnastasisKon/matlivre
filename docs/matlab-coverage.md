@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1627 |
+| Implemented | 1647 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **395** |
+| **To implement** | **375** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -167,32 +167,9 @@ Out of scope: `batchStartupOptionUsed` (Environment and Settings > Startup and S
 
 ## MATLAB > Environment and Settings > System Commands
 
-Implemented: 18. To implement: 20. In a branch: 0. Out of scope: 0.
+Implemented: 38. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `addGroup`
-- [ ] `addSetting`
-- [ ] `clearInstallationValue`
-- [ ] `clearPersonalValue`
-- [ ] `clearTemporaryValue`
-- [ ] `hasFactoryValue`
-- [ ] `hasGroup`
-- [ ] `hasInstallationValue`
-- [ ] `hasPersonalValue`
-- [ ] `hasSetting`
-- [ ] `hasTemporaryValue`
-- [ ] `matlab.settings.mustBeIntegerScalar`
-- [ ] `matlab.settings.mustBeLogicalScalar`
-- [ ] `matlab.settings.mustBeNumericScalar`
-- [ ] `matlab.settings.mustBeStringScalar`
-- [ ] `removeGroup`
-- [ ] `removeSetting`
-- [ ] `Setting`
-- [ ] `settings`
-- [ ] `SettingsGroup`
-
-Implemented: `addpref`, `clipboard`, `cmdsep`, `dos`, `getenv`, `getpref`, `isenv`, `ispref`, `loadenv`, `matlab.io.saveVariablesToScript`, `perl`, `rmpref`, `setenv`, `setpref`, `system`, `unix`, `unsetenv`, `winqueryreg`
+Implemented: `addGroup`, `addpref`, `addSetting`, `clearInstallationValue`, `clearPersonalValue`, `clearTemporaryValue`, `clipboard`, `cmdsep`, `dos`, `getenv`, `getpref`, `hasFactoryValue`, `hasGroup`, `hasInstallationValue`, `hasPersonalValue`, `hasSetting`, `hasTemporaryValue`, `isenv`, `ispref`, `loadenv`, `matlab.io.saveVariablesToScript`, `matlab.settings.mustBeIntegerScalar`, `matlab.settings.mustBeLogicalScalar`, `matlab.settings.mustBeNumericScalar`, `matlab.settings.mustBeStringScalar`, `perl`, `removeGroup`, `removeSetting`, `rmpref`, `setenv`, `setpref`, `Setting`, `settings`, `SettingsGroup`, `system`, `unix`, `unsetenv`, `winqueryreg`
 
 ## MATLAB > External Language Interfaces > .NET with MATLAB
 

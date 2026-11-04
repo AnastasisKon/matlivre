@@ -20,7 +20,7 @@ of MATLAB, written in Rust: no MATLAB installation, license or Java runtime is n
 - **Runs code fast.** On a 12-case benchmark of loops, recursion, array growth, linear
   algebra, sorting, strings, structs and cells, MatLivre is 4.7x faster than MATLAB R2023b and
   65x faster than GNU Octave (geometric mean), with identical results in all three.
-- **Speaks MATLAB.** 1,627 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
+- **Speaks MATLAB.** 1,647 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
   error messages and semantics, checked against MATLAB R2023b output.
 - **One small program.** A single 36 MB executable that depends only on DLLs shipped with
   Windows.
@@ -158,7 +158,7 @@ per-case Octave comparison are in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.m
 
 MATLAB compatibility is the rule: semantics, display and error messages follow MATLAB R2023b.
 [`docs/matlab-coverage.md`](docs/matlab-coverage.md) lists every function of the MATLAB and
-Symbolic Math Toolbox references and its status (1,627 implemented).
+Symbolic Math Toolbox references and its status (1,647 implemented).
 
 - N-D arrays of every numeric type, `logical`, `char` and strings, with implicit expansion,
   saturating integer arithmetic and complex numbers; regular expressions and text patterns
@@ -170,7 +170,7 @@ Symbolic Math Toolbox references and its status (1,627 implemented).
 - `classdef` classes (properties, methods, static methods, inheritance, handle and value
   semantics, operator overloading, events and listeners, enumerations) and function files from the script's folder; argument
   validation (`mustBe*`, `inputParser`), `Name=Value` arguments and error identifiers;
-  `timer` objects, `diary` and `localfunctions`.
+  `timer` objects, `diary`, `localfunctions` and the `settings` API.
 - Graphs and networks: `graph` and `digraph` with shortest paths, search, components,
   spanning trees, topological sort, maximum flow, centrality and plotting.
 - Sparse matrices: `sparse`, `spdiags`, `speye`, iterative solvers (`pcg`, `gmres`,
@@ -237,7 +237,8 @@ installation when one is present. Benchmarks: [`benchmarks/run_bench.bat`](bench
 - Rich text in live scripts (bold and italic runs, links, equations, images) is shown as plain
   text.
 - Functions still to implement are listed in [`docs/matlab-coverage.md`](docs/matlab-coverage.md),
-  among them symbolic special functions, spreadsheet and XML import options and the `settings` API.
+  among them symbolic special functions, spreadsheet and XML import options and the `Tiff`
+  class.
 - Chart layouts that MATLAB fits to the screen (word clouds, bubble clouds, automatic
   `binscatter` bins) are approximated, and `geobubble` draws no basemap.
 - Dithering in `rgb2ind` and `dither` is plain Floyd-Steinberg, so individual pixels can
@@ -248,6 +249,9 @@ installation when one is present. Benchmarks: [`benchmarks/run_bench.bat`](bench
   is more than a fifth of `n`.
 - `timer` callbacks run during `pause`, `wait` and `drawnow`, but not once a script has
   finished, since there is no idle event loop.
+- `settings` holds only a few of MATLAB's product settings (`matlab.fonts.codefont`), personal
+  values last for the session instead of being saved, and a group lists its settings in the
+  order they were added rather than in MATLAB's order.
 - Sparse matrices are stored densely: they behave and display as in MATLAB, but matrices
   with more than 2e8 elements are refused.
 - Windows is the only tested platform.
