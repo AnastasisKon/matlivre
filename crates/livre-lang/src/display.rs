@@ -412,6 +412,7 @@ pub(crate) fn struct_fields_body(s: &StructArray, f: NumFormat) -> String {
         let simple = |x: &Value| match x {
             Value::Num(m) => m.numel() == 1 || (m.kind == Kind::Char && m.rows() <= 1),
             Value::Str(s) => s.data.len() == 1,
+            Value::Cell(_) => true,
             _ => false,
         };
         let shown = match v {
@@ -421,8 +422,9 @@ pub(crate) fn struct_fields_body(s: &StructArray, f: NumFormat) -> String {
                     .iter()
                     .map(|x| {
                         let (t, a) = cell_item(x, f);
-                        match a {
-                            CellAlign::Left => t,
+                        match (x, a) {
+                            (Value::Cell(_), _) => format!("{{{t}}}"),
+                            (_, CellAlign::Left) => t,
                             _ => format!("[{t}]"),
                         }
                     })
@@ -522,7 +524,10 @@ pub fn display_value(name: &str, v: &Value, f: NumFormat) -> String {
             format!("{name} = {what} with fields:\n\n{}", struct_names_body(s).trim_end_matches('\n'))
         }
         Value::Func(fv) => format!("{name} = function_handle with value:\n\n    {}", func_text(fv)),
-        Value::Object(o) => crate::containers::display(name, v, f).unwrap_or_else(|| crate::class::display_object(name, o, f)),
+        Value::Object(o) => crate::func_objects::inline_text(name, o)
+            .map(|t| format!("{name} = \n{t}"))
+            .or_else(|| crate::containers::display(name, v, f))
+            .unwrap_or_else(|| crate::class::display_object(name, o, f)),
         Value::Time(t) => t.display(name),
         Value::Table(t) => t.display(name, f),
         Value::Sym(s) => s.display(name),
@@ -573,7 +578,9 @@ pub fn disp_value(v: &Value, f: NumFormat) -> String {
             }
         }
         Value::Func(fv) => func_text(fv),
-        Value::Object(o) => crate::containers::disp(v, f).unwrap_or_else(|| crate::class::display_object("", o, f).trim_start_matches(" = ").to_string()),
+        Value::Object(o) => crate::func_objects::inline_text("", o)
+            .or_else(|| crate::containers::disp(v, f))
+            .unwrap_or_else(|| crate::class::display_object("", o, f).trim_start_matches(" = ").to_string()),
         Value::Time(t) => t.disp(),
         Value::Table(t) => t.body(f),
         Value::Sym(s) => s.disp(),

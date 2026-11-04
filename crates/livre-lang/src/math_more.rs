@@ -822,7 +822,7 @@ fn inner2outer(a: &[Value]) -> R<Value> {
 }
 
 /// `vectorize`: the elementwise forms of `*`, `/`, `\` and `^`.
-fn vectorize(s: &str) -> String {
+pub(crate) fn vectorize(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 4);
     let mut prev = '\0';
     for c in s.chars() {

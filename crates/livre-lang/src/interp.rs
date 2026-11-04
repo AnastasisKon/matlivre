@@ -660,6 +660,10 @@ impl Interpreter {
             return Ok(());
         }
         if let Value::Object(o) = v {
+            if let Some(t) = crate::func_objects::inline_text(name, o) {
+                self.emit(OutputKind::Value { name: name.to_string(), text: format!("{name} = \n{t}") });
+                return Ok(());
+            }
             if let Some(f) = o.class.method("display").cloned() {
                 self.call_method(&f, &o.class.clone(), vec![v.clone()], 0)?;
                 return Ok(());
@@ -712,7 +716,11 @@ impl Interpreter {
                     }
                 }
                 let vals = self.eval_multi(expr, 0)?;
-                if let Some(v) = vals.into_iter().next() {
+                // A comma-separated list (c{:}, s.f of a struct array) shows every element as ans;
+                // a function call shows only its first output.
+                let list = matches!(expr, Expr::CellIndex(..) | Expr::Field(..) | Expr::DynField(..));
+                let take = if list { vals.len() } else { 1 };
+                for v in vals.into_iter().take(take) {
                     if *print {
                         self.show("ans", &v)?;
                     }

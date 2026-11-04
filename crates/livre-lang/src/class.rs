@@ -199,9 +199,11 @@ impl Object {
 pub fn format_object(name: &str, o: &Object, values: &[Value], f: NumFormat) -> String {
     let visible: Vec<usize> = (0..o.class.props.len()).filter(|&i| !o.class.props[i].hidden && !o.class.props[i].constant).collect();
     let w = visible.iter().map(|&i| o.class.props[i].name.len()).max().unwrap_or(0);
-    let mut out = format!("{name} = \n  {} with properties:\n\n", o.class.name);
+    // Classes in packages show their short name, as in MATLAB.
+    let short = o.class.name.rsplit('.').next().unwrap_or(&o.class.name);
+    let mut out = format!("{name} = \n  {short} with properties:\n\n");
     if visible.is_empty() {
-        return format!("{name} = \n  {} with no properties.", o.class.name);
+        return format!("{name} = \n  {short} with no properties.");
     }
     for i in visible {
         out.push_str(&format!("    {:>w$}: {}\n", o.class.props[i].name, summary(&values[i], f)));

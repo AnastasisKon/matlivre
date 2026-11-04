@@ -63,6 +63,7 @@ pub mod timeseries;
 pub mod charts;
 pub mod images;
 pub mod math_more;
+pub mod func_objects;
 pub mod zones;
 pub mod time;
 pub mod value;
