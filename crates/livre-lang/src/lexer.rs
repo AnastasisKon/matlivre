@@ -217,8 +217,10 @@ impl<'a> Lexer<'a> {
                     self.push(Tok::Kw(kw), space);
                 } else {
                     let stmt_start = self.at_statement_start() && self.brackets.is_empty();
+                    // syms y(t) and syms f(x, y) declare symbolic functions.
+                    let syms = word == "syms";
                     self.push(Tok::Ident(word.to_string()), space);
-                    if stmt_start && self.looks_like_command() {
+                    if stmt_start && (self.looks_like_command() || (syms && self.looks_like_syms())) {
                         self.command_args();
                     }
                 }
@@ -418,6 +420,15 @@ impl<'a> Lexer<'a> {
         !(self.peek(j) == b'=' && self.peek(j + 1) != b'=') && self.peek(j) != b'('
     }
 
+    /// `syms f(x)`: command syntax although a word is followed by a parenthesis.
+    fn looks_like_syms(&self) -> bool {
+        let mut k = 0;
+        while matches!(self.peek(k), b' ' | b'\t') {
+            k += 1;
+        }
+        k > 0 && self.peek(k).is_ascii_alphabetic()
+    }
+
     fn command_args(&mut self) {
         loop {
             while matches!(self.peek(0), b' ' | b'\t' | b'\r') {
@@ -434,7 +445,14 @@ impl<'a> Lexer<'a> {
                 }
                 continue;
             }
-            while !matches!(self.peek(0), b' ' | b'\t' | b'\r' | b'\n' | 0 | b';' | b',') {
+            // A parenthesized group (syms f(x, y)) stays one word.
+            let mut depth = 0;
+            while !(matches!(self.peek(0), b'\r' | b'\n' | 0) || (depth == 0 && matches!(self.peek(0), b' ' | b'\t' | b';' | b','))) {
+                match self.peek(0) {
+                    b'(' => depth += 1,
+                    b')' => depth -= 1,
+                    _ => {}
+                }
                 self.i += 1;
             }
             let word = self.src[start..self.i].to_string();

@@ -1,4 +1,4 @@
-//! The Files panel's model: a tree rooted at "This PC" (the drives), with folders listed on
+//! The Files panel's model: a tree rooted at the opened project folder, with folders listed on
 //! demand and re-listed every couple of seconds while they are open.
 
 use std::collections::{HashMap, HashSet};
@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::icons::{self, Ic};
-use crate::os;
 
 const RELIST: Duration = Duration::from_secs(2);
 
@@ -17,8 +16,7 @@ pub struct Entry {
 }
 
 pub struct Row {
-    /// `None` for "This PC".
-    pub path: Option<PathBuf>,
+    pub path: PathBuf,
     pub name: String,
     pub depth: usize,
     pub icon: Ic,
@@ -27,9 +25,9 @@ pub struct Row {
 }
 
 pub struct FileTree {
-    pc_open: bool,
+    /// The project folder the panel shows; `None` until one is opened.
+    root: Option<PathBuf>,
     open: HashSet<PathBuf>,
-    drives: Vec<(PathBuf, String)>,
     listings: HashMap<PathBuf, (Instant, Vec<Entry>)>,
 }
 
@@ -65,27 +63,36 @@ fn list_dir(dir: &Path) -> Vec<Entry> {
 }
 
 impl FileTree {
-    pub fn new() -> Self {
-        Self { pc_open: true, open: HashSet::new(), drives: os::drives(), listings: HashMap::new() }
+    pub fn new(root: Option<PathBuf>) -> Self {
+        Self { root: root.filter(|p| p.is_dir()), open: HashSet::new(), listings: HashMap::new() }
     }
 
-    /// Opens every folder from the drive down to `dir`.
+    pub fn root(&self) -> Option<&Path> {
+        self.root.as_deref()
+    }
+
+    /// Makes `dir` the project root (or closes the project with `None`).
+    pub fn set_root(&mut self, dir: Option<PathBuf>) {
+        self.root = dir;
+        self.open.clear();
+        self.listings.clear();
+    }
+
+    /// Opens every folder from the root down to `dir` (nothing if `dir` is outside the root).
     pub fn reveal(&mut self, dir: &Path) {
-        self.pc_open = true;
-        for a in dir.ancestors() {
+        let Some(root) = &self.root else { return };
+        if !dir.starts_with(root) {
+            return;
+        }
+        for a in dir.ancestors().take_while(|a| a.starts_with(root)) {
             self.open.insert(a.to_path_buf());
         }
     }
 
-    pub fn toggle(&mut self, path: Option<&Path>) {
-        match path {
-            None => self.pc_open = !self.pc_open,
-            Some(p) => {
-                if !self.open.remove(p) {
-                    self.open.insert(p.to_path_buf());
-                    self.listings.remove(p);
-                }
-            }
+    pub fn toggle(&mut self, path: &Path) {
+        if !self.open.remove(path) {
+            self.open.insert(path.to_path_buf());
+            self.listings.remove(path);
         }
     }
 
@@ -97,19 +104,11 @@ impl FileTree {
         &self.listings[dir].1
     }
 
-    /// The visible rows, depth first.
+    /// The visible rows below the root, depth first.
     pub fn rows(&mut self) -> Vec<Row> {
-        let mut rows = vec![Row { path: None, name: "This PC".into(), depth: 0, icon: Ic::Pc, dir: true, open: self.pc_open }];
-        if !self.pc_open {
-            return rows;
-        }
-        let drives = self.drives.clone();
-        for (root, label) in drives {
-            let open = self.open.contains(&root);
-            rows.push(Row { path: Some(root.clone()), name: label, depth: 1, icon: Ic::Drive, dir: true, open });
-            if open {
-                self.walk(&root, 2, &mut rows);
-            }
+        let mut rows = Vec::new();
+        if let Some(root) = self.root.clone() {
+            self.walk(&root, 0, &mut rows);
         }
         rows
     }
@@ -125,7 +124,7 @@ impl FileTree {
             } else {
                 Ic::Folder
             };
-            rows.push(Row { path: Some(path.clone()), name, depth, icon, dir: is_dir, open });
+            rows.push(Row { path: path.clone(), name, depth, icon, dir: is_dir, open });
             if open {
                 self.walk(&path, depth + 1, rows);
             }

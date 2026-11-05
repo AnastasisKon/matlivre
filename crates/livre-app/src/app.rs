@@ -380,6 +380,8 @@ struct SavedLayout {
     chat_open: bool,
     chat_w: f32,
     completions: bool,
+    /// The project folder shown in the Files panel.
+    folder: Option<PathBuf>,
 }
 
 impl Default for SavedLayout {
@@ -396,6 +398,7 @@ impl Default for SavedLayout {
             chat_open: false,
             chat_w: 380.0,
             completions: true,
+            folder: None,
         }
     }
 }
@@ -426,6 +429,7 @@ impl SavedLayout {
                 "claude_open" => l.chat_open = flag,
                 "claude_width" => l.chat_w = size.unwrap_or(l.chat_w),
                 "completions" => l.completions = flag,
+                "folder" => l.folder = Some(PathBuf::from(v)).filter(|p| !v.is_empty() && p.is_dir()),
                 _ => {}
             }
         }
@@ -435,7 +439,7 @@ impl SavedLayout {
     fn save(&self) {
         let Some(path) = SavedLayout::path() else { return };
         let text = format!(
-            "files_open={}\ncommand_open={}\nworkspace_open={}\nfiles_width={}\nworkspace_width={}\ncommand_height={}\noutput={}\ntheme={}\nclaude_open={}\nclaude_width={}\ncompletions={}\n",
+            "files_open={}\ncommand_open={}\nworkspace_open={}\nfiles_width={}\nworkspace_width={}\ncommand_height={}\noutput={}\ntheme={}\nclaude_open={}\nclaude_width={}\ncompletions={}\nfolder={}\n",
             self.files_open,
             self.cmd_open,
             self.ws_open,
@@ -447,6 +451,7 @@ impl SavedLayout {
             self.chat_open,
             self.chat_w.round(),
             self.completions,
+            self.folder.as_deref().map(|p| p.display().to_string()).unwrap_or_default(),
         );
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
@@ -481,11 +486,8 @@ impl App {
             }
             rx
         });
-        let mut tree = FileTree::new();
-        if let Ok(dir) = std::env::current_dir() {
-            tree.reveal(&dir);
-        }
         let layout = SavedLayout::load();
+        let tree = FileTree::new(layout.folder.clone());
         let mut app = Self {
             skin,
             tabs: Vec::new(),
@@ -570,6 +572,7 @@ impl App {
             chat_open: self.chat_open,
             chat_w: self.chat_w,
             completions: self.completion.on,
+            folder: self.tree.root().map(Path::to_path_buf),
         }
     }
 
@@ -877,6 +880,16 @@ impl App {
                 self.notice = None;
             }
             Err(e) => self.notice = Some((format!("Could not open {}: {e}", p.display()), true)),
+        }
+    }
+
+    fn open_folder_dialog(&mut self) {
+        let mut d = rfd::FileDialog::new();
+        if let Some(r) = self.tree.root() {
+            d = d.set_directory(r);
+        }
+        if let Some(p) = d.pick_folder() {
+            self.tree.set_root(Some(p));
         }
     }
 
@@ -2340,7 +2353,38 @@ impl App {
     fn files_panel(&mut self, ui: &mut Ui, rect: Rect) {
         let skin = self.skin.clone();
         let mut ui = Self::card(ui, &skin, rect);
-        Self::drawer_header(&mut ui, &skin, Some(Ic::Folder), "Files", |_| {});
+        let title = match self.tree.root() {
+            Some(r) => r.file_name().map_or_else(|| r.display().to_string(), |n| n.to_string_lossy().into_owned()),
+            None => "Files".to_string(),
+        };
+        let has_root = self.tree.root().is_some();
+        let mut pick = false;
+        let mut close = false;
+        Self::drawer_header(&mut ui, &skin, Some(Ic::Folder), &title, |ui| {
+            if has_root {
+                if widgets::cmd_button(ui, &skin, Some(Ic::Clear), "", true, false, false).on_hover_text("Close folder").clicked() {
+                    close = true;
+                }
+                if widgets::cmd_button(ui, &skin, Some(Ic::Open), "", true, false, false).on_hover_text("Open folder").clicked() {
+                    pick = true;
+                }
+            }
+        });
+        if !has_root {
+            egui::Frame::none().inner_margin(Margin { left: 16.0, right: 12.0, top: 12.0, bottom: 0.0 }).show(&mut ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 8.0;
+                ui.add(egui::Label::new(RichText::new("No folder opened.").color(skin.text_secondary)).wrap());
+                if widgets::cmd_button(ui, &skin, Some(Ic::Open), "Open Folder", true, false, false).on_hover_text("Choose the project folder").clicked() {
+                    pick = true;
+                }
+            });
+        }
+        if pick {
+            self.open_folder_dialog();
+        }
+        if close {
+            self.tree.set_root(None);
+        }
         let selected = self.tab().path.clone();
         let mut toggle = None;
         let mut open = None;
@@ -2350,24 +2394,22 @@ impl App {
             ui.add_space(4.0);
             ui.spacing_mut().item_spacing.y = 0.0;
             for row in &rows {
-                let id = Id::new(("file", row.path.as_deref().map_or_else(|| "::pc".into(), |p| p.display().to_string())));
-                let sel = row.path.is_some() && row.path == selected;
+                let id = Id::new(("file", row.path.display().to_string()));
+                let sel = selected.as_ref() == Some(&row.path);
                 let r = widgets::tree_row(ui, &skin, id, row.depth, row.dir, row.open, row.icon, &row.name, sel);
                 if r.clicked() {
                     if row.dir {
                         toggle = Some(row.path.clone());
                     } else {
-                        open = row.path.clone();
+                        open = Some(row.path.clone());
                     }
                 }
-                if let Some(p) = &row.path {
-                    r.on_hover_text(p.display().to_string());
-                }
+                r.on_hover_text(row.path.display().to_string());
             }
             ui.add_space(8.0);
         });
         if let Some(p) = toggle {
-            self.tree.toggle(p.as_deref());
+            self.tree.toggle(&p);
         }
         if let Some(p) = open {
             let ext = p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase());
@@ -3745,6 +3787,7 @@ mod tests {
             chat_open: true,
             chat_w: 420.0,
             completions: false,
+            folder: Some(dir.clone()),
         };
         mine.save();
         assert!(SavedLayout::load() == mine);

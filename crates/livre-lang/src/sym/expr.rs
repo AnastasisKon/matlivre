@@ -439,7 +439,8 @@ fn cmp_raw(a: &Expr, b: &Expr) -> Ordering {
         (Expr::Var(x), Expr::Var(y)) => x.starts_with('[').cmp(&y.starts_with('[')).then_with(|| x.cmp(y)),
         (Expr::Pow(b1, e1), Expr::Pow(b2, e2)) => cmp(b1, b2).then_with(|| cmp(e1, e2)),
         (Expr::Mul(x), Expr::Mul(y)) | (Expr::Add(x), Expr::Add(y)) => cmp_list(x, y),
-        (Expr::Fn(n1, a1), Expr::Fn(n2, a2)) => n1.cmp(n2).then_with(|| cmp_list(a1, a2)),
+        // Derivatives sort after other functions (2*y(t)*diff(y(t), t)).
+        (Expr::Fn(n1, a1), Expr::Fn(n2, a2)) => (n1 == "diff").cmp(&(n2 == "diff")).then_with(|| n1.cmp(n2)).then_with(|| cmp_list(a1, a2)),
         (Expr::Rel(_, l1, r1), Expr::Rel(_, l2, r2)) => cmp(l1, l2).then_with(|| cmp(r1, r2)),
         _ => Ordering::Equal,
     }
@@ -942,6 +943,10 @@ impl Expr {
     pub fn subs(&self, var: &str, val: &Expr) -> Expr {
         self.map(&|e| match e {
             Expr::Var(n) if n == var => Some(val.clone()),
+            // A derivative at a point stays as subs(diff(y(t), t), t, 0).
+            Expr::Fn(n, a) if n == "diff" && !matches!(val, Expr::Var(_)) && a[1..].iter().any(|x| matches!(x, Expr::Var(v) if v == var)) => {
+                Some(Expr::Fn("subs".into(), vec![e.clone(), Expr::var(var), val.clone()]))
+            }
             _ => None,
         })
     }

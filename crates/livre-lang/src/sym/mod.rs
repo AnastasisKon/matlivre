@@ -6,6 +6,7 @@ pub mod expr;
 pub mod forms;
 pub mod extra;
 pub mod mp;
+pub mod ode;
 pub mod print;
 pub mod special;
 pub mod specnum;
@@ -241,6 +242,12 @@ pub fn call_symfun(f: &SymArray, args: Vec<Value>) -> R<Value> {
     if vals.iter().any(|v| v.data.len() != 1 && v.data.len() != n) {
         return rt("Arguments of a symbolic function call must be scalars or arrays of the same size.");
     }
+    // One input: substituted directly (keeps subs(diff(y(t), t), t, 0) readable).
+    if f.args.len() == 1 && vals[0].data.len() == 1 {
+        let mut out = f.map(|e| e.subs(&f.args[0], &vals[0].data[0]));
+        out.args.clear();
+        return Ok(Value::Sym(out));
+    }
     // Inputs are first renamed to placeholders, so f(y, x) swaps rather than chains.
     let hold: Vec<String> = (0..f.args.len()).map(|k| format!("\u{0}arg{k}")).collect();
     let renamed = f.map(|e| f.args.iter().zip(&hold).fold(e.clone(), |acc, (a, h)| acc.subs(a, &Expr::var(h))));
@@ -445,6 +452,11 @@ pub fn binary(op: BinOp, a: &Value, b: &Value) -> R<Value> {
         BinOp::Ge => elementwise(&x, &y, |p, q| Expr::rel(Rel::Ge, p.clone(), q.clone()))?,
         _ => return rt(format!("Operator '{}' is not supported for symbolic inputs.", op.symbol())),
     };
+    // An operation on a symbolic function gives a symbolic function (y^2, diff(y, t) == y).
+    let mut out = out;
+    if out.args.is_empty() {
+        out.args = if x.args.is_empty() { y.args.clone() } else { x.args.clone() };
+    }
     Ok(Value::Sym(out))
 }
 
@@ -546,6 +558,9 @@ pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) 
     if special::NAMES.contains(&name) {
         return special::call(it, name, &args, nargout);
     }
+    if ode::NAMES.contains(&name) {
+        return ode::call(it, name, &args, nargout);
+    }
     if transforms::NAMES.contains(&name) {
         return transforms::call(it, name, &args, nargout);
     }
@@ -610,8 +625,18 @@ pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) 
                     "real" | "positive" | "integer" | "rational" => real = true,
                     "clear" | "complex" => {}
                     _ => {
-                        if t.contains('(') {
-                            return rt("Symbolic functions such as 'syms f(x)' are not supported in this version.");
+                        if let Some((fname, rest)) = t.split_once('(') {
+                            // syms y(t): an abstract symbolic function, and its variables.
+                            let fargs: Vec<String> = rest.trim_end_matches(')').split(',').map(|s| s.trim().to_string()).collect();
+                            if !is_sym_name(fname) || fargs.iter().any(|a| !is_sym_name(a)) {
+                                return rt(format!("Invalid variable name '{t}'."));
+                            }
+                            for a in &fargs {
+                                it.set_var(a, sym_val(Expr::var(a)));
+                            }
+                            let body = Expr::Fn(fname.to_string(), fargs.iter().map(|a| Expr::var(a)).collect());
+                            it.set_var(fname, Value::Sym(SymArray { dims: vec![1, 1], data: vec![body], args: fargs }));
+                            continue;
                         }
                         if !is_sym_name(&t) {
                             return rt(format!("Invalid variable name '{t}'."));
