@@ -643,6 +643,11 @@ fn gbasis(polys: &[Expr], vars: &[String], o: MonoOrder) -> R<Vec<Expr>> {
     Ok(reduced.iter().map(|p| primitive_expr(o, p, vars)).collect())
 }
 
+/// The lexicographic reduced Groebner basis for the variables in this order (`eliminate`).
+pub fn gbasis_lex(polys: &[Expr], vars: &[String]) -> R<Vec<Expr>> {
+    gbasis(polys, vars, MonoOrder::Lex)
+}
+
 /// The polynomial scaled to integer coefficients without common factor, leading one positive.
 fn primitive_expr(o: MonoOrder, p: &Poly, vars: &[String]) -> Expr {
     let l = p.values().fold(BigInt::one(), |acc, c| num_integer::Integer::lcm(&acc, c.denom()));

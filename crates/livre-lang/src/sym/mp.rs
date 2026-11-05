@@ -522,6 +522,9 @@ pub fn eval_digits(e: &Expr) -> Option<BigRational> {
 /// `vpa(e)`: numbers and variable-free subexpressions become vpa values; symbolic
 /// variables and the structure around them are kept (vpa(x/3) is 0.333...*x).
 pub fn vpa(e: &Expr) -> Expr {
+    if let Some(r) = super::formula::root_vpa(e) {
+        return r;
+    }
     let mut vars = Vec::new();
     e.free_vars(&mut vars);
     if vars.is_empty() {

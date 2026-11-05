@@ -125,6 +125,9 @@ fn dirac_num(n: f64, x: f64) -> f64 {
 
 /// `eval_c` hook: Some(value) when `name` is one of these functions.
 pub fn eval_hook(name: &str, xs: &[Expr], env: &dyn Fn(&str) -> Option<C>) -> Option<Option<C>> {
+    if name == "root" {
+        return Some(super::formula::root_value(xs, env));
+    }
     if !NAMES.contains(&name) && name != "expint" {
         return None;
     }
@@ -266,7 +269,7 @@ fn sym_call(name: &str, a: &[Expr]) -> R<Expr> {
         ("heaviside", 1) => match real_value(&a[0]) {
             Some(v) if v > 0.0 => Expr::one(),
             Some(v) if v < 0.0 => Expr::zero(),
-            Some(v) if v == 0.0 => Expr::rat(1, 2),
+            Some(v) if v == 0.0 => super::formula::heaviside_at_origin(),
             _ => f(name, a.to_vec()),
         },
         ("dirac", 1) => match real_value(&a[0]) {

@@ -44,6 +44,7 @@ mod specfun;
 mod special_functions;
 mod strings;
 mod structio;
+mod sym_formula;
 mod sym_ode;
 mod sym_tools;
 mod sym_transforms;

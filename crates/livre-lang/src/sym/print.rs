@@ -85,7 +85,7 @@ fn degree(e: &Expr, v: &str) -> f64 {
 
 /// Orders sum terms like MATLAB: by descending degree in each variable (alphabetically),
 /// constants last.
-fn ordered_terms(terms: &[Expr]) -> Vec<Expr> {
+pub(crate) fn ordered_terms(terms: &[Expr]) -> Vec<Expr> {
     let mut vars = Vec::new();
     for t in terms {
         t.free_vars(&mut vars);
@@ -115,7 +115,7 @@ fn ordered_terms(terms: &[Expr]) -> Vec<Expr> {
 }
 
 /// Splits a product into (coefficient, numerator factors, denominator factors).
-fn fraction(e: &Expr) -> (Num, Vec<Expr>, Vec<Expr>) {
+pub(crate) fn fraction(e: &Expr) -> (Num, Vec<Expr>, Vec<Expr>) {
     let factors: Vec<Expr> = match e {
         Expr::Mul(f) => f.clone(),
         other => vec![other.clone()],
