@@ -256,7 +256,9 @@ fn pr(e: &Expr, style: Style) -> (String, u8) {
             if !cp.is_one() || num.is_empty() {
                 num_parts.push(num_text(&cp, style));
             }
-            for f in &num {
+            // The imaginary unit goes last in a product (w*1i).
+            let (imag, real): (Vec<&Expr>, Vec<&Expr>) = num.iter().partition(|f| style == Style::Matlab && matches!(f, Expr::Const(Const::I)));
+            for f in real.into_iter().chain(imag) {
                 num_parts.push(wrap(pr(f, style), P_MUL));
             }
             let mut den_parts: Vec<String> = Vec::new();
@@ -425,7 +427,8 @@ mod tests {
 fn is_imag_term(t: &Expr) -> bool {
     match t {
         Expr::Const(Const::I) => true,
-        Expr::Mul(fs) => fs.len() == 2 && fs.iter().any(|f| matches!(f, Expr::Const(Const::I))) && fs.iter().any(|f| matches!(f, Expr::Num(_))),
+        // MATLAB writes terms with the imaginary unit last (1 + w*1i).
+        Expr::Mul(fs) => fs.iter().any(|f| matches!(f, Expr::Const(Const::I))),
         _ => false,
     }
 }

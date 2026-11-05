@@ -358,6 +358,7 @@ fn classify(e: &Expr) -> &'static str {
         Expr::Num(_) => "rational",
         Expr::Const(Const::I) => "complex",
         Expr::Const(_) => "constant",
+        Expr::Fn(n, a) if a.is_empty() && (n == "symtrue" || n == "symfalse") => "logicalconstant",
         Expr::Rel(_, l, r) => {
             let mut vs = Vec::new();
             l.free_vars(&mut vs);
@@ -526,7 +527,7 @@ fn resultant(p: &Expr, q: &Expr, v: &str) -> R<Expr> {
 
 type Poly = Vec<(Vec<u32>, Expr)>;
 
-fn to_poly(e: &Expr, vars: &[String]) -> Option<Poly> {
+pub(crate) fn to_poly(e: &Expr, vars: &[String]) -> Option<Poly> {
     let ex = algebra::expand(e);
     let terms: Vec<Expr> = match ex {
         Expr::Add(ts) => ts,
@@ -652,7 +653,7 @@ fn poly_reduce(p: &Expr, ds: &[Expr], vars: &[String]) -> R<(Expr, Vec<Expr>)> {
 // ---- linear algebra ---------------------------------------------------------------------------
 
 /// Reduced row echelon form in place; returns the pivot columns.
-fn rref(rows: &mut [Vec<Expr>]) -> Vec<usize> {
+pub(crate) fn rref(rows: &mut [Vec<Expr>]) -> Vec<usize> {
     let (m, n) = (rows.len(), rows.first().map(|r| r.len()).unwrap_or(0));
     let mut piv = Vec::new();
     let mut r = 0;

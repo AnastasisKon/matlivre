@@ -299,7 +299,7 @@ fn factorial(n: u64) -> Q {
 }
 
 /// Coefficients (a, b) of an argument a*v + b, if it is linear in v.
-fn linear_in(e: &Expr, v: &str) -> Option<(Expr, Expr)> {
+pub(crate) fn linear_in(e: &Expr, v: &str) -> Option<(Expr, Expr)> {
     let c = algebra::poly_coeffs(e, v)?;
     match c.len() {
         1 => Some((Expr::zero(), c[0].clone())),
@@ -308,7 +308,7 @@ fn linear_in(e: &Expr, v: &str) -> Option<(Expr, Expr)> {
     }
 }
 
-fn factors(e: &Expr) -> Vec<Expr> {
+pub(crate) fn factors(e: &Expr) -> Vec<Expr> {
     match e {
         Expr::Mul(f) => f.clone(),
         other => vec![other.clone()],
@@ -1224,8 +1224,8 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> R<
             super::call(it, "taylor", args, nargout)
         }
         "simplifyFraction" => one(Value::Sym(sym_arg(a, 0)?.map(algebra::simplify))),
-        "symtrue" => one(sym_val(Expr::rel(Rel::Eq, Expr::zero(), Expr::zero()))),
-        "symfalse" => one(sym_val(Expr::rel(Rel::Eq, Expr::zero(), Expr::one()))),
+        "symtrue" => one(sym_val(Expr::Fn("symtrue".into(), Vec::new()))),
+        "symfalse" => one(sym_val(Expr::Fn("symfalse".into(), Vec::new()))),
         "divisors" => {
             let n = int_arg(&a[0])?.first().copied().unwrap_or(0).unsigned_abs();
             let d: Vec<Expr> = (1..=n).filter(|k| n % k == 0).map(|k| Expr::int(k as i128)).collect();

@@ -45,6 +45,7 @@ mod special_functions;
 mod strings;
 mod structio;
 mod sym_tools;
+mod sym_transforms;
 mod symbolic_extra;
 mod table_ops;
 mod textio;

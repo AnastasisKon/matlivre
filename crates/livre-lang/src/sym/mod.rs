@@ -3,12 +3,14 @@
 pub mod algebra;
 pub mod calculus;
 pub mod expr;
+pub mod forms;
 pub mod extra;
 pub mod mp;
 pub mod print;
 pub mod special;
 pub mod specnum;
 pub mod tools;
+pub mod transforms;
 pub mod units;
 
 use std::cell::RefCell;
@@ -136,6 +138,7 @@ impl SymArray {
                         _ => return rt("Unable to prove the condition. Use 'isAlways' to test the statement mathematically."),
                     }
                 }
+                Expr::Fn(n, a) if a.is_empty() && (n == "symtrue" || n == "symfalse") => n == "symtrue",
                 other => match other.to_f64() {
                     Some(x) => x != 0.0,
                     None => return rt("Unable to evaluate a symbolic expression as a logical value."),
@@ -542,6 +545,12 @@ fn is_sym_name(s: &str) -> bool {
 pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) -> R<Option<Vec<Value>>> {
     if special::NAMES.contains(&name) {
         return special::call(it, name, &args, nargout);
+    }
+    if transforms::NAMES.contains(&name) {
+        return transforms::call(it, name, &args, nargout);
+    }
+    if forms::NAMES.contains(&name) {
+        return forms::call(it, name, &args, nargout);
     }
     if units::NAMES.contains(&name) {
         return units::call(it, name, &args, nargout);

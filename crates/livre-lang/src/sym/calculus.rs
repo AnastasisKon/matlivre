@@ -16,6 +16,10 @@ pub fn diff(e: &Expr, v: &str) -> Expr {
             if n == v { Expr::one() } else { Expr::zero() }
         }
         Expr::Add(ts) => Expr::add(ts.iter().map(|t| diff(t, v)).collect()),
+        // piecewise: each branch differentiated (conditions kept).
+        Expr::Fn(name, args) if name == "piecewise" => {
+            Expr::func("piecewise", args.chunks(2).flat_map(|p| [p[0].clone(), tidy(&diff(&p[1], v))]).collect())
+        }
         Expr::Mul(fs) => {
             // Product rule.
             let mut terms = Vec::new();

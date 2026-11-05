@@ -9,9 +9,15 @@ license.workspace = true
 name = "matlivre"
 path = "src/main.rs"
 
-# Read by Release Manager: the name the installed program and its GitHub releases go by.
+# Read by Release Manager: the name the installed program and its GitHub releases go by, and
+# the files it opens (registered on install and update; an optional icon = "assets/x.ico" per
+# type, else they show the program's icon).
 [package.metadata.release-manager]
 title = "MatLivre"
+file-types = [
+    { extension = "mlx", description = "MATLAB Live Script" },
+    { extension = "m", description = "MATLAB Script" },
+]
 
 [dependencies]
 velopack = "1.2.161"

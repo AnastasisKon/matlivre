@@ -748,6 +748,9 @@ impl Expr {
     }
 
     pub fn func(name: &str, args: Vec<Expr>) -> Expr {
+        if name == "piecewise" {
+            return super::forms::fold_piecewise(args);
+        }
         // mod(a, m) and rem(a, m) fold once both are numbers; otherwise stay unevaluated.
         if matches!(name, "mod" | "rem") && args.len() == 2 {
             if let (Some(x), Some(m)) = (args[0].as_num(), args[1].as_num()) {
