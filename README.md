@@ -20,7 +20,7 @@ of MATLAB, written in Rust: no MATLAB installation, license or Java runtime is n
 - **Runs code fast.** On a 12-case benchmark of loops, recursion, array growth, linear
   algebra, sorting, strings, structs and cells, MatLivre is 4.7x faster than MATLAB R2023b and
   65x faster than GNU Octave (geometric mean), with identical results in all three.
-- **Speaks MATLAB.** 1,766 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
+- **Speaks MATLAB.** 1,774 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
   error messages and semantics, checked against MATLAB R2023b output.
 - **One small program.** A single 36 MB executable that depends only on DLLs shipped with
   Windows.
@@ -158,7 +158,7 @@ per-case Octave comparison are in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.m
 
 MATLAB compatibility is the rule: semantics, display and error messages follow MATLAB R2023b.
 [`docs/matlab-coverage.md`](docs/matlab-coverage.md) lists every function of the MATLAB and
-Symbolic Math Toolbox references and its status (1,766 implemented).
+Symbolic Math Toolbox references and its status (1,774 implemented).
 
 - N-D arrays of every numeric type, `logical`, `char` and strings, with implicit expansion,
   saturating integer arithmetic and complex numbers; regular expressions and text patterns
@@ -183,7 +183,8 @@ Symbolic Math Toolbox references and its status (1,766 implemented).
 - Symbolic Math: exact arithmetic, `diff`, `int`, `limit`, `taylor`, `series`, `solve`,
   `vpasolve`, Laplace, Z, Fourier and Hilbert transforms, `simplify`, `partfrac`, symbolic
   matrices with Jordan, Smith and Hermite forms, Groebner bases, `piecewise`, abstract
-  functions (`syms y(t)`) with `dsolve` for linear differential equations, number theory,
+  functions (`syms y(t)`) with `dsolve` for linear differential equations, `combine`,
+  `root`, `eliminate`, MathML output, `sympref`, number theory,
   special functions (elliptic integrals and Jacobi elliptic functions, exponential,
   trigonometric and Fresnel integrals, polylogarithms, hypergeometric functions), the
   classical orthogonal polynomials, polynomial division and reduction, resultants, Pade
@@ -245,7 +246,7 @@ installation when one is present. Benchmarks: [`benchmarks/run_bench.bat`](bench
   text.
 - Functions still to implement are listed in [`docs/matlab-coverage.md`](docs/matlab-coverage.md),
   among them the differential-algebraic equation tools, symbolic code generation (`ccode`,
-  `fortran`), spreadsheet and XML import options and the `Tiff`
+  `fortran`), `subexpr`, spreadsheet and XML import options and the `Tiff`
   class.
 - The Symbolic Math special functions evaluate to double precision only: `vpa` keeps
   `sinint(2)` and the like in symbolic form (`catalan` and `eulergamma` evaluate). Some
@@ -265,6 +266,9 @@ installation when one is present. Benchmarks: [`benchmarks/run_bench.bat`](bench
   variable coefficients) with initial conditions; systems and nonlinear equations are not
   solved, and the order of terms in some solutions differs from MATLAB's
   (`C1*exp(-t) + exp(t)/2`).
+- `combine` handles the `powers`, `exp`, `log` (with `IgnoreAnalyticConstraints`) and
+  `sincos` targets. `sympref` keeps every preference, but of them only `HeavisideAtOrigin`
+  changes results.
 - Chart layouts that MATLAB fits to the screen (word clouds, bubble clouds, automatic
   `binscatter` bins) are approximated, and `geobubble` draws no basemap.
 - Dithering in `rgb2ind` and `dither` is plain Floyd-Steinberg, so individual pixels can
