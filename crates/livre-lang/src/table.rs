@@ -20,6 +20,8 @@ pub struct Table {
     pub row_times: Option<Value>,
     /// `Properties.DimensionNames`.
     pub dim_names: [String; 2],
+    /// Custom properties (`addprop`): name, whether it applies per variable, value.
+    pub custom: Vec<(String, bool, Value)>,
 }
 
 fn default_dims() -> [String; 2] {
@@ -57,7 +59,7 @@ impl Table {
                 return rt(format!("Duplicate table variable name: '{n}'."));
             }
         }
-        Ok(Table { names, vars, nrows, row_names: None, description: String::new(), row_times: None, dim_names: default_dims() })
+        Ok(Table { names, vars, nrows, row_names: None, description: String::new(), row_times: None, dim_names: default_dims(), custom: Vec::new() })
     }
 
     pub fn var(&self, name: &str) -> Option<&Value> {
@@ -129,7 +131,18 @@ impl Table {
             None => CellArray::from_dims(vec![0, 0], Vec::new()),
         }));
         s.set("DimensionNames", dims);
+        if !self.custom.is_empty() {
+            s.set("CustomProperties", self.custom_struct());
+        }
         Value::Struct(s)
+    }
+
+    fn custom_struct(&self) -> Value {
+        let mut c = StructArray::scalar();
+        for (n, _, v) in &self.custom {
+            c.set(n, v.clone());
+        }
+        Value::Struct(c)
     }
 
     pub fn set_properties(&mut self, v: &Value) -> R<()> {
@@ -154,6 +167,15 @@ impl Table {
                 return rt("The DimensionNames property must contain two names.");
             }
             self.dim_names = [names[0].clone(), names[1].clone()];
+        }
+        if let Some(Value::Struct(c)) = s.get("CustomProperties") {
+            for f in &c.fields {
+                let v = c.get(f).cloned().unwrap_or_else(Value::empty);
+                match self.custom.iter_mut().find(|(n, _, _)| n == f) {
+                    Some(slot) => slot.2 = v,
+                    None => return rt(format!("Unrecognized custom property name '{f}'. Use addprop to add a custom property.")),
+                }
+            }
         }
         if let Some(times) = self.row_times.clone() {
             if let Some(new) = s.get("RowTimes") {
@@ -231,7 +253,7 @@ impl Table {
     /// `T(rows, vars)`.
     pub fn paren(&self, args: &[Value]) -> R<Table> {
         let (rows, vars) = self.subscripts(args)?;
-        let mut out = Table { names: Vec::new(), vars: Vec::new(), nrows: 0, row_names: None, description: self.description.clone(), row_times: None, dim_names: self.dim_names.clone() };
+        let mut out = Table { names: Vec::new(), vars: Vec::new(), nrows: 0, row_names: None, description: self.description.clone(), row_times: None, dim_names: self.dim_names.clone(), custom: self.custom.clone() };
         for &k in &vars {
             out.names.push(self.names[k].clone());
             out.vars.push(take_rows(&self.vars[k], &rows)?);

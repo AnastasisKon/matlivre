@@ -36,6 +36,7 @@ mod plotmore;
 mod polyfun;
 mod polyshape;
 mod polyshape_more;
+mod props_decomposition;
 mod random;
 mod session_more;
 mod settings;

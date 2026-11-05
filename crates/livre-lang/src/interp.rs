@@ -749,6 +749,11 @@ impl Interpreter {
                 self.emit(OutputKind::Value { name: name.to_string(), text: format!("{name} = \n{t}") });
                 return Ok(());
             }
+            if let Some(t) = crate::decomp::object_text(o) {
+                self.emit(OutputKind::Value { name: name.to_string(), text: format!("{name} = 
+{t}") });
+                return Ok(());
+            }
             if let Some(t) = crate::tiff::object_text(o) {
                 self.emit(OutputKind::Value { name: name.to_string(), text: format!("{name} = 
 

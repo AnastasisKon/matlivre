@@ -33,6 +33,7 @@ pub mod builtins_textio;
 pub mod builtins_types;
 pub mod class;
 pub mod cplx;
+pub mod decomp;
 pub mod display;
 pub mod error;
 pub mod format;
