@@ -1667,6 +1667,11 @@ impl Interpreter {
                 let vals = self.eval_raw_args(args, &[1, 1])?;
                 Ok(vec![crate::containers::lookup(&bv, &vals)?])
             }
+            // Calling a System object runs step: obj(x).
+            Value::Object(o) if o.class.is_a(crate::sysobj::CLASS) && o.class.method("subsref").is_none() => {
+                let vals = self.eval_args(args)?;
+                crate::sysobj::step(self, &bv, &vals, nargout)
+            }
             Value::Object(o) => {
                 // An overloaded subsref receives S = struct('type', '()', 'subs', {args}).
                 if let Some(f) = o.class.method("subsref").cloned() {

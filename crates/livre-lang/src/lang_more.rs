@@ -35,6 +35,12 @@ pub struct Listener {
 
 /// The built-in `event.EventData` and `event.listener` classes (handle classes).
 pub fn builtin_class(name: &str) -> Option<Rc<ClassDef>> {
+    if name == crate::sysobj::CLASS {
+        return Some(crate::sysobj::base_class());
+    }
+    if name == crate::sysobj::FINITE {
+        return Some(crate::sysobj::finite_class());
+    }
     let props: &[&str] = match name {
         "event.EventData" => &["Source", "EventName"],
         "event.listener" => &["Source", "EventName", "Callback", "Enabled", "Recursive"],

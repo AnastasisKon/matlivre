@@ -50,6 +50,7 @@ pub mod patterns;
 pub mod polyfun_classes;
 pub mod polyshape;
 pub mod sym;
+pub mod sysobj;
 pub mod table;
 pub mod table_ops;
 pub mod builtins_sparse;

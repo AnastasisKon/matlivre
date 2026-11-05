@@ -49,6 +49,7 @@ mod sym_ode;
 mod sym_tools;
 mod sym_transforms;
 mod symbolic_extra;
+mod system_objects;
 mod table_ops;
 mod textio;
 mod time_zones;
