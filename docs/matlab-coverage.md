@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1822 |
+| Implemented | 1830 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **200** |
+| **To implement** | **192** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -214,7 +214,7 @@ Implemented: `addpoints`, `animatedline`, `bar`, `bar3`, `bar3h`, `barh`, `binsc
 
 ## MATLAB > Graphics > Formatting and Annotation
 
-Implemented: 111. To implement: 13. In a branch: 0. Out of scope: 0.
+Implemented: 112. To implement: 12. In a branch: 0. Out of scope: 0.
 
 To implement:
 
@@ -223,7 +223,6 @@ To implement:
 - [ ] `Colormap Editor`
 - [ ] `contrast`
 - [ ] `datatip`
-- [ ] `fontname`
 - [ ] `ginput`
 - [ ] `graymon`
 - [ ] `gtext`
@@ -232,7 +231,7 @@ To implement:
 - [ ] `tightPosition`
 - [ ] `whitebg`
 
-Implemented: `abyss`, `alim`, `alpha`, `alphamap`, `annotation`, `autumn`, `axes`, `axis`, `bone`, `box`, `brighten`, `camdolly`, `camlight`, `camlookat`, `camorbit`, `campan`, `campos`, `camproj`, `camroll`, `camtarget`, `camup`, `camva`, `camzoom`, `cla`, `clf`, `clim`, `colorbar`, `colorcube`, `colormap`, `colororder`, `cool`, `copper`, `daspect`, `datetick`, `diffuse`, `figure`, `flag`, `fontsize`, `gray`, `grid`, `hold`, `hot`, `hsv`, `hsv2rgb`, `jet`, `legend`, `light`, `lightangle`, `lighting`, `line`, `lines`, `makehgtform`, `material`, `nexttile`, `num2ruler`, `orderedcolors`, `parula`, `pbaspect`, `pink`, `prism`, `rectangle`, `rgb2hsv`, `rgbplot`, `ruler2num`, `sgtitle`, `shading`, `sky`, `specular`, `spring`, `subplot`, `subtitle`, `summer`, `texlabel`, `text`, `tiledlayout`, `tilenum`, `tilerowcol`, `title`, `turbo`, `view`, `viewmtx`, `winter`, `xlabel`, `xlim`, `xline`, `xregion`, `xscale`, `xsecondarylabel`, `xtickangle`, `xtickformat`, `xticklabels`, `xticks`, `ylabel`, `ylim`, `yline`, `yregion`, `yscale`, `ysecondarylabel`, `ytickangle`, `ytickformat`, `yticklabels`, `yticks`, `yyaxis`, `zlabel`, `zlim`, `zscale`, `zsecondarylabel`, `ztickangle`, `ztickformat`, `zticklabels`, `zticks`
+Implemented: `abyss`, `alim`, `alpha`, `alphamap`, `annotation`, `autumn`, `axes`, `axis`, `bone`, `box`, `brighten`, `camdolly`, `camlight`, `camlookat`, `camorbit`, `campan`, `campos`, `camproj`, `camroll`, `camtarget`, `camup`, `camva`, `camzoom`, `cla`, `clf`, `clim`, `colorbar`, `colorcube`, `colormap`, `colororder`, `cool`, `copper`, `daspect`, `datetick`, `diffuse`, `figure`, `flag`, `fontname`, `fontsize`, `gray`, `grid`, `hold`, `hot`, `hsv`, `hsv2rgb`, `jet`, `legend`, `light`, `lightangle`, `lighting`, `line`, `lines`, `makehgtform`, `material`, `nexttile`, `num2ruler`, `orderedcolors`, `parula`, `pbaspect`, `pink`, `prism`, `rectangle`, `rgb2hsv`, `rgbplot`, `ruler2num`, `sgtitle`, `shading`, `sky`, `specular`, `spring`, `subplot`, `subtitle`, `summer`, `texlabel`, `text`, `tiledlayout`, `tilenum`, `tilerowcol`, `title`, `turbo`, `view`, `viewmtx`, `winter`, `xlabel`, `xlim`, `xline`, `xregion`, `xscale`, `xsecondarylabel`, `xtickangle`, `xtickformat`, `xticklabels`, `xticks`, `ylabel`, `ylim`, `yline`, `yregion`, `yscale`, `ysecondarylabel`, `ytickangle`, `ytickformat`, `yticklabels`, `yticks`, `yyaxis`, `zlabel`, `zlim`, `zscale`, `zsecondarylabel`, `ztickangle`, `ztickformat`, `zticklabels`, `zticks`
 
 ## MATLAB > Graphics > Graphics Objects
 
@@ -256,29 +255,24 @@ Implemented: `allchild`, `ancestor`, `delete`, `findall`, `findobj`, `gca`, `gcb
 
 ## MATLAB > Graphics > Graphics Performance
 
-Implemented: 0. To implement: 2. In a branch: 0. Out of scope: 0.
+Implemented: 2. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `opengl`
-- [ ] `rendererinfo`
+Implemented: `opengl`, `rendererinfo`
 
 ## MATLAB > Graphics > Images
 
-Implemented: 14. To implement: 4. In a branch: 0. Out of scope: 0.
+Implemented: 16. To implement: 2. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `im2java`
 - [ ] `imapprox`
-- [ ] `imformats`
-- [ ] `imtile`
 
-Implemented: `cmap2gray`, `cmpermute`, `cmunique`, `dither`, `getrangefromclass`, `im2double`, `im2gray`, `image`, `imagesc`, `imresize`, `imshow`, `ind2rgb`, `rgb2gray`, `rgb2ind`
+Implemented: `cmap2gray`, `cmpermute`, `cmunique`, `dither`, `getrangefromclass`, `im2double`, `im2gray`, `image`, `imagesc`, `imformats`, `imresize`, `imshow`, `imtile`, `ind2rgb`, `rgb2gray`, `rgb2ind`
 
 ## MATLAB > Graphics > Printing and Saving
 
-Implemented: 3. To implement: 10. In a branch: 0. Out of scope: 0.
+Implemented: 5. To implement: 8. In a branch: 0. Out of scope: 0.
 
 To implement:
 
@@ -288,12 +282,10 @@ To implement:
 - [ ] `hgload`
 - [ ] `hgsave`
 - [ ] `openfig`
-- [ ] `orient`
 - [ ] `pagesetupdlg`
-- [ ] `printopt`
 - [ ] `savefig`
 
-Implemented: `exportgraphics`, `print`, `saveas`
+Implemented: `exportgraphics`, `orient`, `print`, `printopt`, `saveas`
 
 ## MATLAB > Language Fundamentals > Data Types
 
@@ -347,7 +339,7 @@ Implemented: `&amp;`, `&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `'`, `*`, `+`, `-`, `.'`
 
 Implemented: 84. To implement: 0. In a branch: 0. Out of scope: 0.
 
-Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isinterior`, `isInterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
+Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isInterior`, `isinterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
 
 ## MATLAB > Mathematics > Elementary Math
 
@@ -625,14 +617,13 @@ Out of scope: `arrowline` (internal helper, not a user function), `axischild` (i
 
 ## Not in the function reference > matlab/graph3d
 
-Implemented: 1. To implement: 2. In a branch: 0. Out of scope: 3.
+Implemented: 2. To implement: 1. In a branch: 0. Out of scope: 3.
 
 To implement:
 
 - [ ] `camrotate`
-- [ ] `objbounds`
 
-Implemented: `caxis`
+Implemented: `caxis`, `objbounds`
 
 Out of scope: `cameramenu` (desktop, IDE, GUI, printing or interactive tool), `cmapeditor` (desktop, IDE, GUI, printing or interactive tool), `colormapeditor` (desktop, IDE, GUI, printing or interactive tool)
 

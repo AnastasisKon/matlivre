@@ -20,7 +20,7 @@ of MATLAB, written in Rust: no MATLAB installation, license or Java runtime is n
 - **Runs code fast.** On a 12-case benchmark of loops, recursion, array growth, linear
   algebra, sorting, strings, structs and cells, MatLivre is 4.7x faster than MATLAB R2023b and
   65x faster than GNU Octave (geometric mean), with identical results in all three.
-- **Speaks MATLAB.** 1,822 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
+- **Speaks MATLAB.** 1,830 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
   error messages and semantics, checked against MATLAB R2023b output.
 - **One small program.** A single 36 MB executable that depends only on DLLs shipped with
   Windows.
@@ -158,7 +158,7 @@ per-case Octave comparison are in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.m
 
 MATLAB compatibility is the rule: semantics, display and error messages follow MATLAB R2023b.
 [`docs/matlab-coverage.md`](docs/matlab-coverage.md) lists every function of the MATLAB and
-Symbolic Math Toolbox references and its status (1,822 implemented).
+Symbolic Math Toolbox references and its status (1,830 implemented).
 
 - N-D arrays of every numeric type, `logical`, `char` and strings, with implicit expansion,
   saturating integer arithmetic and complex numbers; regular expressions and text patterns
@@ -192,7 +192,7 @@ Symbolic Math Toolbox references and its status (1,822 implemented).
   approximants, scalar and vector potentials, numeric sums and integrals (`vpasum`,
   `vpaintegral`), the symType queries (`symType`, `findSymType`, `mapSymType`) and units of
   measurement (`symunit`, `unitConvert`, `checkUnits`, `newUnit`).
-- Files: text and CSV I/O, Excel workbooks (`readtable`, `xlsread`, `writetable`), MAT files, images and audio, the `Tiff` class (tags, strips, tiles, LZW and Deflate), JSON and XML,
+- Files: text and CSV I/O, Excel workbooks (`readtable`, `xlsread`, `writetable`), MAT files, images (with `imtile` and the `imformats` registry) and audio, the `Tiff` class (tags, strips, tiles, LZW and Deflate), JSON and XML,
   zip and tar archives.
 
 Try [`examples/welcome.m`](examples/welcome.m), [`examples/graphics.m`](examples/graphics.m) and
