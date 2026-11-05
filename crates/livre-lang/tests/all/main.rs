@@ -22,6 +22,7 @@ mod graphs;
 mod handles;
 mod histogram_bins;
 mod images;
+mod interp_heatmap_sort;
 mod io_more;
 mod jit;
 mod lang;

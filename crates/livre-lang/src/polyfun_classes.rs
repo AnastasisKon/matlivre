@@ -23,7 +23,7 @@ use crate::value::*;
 type R<T> = Result<T, LangError>;
 
 pub const NAMES: &[&str] = &[
-    "griddedInterpolant", "scatteredInterpolant", "triangulation", "delaunayTriangulation", "alphaShape", "boundary", "TriRep", "DelaunayTri", "triplot",
+    "griddedInterpolant", "scatteredInterpolant", "TriScatteredInterp", "triangulation", "delaunayTriangulation", "alphaShape", "boundary", "TriRep", "DelaunayTri", "triplot",
     "trimesh", "trisurf", "tetramesh", "stlread", "stlwrite", "matlivre_polyfun_method",
 ];
 
@@ -46,6 +46,7 @@ fn props_of(class: &str) -> &'static [&'static str] {
     match class {
         "griddedInterpolant" => &["GridVectors", "Values", "Method", "ExtrapolationMethod"],
         "scatteredInterpolant" => &["Points", "Values", "Method", "ExtrapolationMethod"],
+        "TriScatteredInterp" => &["X", "V", "Method"],
         "triangulation" => &["Points", "ConnectivityList"],
         "delaunayTriangulation" => &["Points", "ConnectivityList", "Constraints"],
         "TriRep" => &["X", "Triangulation"],
@@ -300,10 +301,12 @@ fn new_scattered(a: &[Value]) -> Ret {
 }
 
 fn eval_scattered(it: &mut Interpreter, o: &Object, args: &[Value]) -> Ret {
-    let pts = geom::rows(&prop_m(o, "Points")?);
-    let values = prop_m(o, "Values")?;
+    // TriScatteredInterp (legacy) names its data X and V and does not extrapolate.
+    let legacy = o.class.name == "TriScatteredInterp";
+    let pts = geom::rows(&prop_m(o, if legacy { "X" } else { "Points" })?);
+    let values = prop_m(o, if legacy { "V" } else { "Values" })?;
     let method = prop_text(o, "Method")?;
-    let extrap = prop_text(o, "ExtrapolationMethod")?;
+    let extrap = if legacy { "none".to_string() } else { prop_text(o, "ExtrapolationMethod")? };
     let d = pts.first().map(|p| p.len()).unwrap_or(0);
     let (qs, dims): (Vec<Vec<f64>>, Vec<usize>) = match args {
         [Value::Cell(c)] => {
@@ -1588,6 +1591,12 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
     match name {
         "griddedInterpolant" => new_gridded(a),
         "scatteredInterpolant" => new_scattered(a),
+        "TriScatteredInterp" => {
+            let modern = new_scattered(a)?.and_then(|mut v| v.pop());
+            let Some(Value::Object(o)) = modern else { return rt("Invalid interpolant.") };
+            let p = o.props.borrow().clone();
+            one(make("TriScatteredInterp", vec![p[0].clone(), p[1].clone(), p[2].clone()]))
+        }
         "triangulation" => new_triangulation(it, a, false),
         "delaunayTriangulation" => new_triangulation(it, a, true),
         "TriRep" | "DelaunayTri" => {

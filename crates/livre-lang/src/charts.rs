@@ -18,7 +18,7 @@ type R<T> = Result<T, LangError>;
 
 pub const NAMES: &[&str] = &[
     "heatmap", "boxchart", "swarmchart", "swarmchart3", "bubblechart", "bubblechart3", "polarbubblechart", "bubblesize", "bubblelim", "bubblelegend",
-    "binscatter", "piechart", "donutchart", "bubblecloud", "parallelplot", "stackedplot", "scatterhistogram", "wordcloud", "geobubble", "yyaxis", "datetick",
+    "binscatter", "piechart", "donutchart", "bubblecloud", "parallelplot", "stackedplot", "scatterhistogram", "wordcloud", "geobubble", "yyaxis", "datetick", "sortx", "sorty",
 ];
 
 const HEATMAP: &str = "matlab.graphics.chart.HeatmapChart";
@@ -58,6 +58,8 @@ pub fn in_axes(class: &str) -> bool {
 pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Ret {
     match name {
         "heatmap" => heatmap(it, a, nargout),
+        "sortx" => sort_heatmap(it, a, true),
+        "sorty" => sort_heatmap(it, a, false),
         "boxchart" => boxchart(it, a, nargout),
         "swarmchart" => swarmchart(it, a, nargout, false),
         "swarmchart3" => swarmchart(it, a, nargout, true),
@@ -1977,4 +1979,82 @@ fn datetick(it: &mut Interpreter, a: &[Value]) -> Ret {
     let fid = it.figures[f].id;
     it.mark_figure_dirty(fid);
     none()
+}
+
+
+/// `sortx(h, row, direction)` / `sorty(h, column, direction)`: reorders the displayed columns
+/// (rows) of a heatmap by the values of one displayed row (column), stably, missing values
+/// last; without a row (column), by the first displayed one.
+fn sort_heatmap(it: &mut Interpreter, a: &[Value], x: bool) -> Ret {
+    let h = a.first().ok_or_else(|| LangError::new("Not enough input arguments.", 0))?;
+    let ids = gfx::ids_of(h).ok_or_else(|| LangError::new("The first argument must be a heatmap.", 0))?;
+    let id = *ids.first().ok_or_else(|| LangError::new("The first argument must be a heatmap.", 0))?;
+    if class_at(it, id) != Some(HEATMAP) {
+        return rt("The first argument must be a heatmap.");
+    }
+    let xd_v = get(it, id, "XDisplayData");
+    let yd_v = get(it, id, "YDisplayData");
+    let xd = texts(it, &xd_v)?;
+    let yd = texts(it, &yd_v)?;
+    let cd = get(it, id, "ColorDisplayData").to_matrix()?;
+    let (nr, nc) = (yd.len(), xd.len());
+    if cd.numel() != nr * nc {
+        return rt("The heatmap has no color data to sort.");
+    }
+    let at = |r: usize, c: usize| cd.data[c * nr + r];
+    let mut desc = false;
+    let mut key: Option<String> = None;
+    for v in &a[1..] {
+        let t = match v {
+            Value::Num(m) if m.kind != Kind::Char => crate::display::fmt_g(m.data.first().copied().unwrap_or(0.0), 5),
+            other => texts(it, other)?.into_iter().next().unwrap_or_default(),
+        };
+        match t.to_lowercase().as_str() {
+            "descend" => desc = true,
+            "ascend" => desc = false,
+            _ if key.is_none() => key = Some(t),
+            _ => {}
+        }
+    }
+    let (labels, other) = if x { (&xd, &yd) } else { (&yd, &xd) };
+    // Without a row (column), the first displayed one is the key.
+    let key = key.or_else(|| other.first().cloned());
+    let n = labels.len();
+    let mut order: Vec<usize> = (0..n).collect();
+    match &key {
+        Some(k) => {
+            let line = other.iter().position(|l| l == k).ok_or_else(|| LangError::new(format!("'{k}' is not a displayed {}.", if x { "row" } else { "column" }), 0))?;
+            let val = |i: usize| if x { at(line, i) } else { at(i, line) };
+            order.sort_by(|&p, &q| {
+                let (u, v) = (val(p), val(q));
+                match (u.is_nan(), v.is_nan()) {
+                    (true, true) => std::cmp::Ordering::Equal,
+                    (true, false) => std::cmp::Ordering::Greater,
+                    (false, true) => std::cmp::Ordering::Less,
+                    _ if desc => v.partial_cmp(&u).unwrap_or(std::cmp::Ordering::Equal),
+                    _ => u.partial_cmp(&v).unwrap_or(std::cmp::Ordering::Equal),
+                }
+            });
+        }
+        None => {
+            order.sort_by(|&p, &q| if desc { labels[q].cmp(&labels[p]) } else { labels[p].cmp(&labels[q]) });
+        }
+    }
+    let new_labels: Vec<String> = order.iter().map(|&i| labels[i].clone()).collect();
+    let mut data = vec![0.0; nr * nc];
+    for r in 0..nr {
+        for c in 0..nc {
+            let (sr, sc) = if x { (r, order[c]) } else { (order[r], c) };
+            data[c * nr + r] = at(sr, sc);
+        }
+    }
+    let labels_v = cell_col(&new_labels);
+    if x {
+        put(it, id, vec![("XDisplayData", labels_v.clone()), ("XDisplayLabels", labels_v)]);
+    } else {
+        put(it, id, vec![("YDisplayData", labels_v.clone()), ("YDisplayLabels", labels_v)]);
+    }
+    put(it, id, vec![("ColorDisplayData", Value::Num(Matrix::from_dims(vec![nr, nc], data)))]);
+    redraw(it, id)?;
+    Ok(Some(Vec::new()))
 }
