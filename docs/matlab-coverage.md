@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1839 |
+| Implemented | 1842 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **183** |
+| **To implement** | **180** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -189,7 +189,7 @@ Out of scope: `addFields` (External Language Interfaces), `callSoapService` (Ext
 
 ## MATLAB > Graphics > 2-D and 3-D Plots
 
-Implemented: 134. To implement: 14. In a branch: 0. Out of scope: 0.
+Implemented: 136. To implement: 12. In a branch: 0. Out of scope: 0.
 
 To implement:
 
@@ -205,10 +205,8 @@ To implement:
 - [ ] `geotickformat`
 - [ ] `refreshdata`
 - [ ] `removeToolbarMapButton`
-- [ ] `sortx`
-- [ ] `sorty`
 
-Implemented: `addpoints`, `animatedline`, `bar`, `bar3`, `bar3h`, `barh`, `binscatter`, `boxchart`, `bubblechart`, `bubblechart3`, `bubblecloud`, `bubblelegend`, `bubblelim`, `bubblesize`, `clabel`, `clearpoints`, `comet`, `comet3`, `compass`, `coneplot`, `contour`, `contour3`, `contourc`, `contourf`, `contourslice`, `curl`, `cylinder`, `divergence`, `donutchart`, `drawnow`, `ellipsoid`, `errorbar`, `ezcontour`, `ezcontourf`, `ezmesh`, `ezmeshc`, `ezplot`, `ezplot3`, `ezpolar`, `ezsurf`, `ezsurfc`, `fcontour`, `feather`, `fewerbins`, `fill`, `fill3`, `fimplicit`, `fmesh`, `fplot`, `fplot3`, `frame2im`, `fsurf`, `geobubble`, `getframe`, `getpoints`, `heatmap`, `hidden`, `hist`, `histc`, `histogram`, `histogram2`, `im2frame`, `interpstreamspeed`, `isocaps`, `isocolors`, `isonormals`, `isosurface`, `loglog`, `mesh`, `meshc`, `meshz`, `morebins`, `movie`, `parallelplot`, `pareto`, `pcolor`, `peaks`, `pie`, `pie3`, `piechart`, `plot3`, `plotmatrix`, `polar`, `polaraxes`, `polarbubblechart`, `polarhistogram`, `polarplot`, `polarscatter`, `quiver`, `quiver3`, `reducepatch`, `reducevolume`, `ribbon`, `rlim`, `rose`, `rtickangle`, `rtickformat`, `rticklabels`, `rticks`, `scatter`, `scatter3`, `scatterhistogram`, `semilogx`, `semilogy`, `shrinkfaces`, `slice`, `smooth3`, `sphere`, `stairs`, `stem`, `stem3`, `stream2`, `stream3`, `streamline`, `streamparticles`, `streamribbon`, `streamslice`, `streamtube`, `subvolume`, `surf`, `surf2patch`, `surface`, `surfc`, `surfl`, `surfnorm`, `swarmchart`, `swarmchart3`, `thetalim`, `thetatickformat`, `thetaticklabels`, `thetaticks`, `volumebounds`, `waterfall`, `wordcloud`
+Implemented: `addpoints`, `animatedline`, `bar`, `bar3`, `bar3h`, `barh`, `binscatter`, `boxchart`, `bubblechart`, `bubblechart3`, `bubblecloud`, `bubblelegend`, `bubblelim`, `bubblesize`, `clabel`, `clearpoints`, `comet`, `comet3`, `compass`, `coneplot`, `contour`, `contour3`, `contourc`, `contourf`, `contourslice`, `curl`, `cylinder`, `divergence`, `donutchart`, `drawnow`, `ellipsoid`, `errorbar`, `ezcontour`, `ezcontourf`, `ezmesh`, `ezmeshc`, `ezplot`, `ezplot3`, `ezpolar`, `ezsurf`, `ezsurfc`, `fcontour`, `feather`, `fewerbins`, `fill`, `fill3`, `fimplicit`, `fmesh`, `fplot`, `fplot3`, `frame2im`, `fsurf`, `geobubble`, `getframe`, `getpoints`, `heatmap`, `hidden`, `hist`, `histc`, `histogram`, `histogram2`, `im2frame`, `interpstreamspeed`, `isocaps`, `isocolors`, `isonormals`, `isosurface`, `loglog`, `mesh`, `meshc`, `meshz`, `morebins`, `movie`, `parallelplot`, `pareto`, `pcolor`, `peaks`, `pie`, `pie3`, `piechart`, `plot3`, `plotmatrix`, `polar`, `polaraxes`, `polarbubblechart`, `polarhistogram`, `polarplot`, `polarscatter`, `quiver`, `quiver3`, `reducepatch`, `reducevolume`, `ribbon`, `rlim`, `rose`, `rtickangle`, `rtickformat`, `rticklabels`, `rticks`, `scatter`, `scatter3`, `scatterhistogram`, `semilogx`, `semilogy`, `shrinkfaces`, `slice`, `smooth3`, `sortx`, `sorty`, `sphere`, `stairs`, `stem`, `stem3`, `stream2`, `stream3`, `streamline`, `streamparticles`, `streamribbon`, `streamslice`, `streamtube`, `subvolume`, `surf`, `surf2patch`, `surface`, `surfc`, `surfl`, `surfnorm`, `swarmchart`, `swarmchart3`, `thetalim`, `thetatickformat`, `thetaticklabels`, `thetaticks`, `volumebounds`, `waterfall`, `wordcloud`
 
 ## MATLAB > Graphics > Formatting and Annotation
 
@@ -366,13 +364,9 @@ Implemented: `addedge`, `addnode`, `adjacency`, `allcycles`, `allpaths`, `bctree
 
 ## MATLAB > Mathematics > Interpolation
 
-Implemented: 17. To implement: 1. In a branch: 0. Out of scope: 0.
+Implemented: 18. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `TriScatteredInterp`
-
-Implemented: `griddata`, `griddatan`, `griddedInterpolant`, `interp1`, `interp1q`, `interp2`, `interp3`, `interpft`, `interpn`, `makima`, `mkpp`, `padecoef`, `pchip`, `ppval`, `scatteredInterpolant`, `spline`, `unmkpp`
+Implemented: `griddata`, `griddatan`, `griddedInterpolant`, `interp1`, `interp1q`, `interp2`, `interp3`, `interpft`, `interpn`, `makima`, `mkpp`, `padecoef`, `pchip`, `ppval`, `scatteredInterpolant`, `spline`, `TriScatteredInterp`, `unmkpp`
 
 ## MATLAB > Mathematics > Linear Algebra
 
