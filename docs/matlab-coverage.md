@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1733 |
+| Implemented | 1752 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **289** |
+| **To implement** | **270** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -376,7 +376,7 @@ Implemented: `&amp;`, `&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `'`, `*`, `+`, `-`, `.'`
 
 Implemented: 84. To implement: 0. In a branch: 0. Out of scope: 0.
 
-Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isInterior`, `isinterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
+Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isinterior`, `isInterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
 
 ## MATLAB > Mathematics > Elementary Math
 
@@ -1003,27 +1003,7 @@ Implemented: `argnames`, `children`, `findSymType`, `fold`, `formula`, `has`, `h
 
 ## Symbolic Math Toolbox > Symbolic Computations in MATLAB > Units of Measurement
 
-Implemented: 0. To implement: 19. In a branch: 0. Out of scope: 0.
+Implemented: 19. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `baseUnits`
-- [ ] `checkUnits`
-- [ ] `derivedUnits`
-- [ ] `findUnits`
-- [ ] `isUnit`
-- [ ] `mixedUnits`
-- [ ] `newUnit`
-- [ ] `newUnitSystem`
-- [ ] `removeUnit`
-- [ ] `removeUnitSystem`
-- [ ] `rewrite`
-- [ ] `separateUnits`
-- [ ] `str2symunit`
-- [ ] `symunit`
-- [ ] `symunit2str`
-- [ ] `unitConversionFactor`
-- [ ] `unitConvert`
-- [ ] `unitInfo`
-- [ ] `unitSystems`
+Implemented: `baseUnits`, `checkUnits`, `derivedUnits`, `findUnits`, `isUnit`, `mixedUnits`, `newUnit`, `newUnitSystem`, `removeUnit`, `removeUnitSystem`, `rewrite`, `separateUnits`, `str2symunit`, `symunit`, `symunit2str`, `unitConversionFactor`, `unitConvert`, `unitInfo`, `unitSystems`
 
