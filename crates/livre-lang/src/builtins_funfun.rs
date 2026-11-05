@@ -19,7 +19,7 @@ type R<T> = Result<T, LangError>;
 
 pub const NAMES: &[&str] = &[
     "fzero", "fminbnd", "fminsearch", "lsqnonneg", "optimset", "optimget", "integral", "integral2", "integral3", "quadgk", "quad", "quadl",
-    "quadv", "dblquad", "triplequad", "quad2d", "ode45", "ode23", "odeset", "odeget", "deval",
+    "quadv", "dblquad", "triplequad", "quad2d", "ode45", "ode23", "odeset", "odeget", "deval", "odeprint", "odeplot", "odephas2", "odephas3", "numjac",
 ];
 
 // ---- shared helpers ----------------------------------------------------------------------
@@ -1870,8 +1870,12 @@ fn ode_outputs(
         s.set("idata", Value::Struct(idata));
         return one(Value::Struct(s));
     }
-    let t = col(tout.to_vec());
-    let y = rows_to_matrix(yout, neq);
+    let (mut tout, mut yout) = (tout.to_vec(), yout.to_vec());
+    let tspan = a.get(1).map(|v| v.to_matrix().map(|m| m.data)).transpose()?.unwrap_or_default();
+    let refine = opt_num(options_arg(a.get(3))?, "Refine", m.refine as f64)?.max(1.0) as usize;
+    run_output_fcn(it, a.get(3), &tspan, &mut tout, &mut yout, if tspan.len() == 2 { refine } else { 1 })?;
+    let t = col(tout);
+    let y = rows_to_matrix(&yout, neq);
     if nargout == 0 {
         it.call_function("plot", vec![t, y], 0)?;
         return Ok(Some(Vec::new()));
@@ -1938,6 +1942,8 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         return Ok(None);
     }
     let r = match name {
+        "odeprint" | "odeplot" | "odephas2" | "odephas3" => return output_function(it, name, a),
+        "numjac" => return numjac(it, a, nargout),
         "optimset" => return optimset(it, a, nargout),
         "optimget" => optget(a, OPTIM_FIELDS, "parameter"),
         "odeset" => {
@@ -1972,4 +1978,166 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         }
         v
     }))
+}
+
+// ---- ODE output functions ---------------------------------------------------------------------
+
+/// Calls the `OutputFcn` of the options as the solvers do: `init` with the time span, then
+/// the output points (`chunk` at a time, one solver step), then `done`. A true result stops
+/// the integration there, so the outputs are cut.
+pub(crate) fn run_output_fcn(it: &mut Interpreter, opts: Option<&Value>, tspan: &[f64], tout: &mut Vec<f64>, yout: &mut Vec<Vec<f64>>, chunk: usize) -> R<()> {
+    let o = options_arg(opts)?;
+    let Some(f) = opt(o, "OutputFcn").cloned() else { return Ok(()) };
+    if tout.is_empty() || tspan.is_empty() {
+        return Ok(());
+    }
+    let sel: Option<Vec<usize>> = match opt(o, "OutputSel") {
+        Some(v) => Some(v.to_matrix()?.data.iter().map(|&k| (k as usize).saturating_sub(1)).collect()),
+        None => None,
+    };
+    let pick = |y: &[f64]| -> Vec<f64> {
+        match &sel {
+            Some(s) => s.iter().filter_map(|&k| y.get(k).copied()).collect(),
+            None => y.to_vec(),
+        }
+    };
+    let block = |ys: &[Vec<f64>]| -> Value {
+        let cols: Vec<Vec<f64>> = ys.iter().map(|y| pick(y)).collect();
+        let n = cols.first().map(|c| c.len()).unwrap_or(0);
+        let mut data = Vec::with_capacity(n * cols.len());
+        for c in &cols {
+            data.extend_from_slice(c);
+        }
+        Value::Num(Matrix::from_dims(vec![n, cols.len()], data))
+    };
+    let span = Value::Num(Matrix::row(vec![tspan[0], *tspan.last().unwrap()]));
+    it.call_func_value(&f, vec![span, block(&yout[..1]), Value::chars("init")], 0)?;
+    let mut k = 1;
+    let chunk = chunk.max(1);
+    while k < tout.len() {
+        let end = (k + chunk).min(tout.len());
+        let t = Value::Num(Matrix::row(tout[k..end].to_vec()));
+        let r = it.call_func_value(&f, vec![t, block(&yout[k..end]), Value::chars("")], 1)?;
+        if r.first().map(|v| v.is_true().unwrap_or(false)).unwrap_or(false) {
+            tout.truncate(end);
+            yout.truncate(end);
+            break;
+        }
+        k = end;
+    }
+    it.call_func_value(&f, vec![Value::empty(), Value::empty(), Value::chars("done")], 0)?;
+    Ok(())
+}
+
+thread_local! {
+    /// Points collected by odeplot/odephas2/odephas3 between `init` and `done`.
+    static OUTPUT_POINTS: std::cell::RefCell<(Vec<f64>, Vec<Vec<f64>>)> = const { std::cell::RefCell::new((Vec::new(), Vec::new())) };
+}
+
+/// odeprint, odeplot, odephas2 and odephas3.
+pub(crate) fn output_function(it: &mut Interpreter, name: &str, a: &[Value]) -> Ret {
+    let flag = a.get(2).map(|v| v.text()).transpose()?.unwrap_or_default();
+    let t = a.first().cloned().unwrap_or_else(Value::empty);
+    let y = a.get(1).cloned().unwrap_or_else(Value::empty);
+    if name == "odeprint" {
+        match flag.as_str() {
+            "init" => {
+                let t0 = t.to_matrix()?.data.first().copied().unwrap_or(0.0);
+                it.show("t", &Value::num(t0))?;
+                it.show("y", &y)?;
+            }
+            "" => {
+                it.show("t", &t)?;
+                it.show("y", &y)?;
+            }
+            _ => {}
+        }
+        return one(Value::bool(false));
+    }
+    match flag.as_str() {
+        "init" => OUTPUT_POINTS.with(|p| {
+            let m = y.to_matrix().ok();
+            let t0 = t.to_matrix().ok().and_then(|m| m.data.first().copied()).unwrap_or(0.0);
+            *p.borrow_mut() = (vec![t0], vec![m.map(|m| m.data).unwrap_or_default()]);
+        }),
+        "" => {
+            let tm = t.to_matrix()?;
+            let ym = y.to_matrix()?;
+            let n = ym.rows();
+            OUTPUT_POINTS.with(|p| {
+                let mut p = p.borrow_mut();
+                for (j, &tj) in tm.data.iter().enumerate() {
+                    p.0.push(tj);
+                    p.1.push(ym.data[j * n..(j + 1) * n].to_vec());
+                }
+            });
+        }
+        "done" => {
+            let (ts, ys) = OUTPUT_POINTS.with(|p| std::mem::take(&mut *p.borrow_mut()));
+            let n = ys.first().map(|v| v.len()).unwrap_or(0);
+            let comp = |k: usize| Value::Num(Matrix::col(ys.iter().map(|v| v.get(k).copied().unwrap_or(f64::NAN)).collect()));
+            match name {
+                "odeplot" => {
+                    let mut data = Vec::with_capacity(n * ys.len());
+                    for k in 0..n {
+                        data.extend(ys.iter().map(|v| v[k]));
+                    }
+                    it.call_function("plot", vec![Value::Num(Matrix::col(ts)), Value::Num(Matrix::from_dims(vec![ys.len(), n], data))], 0)?;
+                }
+                "odephas2" if n >= 2 => {
+                    it.call_function("plot", vec![comp(0), comp(1)], 0)?;
+                }
+                "odephas3" if n >= 3 => {
+                    it.call_function("plot3", vec![comp(0), comp(1), comp(2)], 0)?;
+                }
+                _ => return rt(format!("{name} needs at least {} solution components.", if name == "odephas3" { 3 } else { 2 })),
+            }
+        }
+        _ => {}
+    }
+    one(Value::bool(false))
+}
+
+/// `[dFdy, fac, g, nfevals, nfcalls] = numjac(F, t, y, Fty, thresh, fac, vectorized)`: a
+/// forward-difference Jacobian with increments fac*max(|y|, thresh) (fac = sqrt(eps)).
+fn numjac(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
+    let f = arg(a, 0, "numjac")?.clone();
+    let t = arg(a, 1, "numjac")?.scalar()?;
+    let y = arg(a, 2, "numjac")?.to_matrix()?.data;
+    let n = y.len();
+    let fty = arg(a, 3, "numjac")?.to_matrix()?.data;
+    let thresh: Vec<f64> = match a.get(4).map(|v| v.to_matrix()).transpose()? {
+        Some(m) if m.numel() == n => m.data,
+        Some(m) if m.numel() == 1 => vec![m.data[0]; n],
+        _ => vec![f64::EPSILON.sqrt(); n],
+    };
+    let mut fac: Vec<f64> = match a.get(5).map(|v| v.to_matrix()).transpose()? {
+        Some(m) if m.numel() == n => m.data,
+        _ => vec![f64::EPSILON.sqrt(); n],
+    };
+    let mut jac = vec![0.0; fty.len() * n];
+    let mut calls = 0;
+    for j in 0..n {
+        let scale = y[j].abs().max(thresh[j]);
+        let mut del = (y[j] + fac[j] * scale) - y[j];
+        while del == 0.0 && fac[j] < 1.0 {
+            fac[j] = (100.0 * fac[j]).min(1.0);
+            del = (y[j] + fac[j] * scale) - y[j];
+        }
+        let mut yd = y.clone();
+        yd[j] += del;
+        let fd = call1(it, &f, vec![Value::num(t), Value::Num(Matrix::col(yd))])?.to_matrix()?.data;
+        calls += 1;
+        for i in 0..fty.len() {
+            jac[j * fty.len() + i] = (fd.get(i).copied().unwrap_or(f64::NAN) - fty[i]) / del;
+        }
+    }
+    let out = vec![
+        Value::Num(Matrix::from_dims(vec![fty.len(), n], jac)),
+        Value::Num(Matrix::col(fac)),
+        Value::Num(Matrix::col((1..=n).map(|k| k as f64).collect())),
+        Value::num(calls as f64),
+        Value::num(calls as f64),
+    ];
+    Ok(Some(out.into_iter().take(nargout.max(1)).collect()))
 }

@@ -20,7 +20,7 @@ use crate::value::*;
 type R<T> = Result<T, LangError>;
 
 pub const NAMES: &[&str] = &[
-    "timeseries", "tscollection", "tsdata.event", "matlivre_ts_method", "timeseries2timetable", "resample", "getdatasamples", "getsamples",
+    "timeseries", "tscollection", "tsdata.event", "matlivre_ts_method", "timeseries2timetable", "ts2timetable", "resample", "getdatasamples", "getsamples",
     "getsampleusingtime", "addsample", "delsample", "getinterpmethod", "setinterpmethod", "getdatasamplesize", "addevent", "delevent",
     "gettsafteratevent", "gettsafterevent", "gettsatevent", "gettsbeforeatevent", "gettsbeforeevent", "gettsbetweenevents", "setuniformtime",
     "getabstime", "setabstime", "getqualitydesc", "idealfilter", "gettimeseriesnames", "removets", "addts", "settimeseriesnames",
@@ -885,7 +885,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         "timeseries" => constructor(a),
         "tscollection" => new_collection(a),
         "tsdata.event" => one(event(&arg(a, 0, name)?.text()?, arg(a, 1, name)?.scalar()?)),
-        "timeseries2timetable" => {
+        "timeseries2timetable" | "ts2timetable" => {
             let list: Vec<Ts> = a.iter().map(Ts::of).collect::<R<_>>()?;
             to_timetable(it, &list)
         }

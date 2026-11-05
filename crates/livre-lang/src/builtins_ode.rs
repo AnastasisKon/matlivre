@@ -954,6 +954,7 @@ fn finish(
             yout.push(traj.y[k + 1].clone());
         }
     }
+    crate::builtins_funfun::run_output_fcn(it, a.get(3), tspan, &mut tout, &mut yout, if tspan.len() == 2 { refine } else { 1 })?;
     if nargout == 0 {
         it.call_function("plot", vec![col(tout), rows_to_matrix(&yout, n)], 0)?;
         return Ok(Some(Vec::new()));

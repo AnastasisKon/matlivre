@@ -737,7 +737,7 @@ impl Interpreter {
     }
 
     /// Emits the display of `name = v`, honoring `disp`/`display` overloads of objects.
-    fn show(&mut self, name: &str, v: &Value) -> R<()> {
+    pub(crate) fn show(&mut self, name: &str, v: &Value) -> R<()> {
         if crate::gfx::is_gfx(v) {
             let text = crate::gfx::display(self, name, v)?;
             self.emit(OutputKind::Value { name: name.to_string(), text });
