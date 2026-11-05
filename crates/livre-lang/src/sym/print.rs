@@ -229,6 +229,22 @@ fn pr(e: &Expr, style: Style) -> (String, u8) {
                     return (format!("{base}{pow_op}{ex}"), P_POW);
                 }
             }
+            // A quantity with units: the coefficient, then the units, each in parentheses when
+            // it is a quotient (10*([m]/[s]), (5/2)*[m]).
+            if let (Expr::Mul(fs), Style::Matlab) = (e, style) {
+                let (units, rest): (Vec<Expr>, Vec<Expr>) = fs.iter().cloned().partition(super::units::is_unit_factor);
+                if !units.is_empty() && !rest.is_empty() {
+                    let us = pr(&Expr::mul(units), style).0;
+                    let us = if us.contains('/') { format!("({us})") } else { us };
+                    let c = Expr::mul(rest);
+                    let negative = c.split_coeff().0.is_neg();
+                    let mag = if negative { Expr::neg(c) } else { c };
+                    let cs = wrap(pr(&mag, style), P_MUL);
+                    let cs = if cs.contains('/') && !cs.starts_with('(') { format!("({cs})") } else { cs };
+                    let sign = if negative { "-" } else { "" };
+                    return (if mag.is_one() { format!("{sign}{us}") } else { format!("{sign}{cs}{mul_op}{us}") }, P_MUL);
+                }
+            }
             let (coeff, num, den) = fraction(e);
             let negative = coeff.is_neg();
             let c = if negative { coeff.neg() } else { coeff };

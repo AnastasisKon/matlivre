@@ -436,7 +436,7 @@ fn cmp_raw(a: &Expr, b: &Expr) -> Ordering {
     match (a, b) {
         (Expr::Num(x), Expr::Num(y)) => x.cmp_val(y),
         (Expr::Const(x), Expr::Const(y)) => x.cmp(y),
-        (Expr::Var(x), Expr::Var(y)) => x.cmp(y),
+        (Expr::Var(x), Expr::Var(y)) => x.starts_with('[').cmp(&y.starts_with('[')).then_with(|| x.cmp(y)),
         (Expr::Pow(b1, e1), Expr::Pow(b2, e2)) => cmp(b1, b2).then_with(|| cmp(e1, e2)),
         (Expr::Mul(x), Expr::Mul(y)) | (Expr::Add(x), Expr::Add(y)) => cmp_list(x, y),
         (Expr::Fn(n1, a1), Expr::Fn(n2, a2)) => n1.cmp(n2).then_with(|| cmp_list(a1, a2)),
@@ -905,6 +905,8 @@ impl Expr {
 
     pub fn free_vars(&self, out: &mut Vec<String>) {
         match self {
+            // Units ([m]) are not variables.
+            Expr::Var(n) if n.starts_with('[') => {}
             Expr::Var(n) => {
                 if !out.contains(n) {
                     out.push(n.clone());

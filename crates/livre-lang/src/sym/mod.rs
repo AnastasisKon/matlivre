@@ -9,6 +9,7 @@ pub mod print;
 pub mod special;
 pub mod specnum;
 pub mod tools;
+pub mod units;
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -541,6 +542,9 @@ fn is_sym_name(s: &str) -> bool {
 pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) -> R<Option<Vec<Value>>> {
     if special::NAMES.contains(&name) {
         return special::call(it, name, &args, nargout);
+    }
+    if units::NAMES.contains(&name) {
+        return units::call(it, name, &args, nargout);
     }
     if tools::NAMES.contains(&name) {
         return tools::call(it, name, &args, nargout);
