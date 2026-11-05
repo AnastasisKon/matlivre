@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1647 |
+| Implemented | 1710 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **375** |
+| **To implement** | **312** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -376,7 +376,7 @@ Implemented: `&amp;`, `&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `'`, `*`, `+`, `-`, `.'`
 
 Implemented: 84. To implement: 0. In a branch: 0. Out of scope: 0.
 
-Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isInterior`, `isinterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
+Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isinterior`, `isInterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
 
 ## MATLAB > Mathematics > Elementary Math
 
@@ -953,76 +953,15 @@ Implemented: `adjoint`, `charpoly`
 
 ## Symbolic Math Toolbox > Mathematics > Mathematical Functions
 
-Implemented: 4. To implement: 51. In a branch: 0. Out of scope: 0.
+Implemented: 55. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `catalan`
-- [ ] `coshint`
-- [ ] `cosint`
-- [ ] `dawson`
-- [ ] `dilog`
-- [ ] `dirac`
-- [ ] `ei`
-- [ ] `ellipticCE`
-- [ ] `ellipticCK`
-- [ ] `ellipticCPi`
-- [ ] `ellipticE`
-- [ ] `ellipticF`
-- [ ] `ellipticK`
-- [ ] `ellipticNome`
-- [ ] `ellipticPi`
-- [ ] `erfi`
-- [ ] `eulergamma`
-- [ ] `fresnelc`
-- [ ] `fresnels`
-- [ ] `heaviside`
-- [ ] `hurwitzZeta`
-- [ ] `hypergeom`
-- [ ] `igamma`
-- [ ] `jacobiAM`
-- [ ] `jacobiCD`
-- [ ] `jacobiCN`
-- [ ] `jacobiCS`
-- [ ] `jacobiDC`
-- [ ] `jacobiDN`
-- [ ] `jacobiDS`
-- [ ] `jacobiNC`
-- [ ] `jacobiND`
-- [ ] `jacobiNS`
-- [ ] `jacobiSC`
-- [ ] `jacobiSD`
-- [ ] `jacobiSN`
-- [ ] `jacobiZeta`
-- [ ] `kummerU`
-- [ ] `logint`
-- [ ] `meijerG`
-- [ ] `pochhammer`
-- [ ] `polylog`
-- [ ] `rectangularPulse`
-- [ ] `signIm`
-- [ ] `sinhint`
-- [ ] `sinint`
-- [ ] `ssinint`
-- [ ] `triangularPulse`
-- [ ] `whittakerM`
-- [ ] `whittakerW`
-- [ ] `wrightOmega`
-
-Implemented: `kroneckerDelta`, `lambertw`, `sinc`, `zeta`
+Implemented: `catalan`, `coshint`, `cosint`, `dawson`, `dilog`, `dirac`, `ei`, `ellipticCE`, `ellipticCK`, `ellipticCPi`, `ellipticE`, `ellipticF`, `ellipticK`, `ellipticNome`, `ellipticPi`, `erfi`, `eulergamma`, `fresnelc`, `fresnels`, `heaviside`, `hurwitzZeta`, `hypergeom`, `igamma`, `jacobiAM`, `jacobiCD`, `jacobiCN`, `jacobiCS`, `jacobiDC`, `jacobiDN`, `jacobiDS`, `jacobiNC`, `jacobiND`, `jacobiNS`, `jacobiSC`, `jacobiSD`, `jacobiSN`, `jacobiZeta`, `kroneckerDelta`, `kummerU`, `lambertw`, `logint`, `meijerG`, `pochhammer`, `polylog`, `rectangularPulse`, `signIm`, `sinc`, `sinhint`, `sinint`, `ssinint`, `triangularPulse`, `whittakerM`, `whittakerW`, `wrightOmega`, `zeta`
 
 ## Symbolic Math Toolbox > Mathematics > Number Theory
 
-Implemented: 7. To implement: 4. In a branch: 0. Out of scope: 0.
+Implemented: 11. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `euler`
-- [ ] `factorIntegerPower`
-- [ ] `isPrimitiveRoot`
-- [ ] `jacobiSymbol`
-
-Implemented: `bernoulli`, `eulerPhi`, `fibonacci`, `harmonic`, `nextprime`, `nthprime`, `prevprime`
+Implemented: `bernoulli`, `euler`, `eulerPhi`, `factorIntegerPower`, `fibonacci`, `harmonic`, `isPrimitiveRoot`, `jacobiSymbol`, `nextprime`, `nthprime`, `prevprime`
 
 ## Symbolic Math Toolbox > Mathematics > Numbers and Precision
 
@@ -1032,25 +971,17 @@ Implemented: `digits`
 
 ## Symbolic Math Toolbox > Mathematics > Polynomials
 
-Implemented: 1. To implement: 13. In a branch: 0. Out of scope: 0.
+Implemented: 9. To implement: 5. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `bernstein`
-- [ ] `chebyshevT`
-- [ ] `chebyshevU`
 - [ ] `gbasis`
-- [ ] `gegenbauerC`
-- [ ] `hermiteH`
-- [ ] `jacobiP`
-- [ ] `laguerreL`
-- [ ] `legendreP`
 - [ ] `minpoly`
 - [ ] `polynomialReduce`
 - [ ] `resultant`
 - [ ] `root`
 
-Implemented: `polynomialDegree`
+Implemented: `bernstein`, `chebyshevT`, `chebyshevU`, `gegenbauerC`, `hermiteH`, `jacobiP`, `laguerreL`, `legendreP`, `polynomialDegree`
 
 ## Symbolic Math Toolbox > MuPAD to MATLAB Migration
 
