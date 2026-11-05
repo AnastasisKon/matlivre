@@ -38,6 +38,7 @@ pub mod display;
 pub mod error;
 pub mod format;
 pub mod gfx;
+pub mod gfx_util;
 pub mod graphics;
 pub mod graphs;
 pub mod indexing;

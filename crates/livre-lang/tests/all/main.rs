@@ -16,6 +16,7 @@ mod files;
 mod files_more;
 mod func_objects;
 mod funfun;
+mod gfx_utilities;
 mod graph3d;
 mod graphs;
 mod handles;
