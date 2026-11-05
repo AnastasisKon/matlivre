@@ -13,6 +13,8 @@ type R<T> = Result<T, LangError>;
 
 pub const NAMES: &[&str] = &["addprop", "rmprop", "matlivre_decomposition_type"];
 pub const CLASS: &str = "decomposition";
+/// Methods of the class (for `methods` and the coverage checklist).
+pub const METHODS: &[&str] = &["isIllConditioned", "rcond", "mldivide", "mrdivide"];
 
 const TYPES: &[&str] = &["auto", "lu", "qr", "chol", "ldl", "triangular", "permutedTriangular", "banded", "hessenberg", "diagonal", "cod"];
 
@@ -30,6 +32,7 @@ pub fn class_def() -> Rc<ClassDef> {
                     function x = mrdivide(b, d)\n      x = b / d.Matrix;\n    end\n    \
                     function r = rcond(d)\n      r = rcond(d.Matrix);\n    end\n    \
                     function tf = isIllConditioned(d)\n      tf = rcond(d.Matrix) < eps(class(d.Matrix));\n    end\n  end\nend\n";
+                debug_assert!(METHODS.iter().all(|m| src.contains(&format!("= {m}("))));
                 let ast = crate::class::parse_classdef(src).expect("built-in class source parses");
                 let mut def = ClassDef::build(ast, &[]);
                 def.name = CLASS.into();
