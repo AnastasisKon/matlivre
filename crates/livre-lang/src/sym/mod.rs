@@ -2,6 +2,7 @@
 
 pub mod algebra;
 pub mod calculus;
+pub mod dae;
 pub mod expr;
 pub mod forms;
 pub mod formula;
@@ -558,6 +559,9 @@ fn is_sym_name(s: &str) -> bool {
 pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) -> R<Option<Vec<Value>>> {
     if special::NAMES.contains(&name) {
         return special::call(it, name, &args, nargout);
+    }
+    if dae::NAMES.contains(&name) {
+        return dae::call(it, name, &args, nargout);
     }
     if formula::NAMES.contains(&name) {
         return formula::call(it, name, &args, nargout);

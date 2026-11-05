@@ -184,7 +184,8 @@ Symbolic Math Toolbox references and its status (1,830 implemented).
 - Symbolic Math: exact arithmetic, `diff`, `int`, `limit`, `taylor`, `series`, `solve`,
   `vpasolve`, Laplace, Z, Fourier and Hilbert transforms, `simplify`, `partfrac`, symbolic
   matrices with Jordan, Smith and Hermite forms, Groebner bases, `piecewise`, abstract
-  functions (`syms y(t)`) with `dsolve` for linear differential equations, `combine`,
+  functions (`syms y(t)`) with `dsolve` for linear differential equations, DAE structure tools
+  (`massMatrixForm`, `isLowIndexDAE`, `findDecoupledBlocks`, `odeFunction`), `combine`,
   `root`, `eliminate`, MathML output, `sympref`, number theory,
   special functions (elliptic integrals and Jacobi elliptic functions, exponential,
   trigonometric and Fresnel integrals, polylogarithms, hypergeometric functions), the
@@ -246,7 +247,7 @@ installation when one is present. Benchmarks: [`benchmarks/run_bench.bat`](bench
 - Rich text in live scripts (bold and italic runs, links, equations, images) is shown as plain
   text.
 - Functions still to implement are listed in [`docs/matlab-coverage.md`](docs/matlab-coverage.md),
-  among them the differential-algebraic equation tools, symbolic code generation (`ccode`,
+  among them DAE index reduction (`reduceDAEIndex`, `reduceDAEToODE`), symbolic code generation (`ccode`,
   `fortran`), `subexpr`, and spreadsheet and XML import options.
 - The Symbolic Math special functions evaluate to double precision only: `vpa` keeps
   `sinint(2)` and the like in symbolic form (`catalan` and `eulergamma` evaluate). Some
