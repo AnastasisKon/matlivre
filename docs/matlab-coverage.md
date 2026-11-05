@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1763 |
+| Implemented | 1766 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **259** |
+| **To implement** | **256** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -376,7 +376,7 @@ Implemented: `&amp;`, `&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `'`, `*`, `+`, `-`, `.'`
 
 Implemented: 84. To implement: 0. In a branch: 0. Out of scope: 0.
 
-Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isInterior`, `isinterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
+Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isinterior`, `isInterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
 
 ## MATLAB > Mathematics > Elementary Math
 
@@ -872,34 +872,31 @@ Implemented: `assume`, `assumeAlso`, `assumptions`
 
 ## Symbolic Math Toolbox > Mathematics > Calculus
 
-Implemented: 21. To implement: 6. In a branch: 0. Out of scope: 0.
+Implemented: 22. To implement: 5. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `changeIntegrationVariable`
-- [ ] `functionalDerivative`
 - [ ] `funtool`
 - [ ] `integrateByParts`
 - [ ] `rsums`
 - [ ] `taylortool`
 
-Implemented: `fourier`, `hessian`, `htrans`, `ifourier`, `ihtrans`, `ilaplace`, `int`, `iztrans`, `jacobian`, `laplace`, `limit`, `pade`, `potential`, `series`, `symprod`, `symsum`, `taylor`, `vectorPotential`, `vpaintegral`, `vpasum`, `ztrans`
+Implemented: `fourier`, `functionalDerivative`, `hessian`, `htrans`, `ifourier`, `ihtrans`, `ilaplace`, `int`, `iztrans`, `jacobian`, `laplace`, `limit`, `pade`, `potential`, `series`, `symprod`, `symsum`, `taylor`, `vectorPotential`, `vpaintegral`, `vpasum`, `ztrans`
 
 ## Symbolic Math Toolbox > Mathematics > Equation Solving
 
-Implemented: 5. To implement: 15. In a branch: 0. Out of scope: 0.
+Implemented: 7. To implement: 13. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `daeFunction`
-- [ ] `dsolve`
 - [ ] `eliminate`
 - [ ] `findDecoupledBlocks`
 - [ ] `incidenceMatrix`
 - [ ] `isLowIndexDAE`
 - [ ] `massMatrixForm`
 - [ ] `odeFunction`
-- [ ] `odeToVectorField`
 - [ ] `pdeCoefficients`
 - [ ] `pdeCoefficientsToDouble`
 - [ ] `reduceDAEIndex`
@@ -907,7 +904,7 @@ To implement:
 - [ ] `reduceDifferentialOrder`
 - [ ] `reduceRedundancies`
 
-Implemented: `equationsToMatrix`, `finverse`, `isolate`, `poles`, `vpasolve`
+Implemented: `dsolve`, `equationsToMatrix`, `finverse`, `isolate`, `odeToVectorField`, `poles`, `vpasolve`
 
 ## Symbolic Math Toolbox > Mathematics > Formula Manipulation and Simplification
 

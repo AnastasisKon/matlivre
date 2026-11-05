@@ -20,7 +20,7 @@ of MATLAB, written in Rust: no MATLAB installation, license or Java runtime is n
 - **Runs code fast.** On a 12-case benchmark of loops, recursion, array growth, linear
   algebra, sorting, strings, structs and cells, MatLivre is 4.7x faster than MATLAB R2023b and
   65x faster than GNU Octave (geometric mean), with identical results in all three.
-- **Speaks MATLAB.** 1,763 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
+- **Speaks MATLAB.** 1,766 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
   error messages and semantics, checked against MATLAB R2023b output.
 - **One small program.** A single 36 MB executable that depends only on DLLs shipped with
   Windows.
@@ -127,7 +127,7 @@ per-case Octave comparison are in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.m
   donut charts, word clouds, stacked and parallel coordinates plots); two y axes (`yyaxis`),
   secondary axis labels, date ticks, tiled layouts, annotations and colorbars, with a crosshair that reads values off
   the plot. `saveas`, `print` and `exportgraphics` write PNG and SVG.
-- A files panel, workspace browser, command window and floating figure windows; tabs that can
+- A files panel (open a folder as the project root, like VS Code), workspace browser, command window and floating figure windows; tabs that can
   be dragged between windows; light and dark themes.
 - Code runs on its own engine thread, so the editor never freezes while a script runs.
 - Files changed by another program (an editor, Claude Code, git) reload in their tab, as in
@@ -158,7 +158,7 @@ per-case Octave comparison are in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.m
 
 MATLAB compatibility is the rule: semantics, display and error messages follow MATLAB R2023b.
 [`docs/matlab-coverage.md`](docs/matlab-coverage.md) lists every function of the MATLAB and
-Symbolic Math Toolbox references and its status (1,763 implemented).
+Symbolic Math Toolbox references and its status (1,766 implemented).
 
 - N-D arrays of every numeric type, `logical`, `char` and strings, with implicit expansion,
   saturating integer arithmetic and complex numbers; regular expressions and text patterns
@@ -182,7 +182,8 @@ Symbolic Math Toolbox references and its status (1,763 implemented).
   functions, image resizing and indexed color (`imresize`, `rgb2ind`, `cmunique`).
 - Symbolic Math: exact arithmetic, `diff`, `int`, `limit`, `taylor`, `series`, `solve`,
   `vpasolve`, Laplace, Z, Fourier and Hilbert transforms, `simplify`, `partfrac`, symbolic
-  matrices with Jordan, Smith and Hermite forms, Groebner bases, `piecewise`, number theory,
+  matrices with Jordan, Smith and Hermite forms, Groebner bases, `piecewise`, abstract
+  functions (`syms y(t)`) with `dsolve` for linear differential equations, number theory,
   special functions (elliptic integrals and Jacobi elliptic functions, exponential,
   trigonometric and Fresnel integrals, polylogarithms, hypergeometric functions), the
   classical orthogonal polynomials, polynomial division and reduction, resultants, Pade
@@ -243,8 +244,8 @@ installation when one is present. Benchmarks: [`benchmarks/run_bench.bat`](bench
 - Rich text in live scripts (bold and italic runs, links, equations, images) is shown as plain
   text.
 - Functions still to implement are listed in [`docs/matlab-coverage.md`](docs/matlab-coverage.md),
-  among them `dsolve`, symbolic code generation (`ccode`, `fortran`),
-  abstract symbolic functions (`syms f(x)`), spreadsheet and XML import options and the `Tiff`
+  among them the differential-algebraic equation tools, symbolic code generation (`ccode`,
+  `fortran`), spreadsheet and XML import options and the `Tiff`
   class.
 - The Symbolic Math special functions evaluate to double precision only: `vpa` keeps
   `sinint(2)` and the like in symbolic form (`catalan` and `eulergamma` evaluate). Some
@@ -260,6 +261,10 @@ installation when one is present. Benchmarks: [`benchmarks/run_bench.bat`](bench
   exponentials, sines and cosines, Gaussians, Dirac and Heaviside functions); other inputs
   stay unevaluated where MATLAB finds a closed form. `iztrans` needs rational poles, and
   `smithForm` and `hermiteForm` work on integer matrices only.
+- `dsolve` solves single linear equations (constant coefficients, or first order with
+  variable coefficients) with initial conditions; systems and nonlinear equations are not
+  solved, and the order of terms in some solutions differs from MATLAB's
+  (`C1*exp(-t) + exp(t)/2`).
 - Chart layouts that MATLAB fits to the screen (word clouds, bubble clouds, automatic
   `binscatter` bins) are approximated, and `geobubble` draws no basemap.
 - Dithering in `rgb2ind` and `dither` is plain Floyd-Steinberg, so individual pixels can
