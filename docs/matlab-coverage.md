@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1752 |
+| Implemented | 1763 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **270** |
+| **To implement** | **259** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -376,7 +376,7 @@ Implemented: `&amp;`, `&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `'`, `*`, `+`, `-`, `.'`
 
 Implemented: 84. To implement: 0. In a branch: 0. Out of scope: 0.
 
-Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isinterior`, `isInterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
+Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isInterior`, `isinterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
 
 ## MATLAB > Mathematics > Elementary Math
 
@@ -872,24 +872,18 @@ Implemented: `assume`, `assumeAlso`, `assumptions`
 
 ## Symbolic Math Toolbox > Mathematics > Calculus
 
-Implemented: 15. To implement: 12. In a branch: 0. Out of scope: 0.
+Implemented: 21. To implement: 6. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `changeIntegrationVariable`
-- [ ] `fourier`
 - [ ] `functionalDerivative`
 - [ ] `funtool`
-- [ ] `htrans`
-- [ ] `ifourier`
-- [ ] `ihtrans`
 - [ ] `integrateByParts`
-- [ ] `iztrans`
 - [ ] `rsums`
 - [ ] `taylortool`
-- [ ] `ztrans`
 
-Implemented: `hessian`, `ilaplace`, `int`, `jacobian`, `laplace`, `limit`, `pade`, `potential`, `series`, `symprod`, `symsum`, `taylor`, `vectorPotential`, `vpaintegral`, `vpasum`
+Implemented: `fourier`, `hessian`, `htrans`, `ifourier`, `ihtrans`, `ilaplace`, `int`, `iztrans`, `jacobian`, `laplace`, `limit`, `pade`, `potential`, `series`, `symprod`, `symsum`, `taylor`, `vectorPotential`, `vpaintegral`, `vpasum`, `ztrans`
 
 ## Symbolic Math Toolbox > Mathematics > Equation Solving
 
@@ -929,15 +923,9 @@ Implemented: `coeffs`, `collect`, `divisors`, `expand`, `horner`, `lhs`, `numden
 
 ## Symbolic Math Toolbox > Mathematics > Linear Algebra
 
-Implemented: 4. To implement: 3. In a branch: 0. Out of scope: 0.
+Implemented: 7. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `hermiteForm`
-- [ ] `jordan`
-- [ ] `smithForm`
-
-Implemented: `adjoint`, `bernsteinMatrix`, `charpoly`, `colspace`
+Implemented: `adjoint`, `bernsteinMatrix`, `charpoly`, `colspace`, `hermiteForm`, `jordan`, `smithForm`
 
 ## Symbolic Math Toolbox > Mathematics > Mathematical Functions
 
@@ -959,14 +947,13 @@ Implemented: `digits`
 
 ## Symbolic Math Toolbox > Mathematics > Polynomials
 
-Implemented: 12. To implement: 2. In a branch: 0. Out of scope: 0.
+Implemented: 13. To implement: 1. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `gbasis`
 - [ ] `root`
 
-Implemented: `bernstein`, `chebyshevT`, `chebyshevU`, `gegenbauerC`, `hermiteH`, `jacobiP`, `laguerreL`, `legendreP`, `minpoly`, `polynomialDegree`, `polynomialReduce`, `resultant`
+Implemented: `bernstein`, `chebyshevT`, `chebyshevU`, `gbasis`, `gegenbauerC`, `hermiteH`, `jacobiP`, `laguerreL`, `legendreP`, `minpoly`, `polynomialDegree`, `polynomialReduce`, `resultant`
 
 ## Symbolic Math Toolbox > MuPAD to MATLAB Migration
 
@@ -988,18 +975,17 @@ Implemented: `and`, `ge`, `gt`, `in`, `isAlways`, `ldivide`, `le`, `lt`, `minus`
 
 ## Symbolic Math Toolbox > Symbolic Computations in MATLAB > Symbolic Variables, Expressions, Functions, and Preferences
 
-Implemented: 16. To implement: 6. In a branch: 0. Out of scope: 0.
+Implemented: 17. To implement: 5. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `piecewise`
 - [ ] `symfunmatrix`
 - [ ] `symfunmatrix2symfun`
 - [ ] `symmatrix`
 - [ ] `symmatrix2sym`
 - [ ] `sympref`
 
-Implemented: `argnames`, `children`, `findSymType`, `fold`, `formula`, `has`, `hasSymType`, `isSymType`, `mapSymType`, `pretty`, `str2sym`, `sym`, `symfun`, `symFunType`, `syms`, `symType`
+Implemented: `argnames`, `children`, `findSymType`, `fold`, `formula`, `has`, `hasSymType`, `isSymType`, `mapSymType`, `piecewise`, `pretty`, `str2sym`, `sym`, `symfun`, `symFunType`, `syms`, `symType`
 
 ## Symbolic Math Toolbox > Symbolic Computations in MATLAB > Units of Measurement
 
