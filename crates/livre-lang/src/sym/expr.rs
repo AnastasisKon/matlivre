@@ -712,6 +712,10 @@ impl Expr {
                 }
                 // Rational roots of perfect powers: 4^(1/2) = 2, 8^(1/3) = 2, (1/4)^(1/2) = 1/2.
                 if let (Num::Rat(p, q), Num::Rat(a, r)) = (x.clone(), n.clone()) {
+                    // Square roots of negative numbers: sqrt(-4) = 2i.
+                    if p < 0 && r == 2 && a == 1 {
+                        return Expr::mul(vec![Expr::pow(Expr::rat(-p, q), Expr::rat(1, 2)), Expr::Const(Const::I)]);
+                    }
                     if p > 0 {
                         if let (Some(pr), Some(qr)) = (int_root(p, r), int_root(q, r)) {
                             return Expr::pow(Expr::rat(pr, qr), Expr::int(a));

@@ -747,6 +747,10 @@ fn finite_sum(f: &Expr, k: &str, a: i128, b: i128, product: bool) -> Expr {
     algebra::simplify(&r)
 }
 
+pub(crate) fn symsum_pub(f: &Expr, k: &str, a: &Expr, b: &Expr) -> Expr {
+    symsum(f, k, a, b)
+}
+
 fn symsum(f: &Expr, k: &str, a: &Expr, b: &Expr) -> Expr {
     let (ai, bi) = (a.as_num().and_then(|n| n.as_int()), b.as_num().and_then(|n| n.as_int()));
     if let (Some(ai), Some(bi)) = (ai, bi) {
@@ -788,7 +792,9 @@ fn symsum(f: &Expr, k: &str, a: &Expr, b: &Expr) -> Expr {
             let first = f.subs(k, &Expr::int(ai));
             let next = f.subs(k, &Expr::int(ai + 1));
             let ratio = algebra::simplify(&Expr::div(next.clone(), first.clone()));
-            if !ratio.contains_var(k) {
+            // The ratio must hold further along too (1/k^2 is not geometric).
+            let later = algebra::simplify(&Expr::div(f.subs(k, &Expr::int(ai + 3)), f.subs(k, &Expr::int(ai + 2))));
+            if !ratio.contains_var(k) && algebra::simplify(&Expr::sub(later, ratio.clone())).is_zero() {
                 if let Some(r) = ratio.to_f64() {
                     if r.abs() < 1.0 {
                         return algebra::simplify(&Expr::div(first, Expr::sub(Expr::one(), ratio)));

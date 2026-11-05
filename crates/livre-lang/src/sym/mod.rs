@@ -8,6 +8,7 @@ pub mod mp;
 pub mod print;
 pub mod special;
 pub mod specnum;
+pub mod tools;
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -26,6 +27,11 @@ type R<T> = Result<T, LangError>;
 thread_local! {
     /// Variables declared `real` (or positive) with `syms x real` / `assume`.
     static REAL_VARS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+}
+
+/// The variables currently assumed real.
+pub(crate) fn real_vars() -> Vec<String> {
+    REAL_VARS.with(|r| r.borrow().iter().cloned().collect())
 }
 
 fn is_real_var(v: &str) -> bool {
@@ -185,7 +191,11 @@ impl SymArray {
             return format!("{name} = {}", self.data[0]);
         }
         if self.data.is_empty() {
-            return format!("{name} = \n[ empty sym ]");
+            if self.dims.iter().all(|&d| d == 0) {
+                return format!("{name} = \n[ empty sym ]");
+            }
+            let size: Vec<String> = self.dims.iter().map(|d| d.to_string()).collect();
+            return format!("{name} = \nEmpty sym: {}", size.join("-by-"));
         }
         format!("{name} = \n{}", self.rows_text())
     }
@@ -317,7 +327,7 @@ fn matmul(a: &SymArray, b: &SymArray) -> R<SymArray> {
     Ok(SymArray::from_dims(vec![n, p], out))
 }
 
-fn sym_det(a: &SymArray) -> R<Expr> {
+pub(crate) fn sym_det(a: &SymArray) -> R<Expr> {
     if a.dims.len() != 2 || a.dims[0] != a.dims[1] {
         return rt("Matrix must be square.");
     }
@@ -531,6 +541,9 @@ fn is_sym_name(s: &str) -> bool {
 pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) -> R<Option<Vec<Value>>> {
     if special::NAMES.contains(&name) {
         return special::call(it, name, &args, nargout);
+    }
+    if tools::NAMES.contains(&name) {
+        return tools::call(it, name, &args, nargout);
     }
     if extra::NAMES.contains(&name) {
         if let Some(r) = extra::call(it, name, &args, nargout)? {

@@ -344,6 +344,7 @@ fn cell_item(v: &Value, f: NumFormat) -> (String, CellAlign) {
             (inner, CellAlign::NumBrackets)
         }
         Value::Str(s) if s.data.len() == 1 => (summary(v, f), CellAlign::StrBrackets),
+        Value::Sym(s) if s.data.len() == 1 && s.args.is_empty() => (summary(v, f), CellAlign::StrBrackets),
         Value::Func(fv) => (func_text(fv), CellAlign::Right),
         Value::Object(_) if crate::containers::is_categorical(v) && !summary(v, f).ends_with("categorical") => (summary(v, f), CellAlign::NumBrackets),
         other => (summary(other, f), CellAlign::Left),
