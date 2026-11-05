@@ -74,10 +74,13 @@ const CONSTS: &[(&str, &[(&str, u32)])] = &[
 
 const VERSION: &str = "LIBTIFF, Version 4.5.0\nCopyright (c) 1988-1996 Sam Leffler\nCopyright (c) 1991-1996 Silicon Graphics, Inc.";
 
-const METHODS: &[&str] = &[
-    "close", "getTag", "setTag", "read", "write", "writeDirectory", "rewriteDirectory", "numberOfStrips", "numberOfTiles", "isTiled",
-    "currentDirectory", "lastDirectory", "nextDirectory", "setDirectory", "setSubDirectory", "computeStrip", "computeTile",
-    "readEncodedStrip", "readEncodedTile", "writeEncodedStrip", "writeEncodedTile", "readRGBAImage", "readRGBAStrip", "readRGBATile",
+/// The methods, by the names the function reference gives them (the static ones last).
+const TIFF_METHODS: &[&str] = &[
+    "Tiff.close", "Tiff.getTag", "Tiff.setTag", "Tiff.read", "Tiff.write", "Tiff.writeDirectory", "Tiff.rewriteDirectory",
+    "Tiff.numberOfStrips", "Tiff.numberOfTiles", "Tiff.isTiled", "Tiff.currentDirectory", "Tiff.lastDirectory", "Tiff.nextDirectory",
+    "Tiff.setDirectory", "Tiff.setSubDirectory", "Tiff.computeStrip", "Tiff.computeTile", "Tiff.readEncodedStrip", "Tiff.readEncodedTile",
+    "Tiff.writeEncodedStrip", "Tiff.writeEncodedTile", "Tiff.readRGBAImage", "Tiff.readRGBAStrip", "Tiff.readRGBATile", "Tiff.getVersion",
+    "Tiff.getTagNames",
 ];
 
 fn tag_id(name: &str) -> Option<u32> {
@@ -104,7 +107,7 @@ pub fn class_def() -> Rc<ClassDef> {
                     src += &format!("    {name} = struct({})\n", f.join(", "));
                 }
                 src += "  end\n  methods\n    function obj = Tiff(varargin)\n      obj.Id = matlivre_tiff('open', 1, [], varargin{:});\n    end\n";
-                for m in METHODS {
+                for m in TIFF_METHODS.iter().filter_map(|m| m.strip_prefix("Tiff.")).filter(|m| !matches!(*m, "getVersion" | "getTagNames")) {
                     src += &format!("    function varargout = {m}(obj, varargin)\n      varargout = matlivre_tiff('{m}', nargout, obj, varargin{{:}});\n    end\n");
                 }
                 src += "  end\n  methods (Static)\n    function v = getVersion()\n      v = matlivre_tiff('getVersion', 1, []);\n    end\n";
