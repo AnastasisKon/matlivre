@@ -139,6 +139,16 @@ pub fn print(e: &Expr, style: Style) -> String {
     pr(e, style).0
 }
 
+/// The largest exponent of a variable in a product term (functions count as 1).
+fn max_exponent(t: &Expr) -> f64 {
+    match t {
+        Expr::Mul(fs) => fs.iter().map(max_exponent).fold(0.0, f64::max),
+        Expr::Pow(b, e) if matches!(**b, Expr::Var(_)) => e.to_f64().unwrap_or(1.0),
+        Expr::Num(_) | Expr::Const(_) => 0.0,
+        _ => 1.0,
+    }
+}
+
 fn wrap(s: (String, u8), min: u8) -> String {
     if s.1 < min { format!("({})", s.0) } else { s.0 }
 }
@@ -164,7 +174,10 @@ fn pr(e: &Expr, style: Style) -> (String, u8) {
         Expr::Add(terms) => {
             let mut ordered = ordered_terms(terms);
             // As MATLAB prints them, a sum leads with a positive term when it has one (3 - x^2).
-            if ordered.first().is_some_and(|t| t.split_coeff().0.is_neg()) {
+            // MATLAB keeps a leading negative term of degree 2 or more (- x^2 + x) unless the
+            // only other term is a number (3 - x^2).
+            let swap = |ts: &[Expr]| ts.len() == 2 && ts.iter().any(|t| t.as_num().is_some()) || ts.first().is_some_and(|t| max_exponent(t) <= 1.0);
+            if ordered.first().is_some_and(|t| t.split_coeff().0.is_neg()) && swap(&ordered) {
                 if let Some(k) = ordered.iter().position(|t| !t.split_coeff().0.is_neg()) {
                     let t = ordered.remove(k);
                     ordered.insert(0, t);
@@ -253,6 +266,12 @@ fn pr(e: &Expr, style: Style) -> (String, u8) {
         }
         Expr::Fn(n, args) => {
             let a: Vec<String> = args.iter().map(|x| pr(x, style).0).collect();
+            if args.is_empty() {
+                return (n.clone(), P_ATOM);
+            }
+            if n == "__vec" {
+                return (if a.len() == 1 { a[0].clone() } else { format!("[{}]", a.join(", ")) }, P_ATOM);
+            }
             (format!("{n}({})", a.join(", ")), P_ATOM)
         }
         Expr::Rel(op, l, r) => {

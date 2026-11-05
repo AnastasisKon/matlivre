@@ -953,7 +953,7 @@ pub fn zeta_f64(s: f64) -> f64 {
 }
 
 /// Principal branch of the Lambert W function for real x >= -1/e.
-fn lambertw_f64(x: f64) -> f64 {
+pub fn lambertw_f64(x: f64) -> f64 {
     if x < -(-1.0f64).exp() {
         return f64::NAN;
     }
@@ -1308,16 +1308,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> R<
         "zeta" => {
             let input = arg0(a)?;
             if let Value::Sym(s) = input {
-                return one(Value::Sym(s.map(|e| match e.as_num().and_then(|n| n.as_int()) {
-                    // zeta(2k) = (-1)^(k+1) B_2k (2 pi)^(2k) / (2 (2k)!)
-                    Some(n) if n > 0 && n % 2 == 0 => {
-                        let b = bernoulli_q(n as usize);
-                        let c = (if (n / 2) % 2 == 1 { b } else { -b }) * Q::from_integer(BigInt::from(2).pow(n as u32)) / (q_int(2) * factorial(n as u64));
-                        Expr::mul(vec![q_expr(&c), Expr::pow(Expr::Const(Const::Pi), Expr::int(n))])
-                    }
-                    Some(0) => Expr::rat(-1, 2),
-                    _ => Expr::func("zeta", vec![e.clone()]),
-                })));
+                return one(Value::Sym(s.map(zeta_sym)));
             }
             let m = input.to_matrix()?;
             one(Value::Num(Matrix::from_dims(m.dims.clone(), m.data.iter().map(|&s| zeta_f64(s)).collect())))
@@ -1342,6 +1333,20 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> R<
             })))
         }
         _ => Ok(None),
+    }
+}
+
+/// zeta(e) with its exact values at even positive integers and 0.
+pub fn zeta_sym(e: &Expr) -> Expr {
+    match e.as_num().and_then(|n| n.as_int()) {
+        // zeta(2k) = (-1)^(k+1) B_2k (2 pi)^(2k) / (2 (2k)!)
+        Some(n) if n > 0 && n % 2 == 0 => {
+            let b = bernoulli_q(n as usize);
+            let c = (if (n / 2) % 2 == 1 { b } else { -b }) * Q::from_integer(BigInt::from(2).pow(n as u32)) / (q_int(2) * factorial(n as u64));
+            Expr::mul(vec![q_expr(&c), Expr::pow(Expr::Const(Const::Pi), Expr::int(n))])
+        }
+        Some(0) => Expr::rat(-1, 2),
+        _ => Expr::func("zeta", vec![e.clone()]),
     }
 }
 

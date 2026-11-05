@@ -403,6 +403,19 @@ impl Ctx {
                 let base = self.eval(a)?;
                 self.pow(&base, b)?
             }
+            Expr::Fn(name, args) if args.is_empty() => {
+                // Catalan's constant and Euler's gamma to 130 digits (from MATLAB's vpa).
+                let digits = match name.as_str() {
+                    "catalan" => "9159655941772190150546035149323841107741493742816721342664981196217630197762547694793565129261151062485744226191961995790358988033",
+                    "eulergamma" => "5772156649015328606065120900824024310421593359399235988057672348848677267776646709369470632917467495146314472498070824809605040145",
+                    _ => return None,
+                };
+                if self.prec > 470 {
+                    return None;
+                }
+                let n: BigInt = digits.parse().ok()?;
+                self.rat(&BigRational::new(n, BigInt::from(10).pow(digits.len() as u32)))
+            }
             Expr::Fn(name, args) => {
                 let x = self.eval(args.first()?)?;
                 let one = self.int(1);

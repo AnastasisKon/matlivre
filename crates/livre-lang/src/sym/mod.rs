@@ -6,6 +6,8 @@ pub mod expr;
 pub mod extra;
 pub mod mp;
 pub mod print;
+pub mod special;
+pub mod specnum;
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -457,7 +459,7 @@ pub const NAMES: &[&str] = &[
 /// Elementwise functions that also accept numbers (dispatched here only for sym inputs).
 const ELEMENTWISE: &[&str] = &[
     "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "exp", "log", "sqrt", "abs", "sign", "floor",
-    "ceil", "round", "fix", "heaviside", "dirac", "erf", "erfc",
+    "ceil", "round", "fix", "erf", "erfc",
 ];
 
 fn sym_arg(args: &[Value], i: usize) -> R<SymArray> {
@@ -527,6 +529,9 @@ fn is_sym_name(s: &str) -> bool {
 }
 
 pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) -> R<Option<Vec<Value>>> {
+    if special::NAMES.contains(&name) {
+        return special::call(it, name, &args, nargout);
+    }
     if extra::NAMES.contains(&name) {
         if let Some(r) = extra::call(it, name, &args, nargout)? {
             return Ok(Some(r));

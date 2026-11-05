@@ -625,6 +625,12 @@ fn gamma_prefactor(x: f64, a: f64) -> f64 {
     }
 }
 
+/// (P, Q) of the regularized incomplete gamma function for x > 0, a > 0.
+pub(crate) fn gammainc_pq(x: f64, a: f64) -> (f64, f64) {
+    let (p, q, _) = gammainc_parts(x, a);
+    (p, q)
+}
+
 /// (P, Q, prefactor, scaled-lower, scaled-upper) for x > 0, a > 0.
 fn gammainc_parts(x: f64, a: f64) -> (f64, f64, f64) {
     let pre = gamma_prefactor(x, a);

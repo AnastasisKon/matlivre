@@ -978,7 +978,9 @@ impl Expr {
                 }
             }
             Expr::Fn(n, xs) => {
-                if xs.len() == 1 {
+                if let Some(r) = super::special::eval_hook(n, xs, env) {
+                    r?
+                } else if xs.len() == 1 {
                     eval_fn(n, xs[0].eval_c(env)?)?
                 } else if n == "atan2" && xs.len() == 2 {
                     C::new(xs[0].eval_c(env)?.re.atan2(xs[1].eval_c(env)?.re), 0.0)

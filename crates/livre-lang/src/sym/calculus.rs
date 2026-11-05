@@ -62,6 +62,19 @@ pub fn diff(e: &Expr, v: &str) -> Expr {
                 "abs" => Expr::func("sign", vec![u.clone()]),
                 "sign" | "floor" | "ceil" | "round" | "fix" => Expr::zero(),
                 "heaviside" => Expr::func("dirac", vec![u.clone()]),
+                "dirac" => Expr::Fn("dirac".into(), vec![Expr::one(), u.clone()]),
+                "sinint" | "ssinint" => Expr::div(Expr::func("sin", vec![u.clone()]), u.clone()),
+                "cosint" => Expr::div(Expr::func("cos", vec![u.clone()]), u.clone()),
+                "sinhint" => Expr::div(Expr::func("sinh", vec![u.clone()]), u.clone()),
+                "coshint" => Expr::div(Expr::func("cosh", vec![u.clone()]), u.clone()),
+                "ei" => Expr::div(Expr::func("exp", vec![u.clone()]), u.clone()),
+                "logint" => Expr::pow(Expr::func("log", vec![u.clone()]), Expr::int(-1)),
+                "erfi" => Expr::mul(vec![Expr::int(2), Expr::pow(Expr::Const(Const::Pi), Expr::rat(-1, 2)), Expr::func("exp", vec![Expr::pow(u.clone(), Expr::int(2))])]),
+                "dawson" => Expr::sub(Expr::one(), Expr::mul(vec![Expr::int(2), u.clone(), Expr::Fn("dawson".into(), vec![u.clone()])])),
+                "fresnelc" | "fresnels" => {
+                    let arg = Expr::mul(vec![Expr::rat(1, 2), Expr::Const(Const::Pi), Expr::pow(u.clone(), Expr::int(2))]);
+                    Expr::func(if name == "fresnelc" { "cos" } else { "sin" }, vec![arg])
+                }
                 // d/du erf(u) = 2/sqrt(pi) * exp(-u^2); erfc is its negative.
                 "erf" | "erfc" => {
                     let g = Expr::mul(vec![Expr::int(2), Expr::pow(Expr::Const(Const::Pi), Expr::rat(-1, 2)), Expr::func("exp", vec![Expr::neg(Expr::pow(u.clone(), Expr::int(2)))])]);

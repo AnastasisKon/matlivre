@@ -41,6 +41,7 @@ mod session_more;
 mod settings;
 mod sparse;
 mod specfun;
+mod special_functions;
 mod strings;
 mod structio;
 mod symbolic_extra;
