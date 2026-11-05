@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1811 |
+| Implemented | 1816 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **211** |
+| **To implement** | **206** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -347,7 +347,7 @@ Implemented: `&amp;`, `&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `'`, `*`, `+`, `-`, `.'`
 
 Implemented: 84. To implement: 0. In a branch: 0. Out of scope: 0.
 
-Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isInterior`, `isinterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
+Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isinterior`, `isInterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
 
 ## MATLAB > Mathematics > Elementary Math
 
@@ -396,13 +396,9 @@ Implemented: `balance`, `bandwidth`, `cdf2rdf`, `chol`, `cholupdate`, `cond`, `c
 
 ## MATLAB > Mathematics > Numerical Integration and Differential Equations
 
-Implemented: 43. To implement: 1. In a branch: 0. Out of scope: 0.
+Implemented: 44. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `solutionFcn`
-
-Implemented: `bvp4c`, `bvp5c`, `bvpget`, `bvpinit`, `bvpset`, `bvpxtend`, `cumtrapz`, `dblquad`, `dde23`, `ddeget`, `ddensd`, `ddesd`, `ddeset`, `decic`, `del2`, `deval`, `gradient`, `integral`, `integral2`, `integral3`, `ode113`, `ode15i`, `ode15s`, `ode23`, `ode23s`, `ode23t`, `ode23tb`, `ode45`, `ode78`, `ode89`, `odeget`, `odeset`, `odextend`, `pdepe`, `pdeval`, `quad`, `quad2d`, `quadgk`, `quadl`, `quadv`, `solve`, `trapz`, `triplequad`
+Implemented: `bvp4c`, `bvp5c`, `bvpget`, `bvpinit`, `bvpset`, `bvpxtend`, `cumtrapz`, `dblquad`, `dde23`, `ddeget`, `ddensd`, `ddesd`, `ddeset`, `decic`, `del2`, `deval`, `gradient`, `integral`, `integral2`, `integral3`, `ode113`, `ode15i`, `ode15s`, `ode23`, `ode23s`, `ode23t`, `ode23tb`, `ode45`, `ode78`, `ode89`, `odeget`, `odeset`, `odextend`, `pdepe`, `pdeval`, `quad`, `quad2d`, `quadgk`, `quadl`, `quadv`, `solutionFcn`, `solve`, `trapz`, `triplequad`
 
 ## MATLAB > Mathematics > Optimization
 
@@ -597,23 +593,19 @@ Implemented: `inf`, `nan`
 
 ## Not in the function reference > matlab/funfun
 
-Implemented: 1. To implement: 11. In a branch: 0. Out of scope: 47.
+Implemented: 5. To implement: 7. In a branch: 0. Out of scope: 47.
 
 To implement:
 
 - [ ] `inlineeval`
 - [ ] `numjac`
-- [ ] `ode`
-- [ ] `odeEvent`
-- [ ] `odeJacobian`
-- [ ] `odeMassMatrix`
 - [ ] `odephas2`
 - [ ] `odephas3`
 - [ ] `odeplot`
 - [ ] `odeprint`
 - [ ] `pde`
 
-Implemented: `fcnchk`
+Implemented: `fcnchk`, `ode`, `odeEvent`, `odeJacobian`, `odeMassMatrix`
 
 Out of scope: `amp1dae` (MATLAB example file), `ballode` (MATLAB example file), `batonode` (MATLAB example file), `brussode` (MATLAB example file), `burgersode` (MATLAB example file), `ddex1` (MATLAB example file), `ddex1de` (MATLAB example file), `ddex1delays` (MATLAB example file), `ddex1hist` (MATLAB example file), `ddex2` (MATLAB example file), `ddex3` (MATLAB example file), `ddex4` (MATLAB example file), `ddex5` (MATLAB example file), `emdenbvp` (MATLAB example file), `fem1ode` (MATLAB example file), `fem2ode` (MATLAB example file), `fsbvp` (MATLAB example file), `hb1dae` (MATLAB example file), `hb1ode` (MATLAB example file), `iburgersode` (MATLAB example file), `ihb1dae` (MATLAB example file), `kneeode` (MATLAB example file), `lorenz` (MATLAB example file), `lotka` (MATLAB example file), `mat4bvp` (MATLAB example file), `odeexamples` (MATLAB example file), `orbitode` (MATLAB example file), `pdex1` (MATLAB example file), `pdex1bc` (MATLAB example file), `pdex1ic` (MATLAB example file), `pdex1pde` (MATLAB example file), `pdex2` (MATLAB example file), `pdex3` (MATLAB example file), `pdex4` (MATLAB example file), `pdex5` (MATLAB example file), `rcbvp` (MATLAB example file), `rigidode` (MATLAB example file), `shockbvp` (MATLAB example file), `threebvp` (MATLAB example file), `twobc` (MATLAB example file), `twobvp` (MATLAB example file), `twoode` (MATLAB example file), `vanderpoldemo` (MATLAB example file), `vdp1` (MATLAB example file), `vdp1000` (MATLAB example file), `vdpode` (MATLAB example file), `weissinger` (MATLAB example file)
 
