@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::ast::{Expr, Function};
-use crate::display::{summary, NumFormat};
+use crate::display::NumFormat;
 use crate::error::LangError;
 use crate::lexer::{tokenize, Kw, Tok};
 use crate::value::Value;
@@ -206,14 +206,20 @@ pub fn format_object(name: &str, o: &Object, values: &[Value], f: NumFormat) -> 
         return format!("{name} = \n  {short} with no properties.");
     }
     for i in visible {
-        out.push_str(&format!("    {:>w$}: {}\n", o.class.props[i].name, summary(&values[i], f)));
+        // An enumeration member shows its name.
+        let text = match &values[i] {
+            Value::Object(e) => enum_name(e).unwrap_or_else(|| crate::display::field_text(&values[i], f)),
+            other => crate::display::field_text(other, f),
+        };
+        out.push_str(&format!("    {:>w$}: {}\n", o.class.props[i].name, text));
     }
     out.trim_end().to_string()
 }
 
 pub fn display_object(name: &str, o: &Object, f: NumFormat) -> String {
     if let Some(m) = enum_name(o) {
-        return format!("{name} = \n  {} enumeration\n\n    {m}", o.class.name);
+        let short = o.class.name.rsplit('.').next().unwrap_or(&o.class.name);
+        return format!("{name} = \n  {short} enumeration\n\n    {m}");
     }
     let values = o.props.borrow().clone();
     format_object(name, o, &values, f)

@@ -28,6 +28,7 @@ mod matfun;
 mod math_more;
 mod media;
 mod ode_more;
+mod ode_objects;
 mod ops_functions;
 mod patterns;
 mod plot_extra;

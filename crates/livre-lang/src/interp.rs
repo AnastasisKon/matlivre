@@ -104,6 +104,8 @@ pub struct Interpreter {
     pub(crate) rng: crate::random::Streams,
     pub(crate) timers: crate::timers::Timers,
     pub(crate) settings: crate::settings::Tree,
+    /// Property set methods running now (class, property): their own assignment is direct.
+    pub(crate) active_setters: Vec<(String, String)>,
     /// `diary`: whether output is being copied to the diary file, and the file.
     pub(crate) diary: (bool, String),
     /// The functions of each loaded file, in file order: (the first is the file's main
@@ -166,6 +168,7 @@ impl Interpreter {
             rng: crate::random::Streams::new(),
             timers: Default::default(),
             settings: Default::default(),
+            active_setters: Vec::new(),
             diary: (false, "diary".into()),
             local_groups: Vec::new(),
             end_stack: Vec::new(),
@@ -749,7 +752,7 @@ impl Interpreter {
                 self.emit(OutputKind::Value { name: name.to_string(), text: format!("{name} = \n{t}") });
                 return Ok(());
             }
-            if let Some(t) = crate::decomp::object_text(o) {
+            if let Some(t) = crate::decomp::object_text(o).or_else(|| crate::ode_objects::object_text(o)) {
                 self.emit(OutputKind::Value { name: name.to_string(), text: format!("{name} = 
 {t}") });
                 return Ok(());
@@ -774,10 +777,11 @@ impl Interpreter {
                 return Ok(());
             }
             if let Some(m) = crate::class::enum_name(o) {
+                let short = o.class.name.rsplit('.').next().unwrap_or(&o.class.name);
                 let text = format!("{name} = 
-  {} enumeration
+  {short} enumeration
 
-    {m}", o.class.name);
+    {m}");
                 self.emit(OutputKind::Value { name: name.to_string(), text });
                 return Ok(());
             }
@@ -1160,6 +1164,18 @@ impl Interpreter {
                     let sub = o.get(f);
                     let new = self.apply_assign(sub, rest, rhs)?;
                     let new = if o.class.name == "timer" { crate::timers::check_prop(self, f, new)? } else { new };
+                    // A set.Prop method validates or converts the value (not inside itself).
+                    let key = (o.class.name.clone(), f.to_string());
+                    if let Some(setter) = o.class.method(&format!("set.{f}")).cloned() {
+                        if !self.active_setters.contains(&key) {
+                            let class = o.class.clone();
+                            self.active_setters.push(key);
+                            let r = self.call_method(&setter, &class, vec![Value::Object(o.clone()), new], 1);
+                            self.active_setters.pop();
+                            let out = r?;
+                            return Ok(if class.is_handle { Value::Object(o) } else { out.into_iter().next().unwrap_or(Value::Object(o)) });
+                        }
+                    }
                     Ok(Value::Object(o.set(f, new)?))
                 }
                 Some(Value::Table(mut t)) => {
@@ -1532,6 +1548,15 @@ impl Interpreter {
                             let argv = self.eval_args(args)?;
                             return self.call_function(&full, argv, nargout);
                         }
+                        // pkg.Class(args) constructs; pkg.Class.method(args) calls a static method.
+                        if let Some(c) = self.dotted_class(base) {
+                            let argv = self.eval_args(args)?;
+                            return Ok(vec![self.construct(&c, argv)?]);
+                        }
+                        if let Some(c) = self.dotted_class(obj_expr) {
+                            let argv = self.eval_args(args)?;
+                            return self.static_call(&c, member, argv, nargout);
+                        }
                         if let Expr::Ident(cls) = obj_expr.as_ref() {
                             if self.get_var(cls).is_none() {
                                 if let Some(c) = self.find_class(cls) {
@@ -1589,6 +1614,9 @@ impl Interpreter {
                 if let Some(full) = self.package_function(e) {
                     return self.call_function(&full, Vec::new(), nargout);
                 }
+                if let Some(c) = self.dotted_class(base) {
+                    return self.static_call(&c, f, Vec::new(), nargout);
+                }
                 if let Expr::Ident(cls) = base.as_ref() {
                     if self.get_var(cls).is_none() {
                         if let Some(c) = self.find_class(cls) {
@@ -1632,6 +1660,30 @@ impl Interpreter {
     }
 
     /// `pkg.name` naming a builtin (`containers.Map`) when `pkg` is not a variable or class.
+    /// A class named with its package (`matlab.ode.SolverID`).
+    fn dotted_class(&mut self, e: &Expr) -> Option<Rc<ClassDef>> {
+        fn parts(e: &Expr, out: &mut Vec<String>) -> bool {
+            match e {
+                Expr::Ident(n) => {
+                    out.push(n.clone());
+                    true
+                }
+                Expr::Field(b, f) => {
+                    let ok = parts(b, out);
+                    out.push(f.clone());
+                    ok
+                }
+                _ => false,
+            }
+        }
+        let mut p = Vec::new();
+        if !parts(e, &mut p) || p.len() < 2 || self.get_var(&p[0]).is_some() {
+            return None;
+        }
+        let full = p.join(".");
+        crate::lang_more::builtin_class(&full).or_else(|| self.classes.get(&full).cloned())
+    }
+
     fn package_function(&self, e: &Expr) -> Option<String> {
         fn parts(e: &Expr, out: &mut Vec<String>) -> bool {
             match e {

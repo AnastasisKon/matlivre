@@ -38,6 +38,9 @@ pub fn builtin_class(name: &str) -> Option<Rc<ClassDef>> {
     if name == crate::sysobj::CLASS {
         return Some(crate::sysobj::base_class());
     }
+    if let Some(c) = crate::ode_objects::builtin_class(name) {
+        return Some(c);
+    }
     if name == crate::decomp::CLASS {
         return Some(crate::decomp::class_def());
     }

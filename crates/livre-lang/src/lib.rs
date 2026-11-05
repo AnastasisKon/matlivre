@@ -45,6 +45,7 @@ pub mod interp;
 pub mod jit;
 pub mod lexer;
 pub mod nd;
+pub mod ode_objects;
 pub mod ops;
 pub mod parser;
 pub mod patterns;

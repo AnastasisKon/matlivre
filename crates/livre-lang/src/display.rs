@@ -407,52 +407,55 @@ fn str_body(s: &StrArray) -> String {
     grid(s.dims[0], s.dims[1..].iter().product(), &items, "    ")
 }
 
+/// A value as struct fields and object properties show it: a small cell row inline
+/// ({[1]  'a'}), other cells and arrays as a bracketed size ({1×5 cell}, [3×1 double]).
+pub(crate) fn field_text(v: &Value, f: NumFormat) -> String {
+    let simple = |x: &Value| match x {
+        Value::Num(m) => m.numel() == 1 || (m.kind == Kind::Char && m.rows() <= 1),
+        Value::Str(s) => s.data.len() == 1,
+        Value::Cell(_) => true,
+        _ => false,
+    };
+    match v {
+        Value::Cell(c) if c.rows() == 1 && c.data.len() <= 10 && !c.data.is_empty() && c.data.iter().all(simple) => {
+            let items: Vec<String> = c
+                .data
+                .iter()
+                .map(|x| {
+                    let (t, a) = cell_item(x, f);
+                    match (x, a) {
+                        (Value::Cell(_), _) => format!("{{{t}}}"),
+                        (_, CellAlign::Left) => t,
+                        _ => format!("[{t}]"),
+                    }
+                })
+                .collect();
+            format!("{{{}}}", items.join("  "))
+        }
+        Value::Cell(_) => format!("{{{}}}", summary(v, f)),
+        Value::Object(_) if crate::containers::is_categorical(v) && v.numel() == 1 => summary(v, f),
+        Value::Struct(_) | Value::Object(_) | Value::Table(_) => format!("[{}]", summary(v, f)),
+        // Empty arrays other than 0×0 show their size.
+        Value::Num(m) if m.kind != Kind::Char && m.is_empty() && m.dims != [0, 0] => format!("[{} {}]", nd::size_text(&m.dims), v.class_name()),
+        Value::Num(m) if m.kind != Kind::Char => {
+            let s = summary(v, f);
+            if s.contains('×') && !s.starts_with('[') { format!("[{s}]") } else { s }
+        }
+        // String rows show their elements; other string arrays their size.
+        Value::Str(s) if s.dims.len() == 2 && s.dims[0] == 1 && s.data.len() > 1 => {
+            let items: Vec<String> = s.data.iter().map(|x| x.as_ref().map(|t| format!("\"{t}\"")).unwrap_or_else(|| "<missing>".into())).collect();
+            format!("[{}]", items.join("    "))
+        }
+        Value::Str(s) if s.data.len() != 1 => format!("[{} string]", nd::size_text(&s.dims)),
+        other => summary(other, f),
+    }
+}
+
 pub(crate) fn struct_fields_body(s: &StructArray, f: NumFormat) -> String {
     let w = s.fields.iter().map(|n| n.len()).max().unwrap_or(0);
     let mut out = String::new();
     for (k, n) in s.fields.iter().enumerate() {
-        // As MATLAB shows fields: a small cell row inline ({[1]  'a'}), other cells and
-        // arrays as a bracketed size ({1×5 cell}, [3×1 double], [1×1 struct]).
-        let v = &s.elems[0][k];
-        let simple = |x: &Value| match x {
-            Value::Num(m) => m.numel() == 1 || (m.kind == Kind::Char && m.rows() <= 1),
-            Value::Str(s) => s.data.len() == 1,
-            Value::Cell(_) => true,
-            _ => false,
-        };
-        let shown = match v {
-            Value::Cell(c) if c.rows() == 1 && c.data.len() <= 10 && !c.data.is_empty() && c.data.iter().all(simple) => {
-                let items: Vec<String> = c
-                    .data
-                    .iter()
-                    .map(|x| {
-                        let (t, a) = cell_item(x, f);
-                        match (x, a) {
-                            (Value::Cell(_), _) => format!("{{{t}}}"),
-                            (_, CellAlign::Left) => t,
-                            _ => format!("[{t}]"),
-                        }
-                    })
-                    .collect();
-                format!("{{{}}}", items.join("  "))
-            }
-            Value::Cell(_) => format!("{{{}}}", summary(v, f)),
-            Value::Object(_) if crate::containers::is_categorical(v) && v.numel() == 1 => summary(v, f),
-            Value::Struct(_) | Value::Object(_) | Value::Table(_) => format!("[{}]", summary(v, f)),
-            // Empty arrays other than 0×0 show their size.
-            Value::Num(m) if m.kind != Kind::Char && m.is_empty() && m.dims != [0, 0] => format!("[{} {}]", nd::size_text(&m.dims), v.class_name()),
-            Value::Num(m) if m.kind != Kind::Char => {
-                let s = summary(v, f);
-                if s.contains('×') && !s.starts_with('[') { format!("[{s}]") } else { s }
-            }
-            // String rows show their elements; other string arrays their size.
-            Value::Str(s) if s.dims.len() == 2 && s.dims[0] == 1 && s.data.len() > 1 => {
-                let items: Vec<String> = s.data.iter().map(|x| x.as_ref().map(|t| format!("\"{t}\"")).unwrap_or_else(|| "<missing>".into())).collect();
-                format!("[{}]", items.join("    "))
-            }
-            Value::Str(s) if s.data.len() != 1 => format!("[{} string]", nd::size_text(&s.dims)),
-            other => summary(other, f),
-        };
+        let shown = field_text(&s.elems[0][k], f);
         out.push_str(&format!("    {n:>w$}: {shown}\n"));
     }
     out
