@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1774 |
+| Implemented | 1781 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **248** |
+| **To implement** | **241** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -262,7 +262,7 @@ Implemented: `abyss`, `alim`, `alpha`, `alphamap`, `annotation`, `autumn`, `axes
 
 ## MATLAB > Graphics > Graphics Objects
 
-Implemented: 18. To implement: 12. In a branch: 0. Out of scope: 0.
+Implemented: 19. To implement: 11. In a branch: 0. Out of scope: 0.
 
 To implement:
 
@@ -275,11 +275,10 @@ To implement:
 - [ ] `matlab.graphics.GraphicsPlaceholder`
 - [ ] `Property Inspector`
 - [ ] `rbbox`
-- [ ] `reset`
 - [ ] `uicontextmenu`
 - [ ] `uimenu`
 
-Implemented: `allchild`, `ancestor`, `delete`, `findall`, `findobj`, `gca`, `gcbf`, `gcbo`, `gcf`, `gco`, `gobjects`, `groot`, `ishandle`, `ishghandle`, `ishold`, `newplot`, `refresh`, `shg`
+Implemented: `allchild`, `ancestor`, `delete`, `findall`, `findobj`, `gca`, `gcbf`, `gcbo`, `gcf`, `gco`, `gobjects`, `groot`, `ishandle`, `ishghandle`, `ishold`, `newplot`, `refresh`, `reset`, `shg`
 
 ## MATLAB > Graphics > Graphics Performance
 
@@ -376,7 +375,7 @@ Implemented: `&amp;`, `&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `'`, `*`, `+`, `-`, `.'`
 
 Implemented: 84. To implement: 0. In a branch: 0. Out of scope: 0.
 
-Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isInterior`, `isinterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
+Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isinterior`, `isInterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
 
 ## MATLAB > Mathematics > Elementary Math
 
@@ -470,28 +469,22 @@ Implemented: `bicg`, `bicgstab`, `bicgstabl`, `cgs`, `colperm`, `etree`, `etreep
 
 ## MATLAB > Programming > Classes
 
-Implemented: 22. To implement: 14. In a branch: 0. Out of scope: 0.
+Implemented: 28. To implement: 8. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `clone`
 - [ ] `details`
-- [ ] `isDone`
-- [ ] `isLocked`
 - [ ] `listLength`
 - [ ] `loadobj`
 - [ ] `meta.abstractDetails`
 - [ ] `meta.package.fromName`
 - [ ] `meta.package.getAllPackages`
-- [ ] `release`
 - [ ] `saveobj`
-- [ ] `setup`
-- [ ] `step`
 - [ ] `sysobjupdate`
 
 Language keywords to check: `classdef`
 
-Implemented: `addlistener`, `builtin`, `empty`, `enumeration`, `eq`, `event.hasListener`, `events`, `import`, `ismethod`, `isprop`, `listener`, `meta.class.fromName`, `metaclass`, `methods`, `notify`, `numArgumentsFromSubscript`, `properties`, `subsasgn`, `subsindex`, `subsref`, `substruct`, `superclasses`
+Implemented: `addlistener`, `builtin`, `clone`, `empty`, `enumeration`, `eq`, `event.hasListener`, `events`, `import`, `isDone`, `isLocked`, `ismethod`, `isprop`, `listener`, `meta.class.fromName`, `metaclass`, `methods`, `notify`, `numArgumentsFromSubscript`, `properties`, `release`, `setup`, `step`, `subsasgn`, `subsindex`, `subsref`, `substruct`, `superclasses`
 
 ## MATLAB > Programming > Files and Folders
 
