@@ -1917,32 +1917,7 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 }
             }))
         }
-        "histcounts" => {
-            let m = m_arg(a, 0, name)?;
-            let edges = match a.get(1) {
-                Some(e) if e.numel() > 1 => e.to_matrix()?,
-                // MATLAB's automatic bins.
-                None => Matrix::row(crate::builtins_datafun::auto_edges(&m.data, false)),
-                other => {
-                    let nbins = other.map(|v| v.as_usize()).transpose()?.unwrap_or(10).max(1);
-                    let lo = m.data.iter().cloned().fold(f64::INFINITY, f64::min);
-                    let hi = m.data.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                    Matrix::row((0..=nbins).map(|k| lo + (hi - lo) * k as f64 / nbins as f64).collect())
-                }
-            };
-            let ne = edges.numel();
-            let mut counts = vec![0.0; ne.saturating_sub(1)];
-            for &v in &m.data {
-                for k in 0..ne.saturating_sub(1) {
-                    let last = k == ne - 2;
-                    if v >= edges.data[k] && (v < edges.data[k + 1] || (last && v == edges.data[k + 1])) {
-                        counts[k] += 1.0;
-                        break;
-                    }
-                }
-            }
-            Ok(Some(vec![Value::Num(Matrix::row(counts)), Value::Num(edges)]))
-        }
+        "histcounts" => return crate::builtins_datafun::histcounts(a, nargout),
         "accumarray" => {
             let subs = m_arg(a, 0, name)?;
             let vals = m_arg(a, 1, name)?;

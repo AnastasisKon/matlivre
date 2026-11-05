@@ -10,7 +10,7 @@ type R<T> = Result<T, LangError>;
 
 pub const NAMES: &[&str] = &[
     "figure", "close", "clf", "subplot", "hold", "grid", "title", "xlabel", "ylabel", "legend", "axis", "xlim", "ylim", "daspect", "plot", "scatter", "bar",
-    "stairs", "area", "histogram", "stem", "gcf", "gca", "ishold", "box", "subtitle", "sgtitle", "zlabel",
+    "stairs", "area", "histogram", "morebins", "fewerbins", "stem", "gcf", "gca", "ishold", "box", "subtitle", "sgtitle", "zlabel",
 ];
 
 impl Interpreter {
@@ -624,40 +624,58 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
             apply_props(it, &ids, &props)?;
             handles_out(it, &ids, nargout)
         }
+        "morebins" | "fewerbins" => {
+            let h = arg(a, 0, name)?.clone();
+            let n = crate::gfx::histogram_more_fewer(it, &h, name == "morebins")?;
+            if nargout > 0 { Ok(Some(vec![n])) } else { none() }
+        }
         "histogram" => {
             let data = arg(a, 0, name)?.to_matrix()?;
-            let finite: Vec<f64> = data.data.iter().copied().filter(|x| x.is_finite()).collect();
-            if finite.is_empty() {
+            if !data.data.iter().any(|x| x.is_finite()) {
                 return none();
             }
-            let nbins = match a.get(1) {
-                Some(v) if !v.is_text() && v.numel() == 1 => v.as_usize()?.max(1),
-                _ => ((finite.len() as f64).sqrt().ceil() as usize).clamp(1, 50),
-            };
-            let lo = finite.iter().cloned().fold(f64::INFINITY, f64::min);
-            let hi = finite.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-            let w = if hi > lo { (hi - lo) / nbins as f64 } else { 1.0 };
-            let mut counts = vec![0.0; nbins];
-            for x in finite {
-                let k = (((x - lo) / w) as usize).min(nbins - 1);
-                counts[k] += 1.0;
+            // histogram(x, nbins | edges, Name, Value): the binning options go to histcounts.
+            let mut opts: Vec<Value> = Vec::new();
+            let mut style: Vec<Value> = Vec::new();
+            let mut i = 1;
+            if let Some(v) = a.get(1).filter(|v| !v.is_text()) {
+                opts.push(v.clone());
+                i = 2;
             }
-            let centers: Vec<f64> = (0..nbins).map(|k| lo + w * (k as f64 + 0.5)).collect();
-            let mut s = Series::new(SeriesKind::Bar, centers, counts.clone());
-            s.bar_width = Some(w);
+            let mut limits_manual = false;
+            while i < a.len() {
+                let key = a[i].text()?;
+                let val = a.get(i + 1).cloned().unwrap_or_else(Value::empty);
+                match key.to_lowercase().as_str() {
+                    "numbins" => opts.insert(0, val),
+                    "binedges" => {
+                        opts.insert(0, val);
+                        limits_manual = true;
+                    }
+                    "binwidth" | "binmethod" | "binlimits" | "normalization" => {
+                        limits_manual |= key.eq_ignore_ascii_case("binlimits");
+                        opts.push(Value::chars(&key));
+                        opts.push(val);
+                    }
+                    _ => {
+                        style.push(a[i].clone());
+                        style.push(val);
+                    }
+                }
+                i += 2;
+            }
+            let mut s = Series::new(SeriesKind::Bar, vec![0.0], vec![0.0]);
             s.class_hint = Some("matlab.graphics.chart.primitive.Histogram");
             let ids = it.add_series(vec![s], XAxisKind::Numeric);
             if let Some(&id) = ids.first() {
-                let edges: Vec<f64> = (0..=nbins).map(|k| lo + w * k as f64).collect();
-                it.gfx_store.entry(id).or_default().extend([
-                    ("Data".to_string(), Value::Num(data.clone())),
-                    ("Values".to_string(), Value::Num(Matrix::row(counts.clone()))),
-                    ("BinCounts".to_string(), Value::Num(Matrix::row(counts))),
-                    ("BinEdges".to_string(), Value::Num(Matrix::row(edges))),
-                    ("NumBins".to_string(), Value::num(nbins as f64)),
-                    ("BinWidth".to_string(), Value::num(w)),
-                ]);
+                crate::gfx::store(it, id, "Data", Value::Num(data.clone()));
+                if limits_manual {
+                    crate::gfx::store(it, id, "BinLimitsMode", Value::chars("manual"));
+                }
+                crate::gfx::histogram_bin(it, id, opts)?;
             }
+            // Other name-value pairs (FaceColor and the like) are not applied in this version.
+            let _ = style;
             handles_out(it, &ids, nargout)
         }
         _ => Ok(None),

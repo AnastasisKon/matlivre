@@ -20,6 +20,7 @@ mod gfx_utilities;
 mod graph3d;
 mod graphs;
 mod handles;
+mod histogram_bins;
 mod images;
 mod io_more;
 mod jit;

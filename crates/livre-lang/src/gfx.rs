@@ -888,6 +888,9 @@ fn limits_arg(v: &Value) -> R<Option<(f64, f64)>> {
 
 /// Sets property `name` (MATLAB's spelling) of handle `id`.
 fn set_prop(it: &mut Interpreter, id: u64, name: &str, v: Value) -> R<()> {
+    if let Some(r) = histogram_set(it, id, name, &v) {
+        return r;
+    }
     let auto = v.text().map(|t| t == "auto").unwrap_or(false);
     let mut save: Option<Value> = None;
     let t = resolve(it, id).ok_or_else(|| LangError::new("Invalid or deleted object.", 0))?;
@@ -1692,4 +1695,96 @@ fn polar_prop(name: &str) -> bool {
         "ThetaLim" | "RLim" | "ThetaLimMode" | "RLimMode" | "ThetaTick" | "RTick" | "ThetaTickLabel" | "RTickLabel" | "ThetaTickMode" | "RTickMode"
             | "ThetaDir" | "ThetaZeroLocation" | "RAxisLocation" | "RTickLabelRotation" | "Type"
     )
+}
+
+// ---- histogram bins ---------------------------------------------------------------------------
+
+const HISTOGRAM: &str = "matlab.graphics.chart.primitive.Histogram";
+
+fn is_histogram(it: &Interpreter, id: u64) -> bool {
+    matches!(resolve(it, id), Some(t @ Target::Series(..)) if class_of(it, t) == HISTOGRAM)
+}
+
+/// Bins the histogram's data with `histcounts(data, opts...)` and updates the bars and the
+/// bin properties.
+pub(crate) fn histogram_bin(it: &mut Interpreter, id: u64, opts: Vec<Value>) -> R<()> {
+    let data = stored(it, id, "Data").ok_or_else(|| LangError::new("The histogram has no data.", 0))?;
+    let mut args = vec![data];
+    args.extend(opts);
+    let out = it.call_function("histcounts", args, 2)?;
+    let counts = out[0].to_matrix()?.data;
+    let edges = out[1].to_matrix()?.data;
+    let Some(Target::Series(f, a, s)) = resolve(it, id) else { return rt("Invalid or deleted object.") };
+    let n = counts.len();
+    let centers: Vec<f64> = (0..n).map(|k| (edges[k] + edges[k + 1]) / 2.0).collect();
+    let width = if n > 0 { (edges[n] - edges[0]) / n as f64 } else { 1.0 };
+    {
+        let sr = &mut it.figures[f].axes[a].series[s];
+        sr.x = centers;
+        sr.y = counts.clone();
+        sr.bar_width = Some(width);
+    }
+    mark(it, f);
+    let widths: Vec<f64> = (0..n).map(|k| edges[k + 1] - edges[k]).collect();
+    let uniform = widths.windows(2).all(|w| (w[0] - w[1]).abs() <= 1e-12 * w[0].abs().max(1.0));
+    store(it, id, "Values", Value::Num(Matrix::row(counts.clone())));
+    store(it, id, "BinCounts", Value::Num(Matrix::row(counts)));
+    store(it, id, "BinEdges", Value::Num(Matrix::row(edges.clone())));
+    store(it, id, "NumBins", Value::num(n as f64));
+    store(it, id, "BinWidth", if uniform { Value::num(widths.first().copied().unwrap_or(1.0)) } else { Value::chars("nonuniform") });
+    store(it, id, "BinLimits", Value::Num(Matrix::row(vec![edges[0], edges[n]])));
+    Ok(())
+}
+
+/// A binning property set on a histogram: rebins (None when it is another property).
+fn histogram_set(it: &mut Interpreter, id: u64, name: &str, v: &Value) -> Option<R<()>> {
+    if !matches!(name, "NumBins" | "BinWidth" | "BinEdges" | "BinLimits" | "BinMethod") || !is_histogram(it, id) {
+        return None;
+    }
+    let mut opts = Vec::new();
+    // Explicit limits are kept when the number or width of bins changes.
+    if matches!(name, "NumBins" | "BinWidth") {
+        if let Some(Value::Num(m)) = stored(it, id, "BinLimitsMode").filter(|v| v.text().map(|t| t == "manual").unwrap_or(false)).and(stored(it, id, "BinLimits")) {
+            opts.push(Value::chars("BinLimits"));
+            opts.push(Value::Num(m));
+        }
+    }
+    match name {
+        "NumBins" => opts.insert(0, v.clone()),
+        "BinEdges" => {
+            opts.insert(0, v.clone());
+            store(it, id, "BinLimitsMode", Value::chars("manual"));
+        }
+        other => {
+            opts.push(Value::chars(other));
+            opts.push(v.clone());
+            if other == "BinLimits" {
+                store(it, id, "BinLimitsMode", Value::chars("manual"));
+            }
+        }
+    }
+    Some(histogram_bin(it, id, opts))
+}
+
+/// morebins / fewerbins: about 10% more or fewer bins, keeping manual limits.
+pub(crate) fn histogram_more_fewer(it: &mut Interpreter, h: &Value, more: bool) -> R<Value> {
+    let ids = ids_of(h).ok_or_else(|| LangError::new("Input must be a histogram object.", 0))?;
+    let mut last = 0.0;
+    for id in ids {
+        if !is_histogram(it, id) {
+            return rt("Input must be a histogram object.");
+        }
+        let n = stored(it, id, "NumBins").map(|v| v.scalar()).transpose()?.unwrap_or(1.0);
+        let k = if more { (n * 1.1).ceil().max(n + 1.0) } else { (n * 0.9).floor().min(n - 1.0).max(1.0) };
+        let mut opts = vec![Value::num(k)];
+        if stored(it, id, "BinLimitsMode").and_then(|v| v.text().ok()).as_deref() == Some("manual") {
+            if let Some(l) = stored(it, id, "BinLimits") {
+                opts.push(Value::chars("BinLimits"));
+                opts.push(l);
+            }
+        }
+        histogram_bin(it, id, opts)?;
+        last = k;
+    }
+    Ok(Value::num(last))
 }

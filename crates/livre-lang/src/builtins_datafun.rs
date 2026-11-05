@@ -4257,7 +4257,8 @@ fn nbins_edges(lo: f64, hi: f64, n: usize) -> Vec<f64> {
     let raw = (hi - lo) / n as f64;
     let unit = 10f64.powf(raw.log10().floor()) / 10.0;
     let mut bw = (raw / unit - 1e-9).ceil() * unit;
-    let left = (lo / unit + 1e-9).floor() * unit;
+    // Rounding must not move the first edge past the smallest value.
+    let left = ((lo / unit + 1e-9).floor() * unit).min(lo);
     while left + n as f64 * bw < hi {
         bw += unit;
     }
@@ -5109,4 +5110,113 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         "trenddecomp" => rt("trenddecomp is not supported in this version."),
         _ => rt(format!("'{name}' is not supported in this version.")),
     }
+}
+
+
+/// `[N, edges, bin] = histcounts(X, nbins | edges, Name, Value)`: NumBins, BinEdges,
+/// BinWidth, BinLimits, BinMethod and Normalization.
+pub(crate) fn histcounts(a: &[Value], nargout: usize) -> Ret {
+    let m = a.first().ok_or_else(|| LangError::new("Not enough input arguments.", 0))?.to_matrix()?;
+    let data: Vec<f64> = m.data.clone();
+    let mut nbins: Option<usize> = None;
+    let mut edges: Option<Vec<f64>> = None;
+    let mut width: Option<f64> = None;
+    let mut limits: Option<(f64, f64)> = None;
+    let mut method = "auto".to_string();
+    let mut norm = "count".to_string();
+    let mut i = 1;
+    if let Some(v) = a.get(1).filter(|v| !v.is_text()) {
+        let e = v.to_matrix()?;
+        if e.numel() > 1 { edges = Some(e.data) } else { nbins = Some(v.as_usize()?.max(1)) }
+        i = 2;
+    }
+    while i < a.len() {
+        let key = a[i].text()?.to_lowercase();
+        let v = a.get(i + 1).ok_or_else(|| LangError::new("Name-value arguments must come in pairs.", 0))?;
+        match key.as_str() {
+            "numbins" => nbins = Some(v.as_usize()?.max(1)),
+            "binedges" => edges = Some(v.to_matrix()?.data),
+            "binwidth" => width = Some(v.scalar()?),
+            "binlimits" => {
+                let l = v.to_matrix()?.data;
+                limits = Some((l[0], l[1]));
+            }
+            "binmethod" => method = v.text()?.to_lowercase(),
+            "normalization" => norm = v.text()?.to_lowercase(),
+            other => return rt(format!("'{other}' is not a recognized parameter.")),
+        }
+        i += 2;
+    }
+    let inside: Vec<f64> = data.iter().copied().filter(|x| x.is_finite() && limits.is_none_or(|(lo, hi)| *x >= lo && *x <= hi)).collect();
+    let lo = inside.iter().copied().fold(f64::INFINITY, f64::min);
+    let hi = inside.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let edges: Vec<f64> = match (edges, nbins, width, limits) {
+        (Some(e), ..) => e,
+        (None, Some(n), _, Some((l, h))) => (0..=n).map(|k| l + (h - l) * k as f64 / n as f64).collect(),
+        (None, Some(n), _, None) if lo.is_finite() => nbins_edges(lo, hi, n),
+        (None, None, Some(w), lim) => {
+            let (l, h) = match lim {
+                Some((l, h)) => (l, h),
+                None => ((lo / w).floor() * w, (hi / w).ceil() * w),
+            };
+            let mut e = vec![l];
+            while *e.last().unwrap() < h - 1e-12 * w.abs().max(1.0) {
+                let next = e[0] + e.len() as f64 * w;
+                e.push(next.min(if lim.is_some() { h } else { f64::INFINITY }));
+            }
+            if e.len() == 1 {
+                e.push(l + w);
+            }
+            e
+        }
+        _ if method == "integers" && lo.is_finite() => {
+            let (l, h) = (lo.round() - 0.5, hi.round() + 0.5);
+            let n = (h - l).round() as usize;
+            (0..=n).map(|k| l + k as f64).collect()
+        }
+        (_, _, _, lim) if lo.is_finite() => {
+            let mut e = auto_edges(&inside, false);
+            // Automatic edges within explicit limits are clipped to them.
+            if let Some((l, h)) = lim {
+                e.retain(|&x| x > l && x < h);
+                e.insert(0, l);
+                e.push(h);
+            }
+            e
+        }
+        _ => vec![0.0, 1.0],
+    };
+    let ne = edges.len();
+    let nb = ne.saturating_sub(1);
+    let mut counts = vec![0.0; nb];
+    let mut bins = vec![0.0; data.len()];
+    for (j, &v) in data.iter().enumerate() {
+        if !v.is_finite() || nb == 0 || v < edges[0] || v > edges[nb] {
+            continue;
+        }
+        // The last bin includes its right edge.
+        let k = match edges.partition_point(|&e| e <= v) {
+            0 => continue,
+            p if p > nb => nb - 1,
+            p => p - 1,
+        };
+        counts[k] += 1.0;
+        bins[j] = (k + 1) as f64;
+    }
+    let total = data.len() as f64;
+    let widths: Vec<f64> = (0..nb).map(|k| edges[k + 1] - edges[k]).collect();
+    let n: Vec<f64> = match norm.as_str() {
+        "count" => counts,
+        "probability" => counts.iter().map(|c| c / total).collect(),
+        "countdensity" => counts.iter().zip(&widths).map(|(c, w)| c / w).collect(),
+        "pdf" => counts.iter().zip(&widths).map(|(c, w)| c / (total * w)).collect(),
+        "cumcount" => counts.iter().scan(0.0, |s, c| { *s += c; Some(*s) }).collect(),
+        "cdf" => counts.iter().scan(0.0, |s, c| { *s += c / total; Some(*s) }).collect(),
+        other => return rt(format!("Invalid normalization '{other}'.")),
+    };
+    let mut out = vec![Value::Num(Matrix::row(n)), Value::Num(Matrix::row(edges))];
+    if nargout > 2 {
+        out.push(Value::Num(Matrix::from_dims(m.dims.clone(), bins)));
+    }
+    Ok(Some(out))
 }
