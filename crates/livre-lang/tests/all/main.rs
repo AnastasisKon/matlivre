@@ -52,6 +52,7 @@ mod symbolic_extra;
 mod system_objects;
 mod table_ops;
 mod textio;
+mod tiff;
 mod time_zones;
 mod timers;
 mod timeseries;

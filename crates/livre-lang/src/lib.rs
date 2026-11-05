@@ -52,6 +52,7 @@ pub mod polyshape;
 pub mod sym;
 pub mod sysobj;
 pub mod table;
+pub mod tiff;
 pub mod table_ops;
 pub mod builtins_sparse;
 pub mod builtins_ode;

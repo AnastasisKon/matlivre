@@ -38,6 +38,9 @@ pub fn builtin_class(name: &str) -> Option<Rc<ClassDef>> {
     if name == crate::sysobj::CLASS {
         return Some(crate::sysobj::base_class());
     }
+    if name == crate::tiff::CLASS {
+        return Some(crate::tiff::class_def());
+    }
     if name == crate::sysobj::FINITE {
         return Some(crate::sysobj::finite_class());
     }
