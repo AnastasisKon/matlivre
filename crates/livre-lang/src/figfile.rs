@@ -8,6 +8,7 @@
 
 use crate::error::{rt, LangError};
 use crate::gfx;
+use crate::graphics;
 use crate::interp::Interpreter;
 use crate::value::*;
 
@@ -218,8 +219,8 @@ fn build_axes(it: &mut Interpreter, ax: &Value, nodes: &StructArray, i: usize) -
         _ => Vec::new(),
     };
     let _ = it.call_function("hold", vec![ax.clone(), Value::chars("on")], 0);
-    // Children are listed top first: draw from the bottom up.
-    for k in (0..kids.numel()).rev() {
+    // Children are listed oldest first (the reverse of the Children property).
+    for k in 0..kids.numel() {
         if special.contains(&(k + 1)) {
             continue;
         }
@@ -362,6 +363,11 @@ fn save(it: &mut Interpreter, name: &str, a: &[Value]) -> R<()> {
     crate::builtins_data::write_mat(&path, &[("hgS_070000".to_string(), Value::Struct(tree))], false)
 }
 
+/// The handle number written for object `id`: never a whole number, which would be a figure.
+fn hv(id: u64) -> f64 {
+    id as f64 / gfx::SLOTS as f64 + 1e-4
+}
+
 fn node(t: &str, handle: f64, props: Vec<(String, Value)>, kids: Vec<StructArray>, special: Value) -> StructArray {
     let mut p = StructArray::scalar();
     for (n, v) in props {
@@ -434,14 +440,67 @@ fn figure_node(it: &mut Interpreter, fid: u64) -> R<StructArray> {
         kids.push(axes_node(it, id, pos)?);
         if let Ok(leg) = gfx::get_prop(it, id, "Legend") {
             if let Some(&lid) = gfx::ids_of(&leg).and_then(|v| v.first().copied()).as_ref() {
+                // MATLAB needs the legend's layout fields and the handles of its entries.
+                let entries: Vec<f64> = it.figures[f].axes[a]
+                    .series
+                    .iter()
+                    .filter(|s| !matches!(s.kind, graphics::SeriesKind::Text | graphics::SeriesKind::ConstantLine | graphics::SeriesKind::Region) && s.visible)
+                    .map(|s| hv(s.id))
+                    .collect();
                 let mut lp = read_props(it, lid, &["String", "Location"]);
-                lp.push(("Axes".to_string(), Value::num(id as f64)));
-                extras.push(node("scribe.legend", lid as f64, lp, Vec::new(), Value::empty()));
+                let row = |v: &[f64]| Value::Num(Matrix::row(v.to_vec()));
+                lp.extend([
+                    ("Position".to_string(), row(&[pos[0] + pos[2] - 0.12, pos[1] + pos[3] - 0.09, 0.1, 0.08])),
+                    ("PositionMode".to_string(), Value::chars("auto")),
+                    ("Box".to_string(), Value::chars("on")),
+                    ("EdgeColor".to_string(), row(&[0.15, 0.15, 0.15])),
+                    ("FontSize".to_string(), Value::num(9.0)),
+                    ("PlotChildrenMode".to_string(), Value::chars("auto")),
+                    ("PlotChildrenExcluded".to_string(), Value::Num(Matrix::new(0, 1, Vec::new()))),
+                    ("PlotChildrenExcludedMode".to_string(), Value::chars("auto")),
+                    ("PlotChildrenSpecified".to_string(), Value::empty()),
+                    ("Visible".to_string(), Value::chars("on")),
+                    ("ApplicationData".to_string(), Value::Struct(StructArray::scalar())),
+                    ("Interruptible".to_string(), Value::chars("off")),
+                    ("Tag".to_string(), Value::chars("legend")),
+                    ("TagMode".to_string(), Value::chars("auto")),
+                    ("Layout".to_string(), Value::empty()),
+                    ("XTickLabel".to_string(), Value::chars("")),
+                    ("YTickLabel".to_string(), Value::chars("")),
+                    ("XTick".to_string(), Value::num(-1.0)),
+                    ("YTick".to_string(), Value::num(-1.0)),
+                    ("XLim".to_string(), row(&[0.0, 1.0])),
+                    ("YLim".to_string(), row(&[0.0, 1.0])),
+                    ("Axes".to_string(), Value::num(hv(id))),
+                    ("PlotChildren".to_string(), Value::Num(Matrix::new(entries.len(), 1, entries))),
+                ]);
+                extras.push(node("scribe.legend", hv(lid), lp, Vec::new(), Value::empty()));
             }
         }
         if it.figures[f].axes[a].colorbar {
-            let lp = vec![("Axes".to_string(), Value::num(id as f64)), ("Location".to_string(), Value::chars("eastoutside"))];
-            extras.push(node("scribe.colorbar", id as f64 + 0.5, lp, Vec::new(), Value::empty()));
+            let (c0, c1) = match gfx::get_prop(it, id, "CLim") {
+                Ok(Value::Num(m)) if m.data.len() == 2 => (m.data[0], m.data[1]),
+                _ => (0.0, 1.0),
+            };
+            let row = |v: &[f64]| Value::Num(Matrix::row(v.to_vec()));
+            let lp = vec![
+                ("Position".to_string(), row(&[pos[0] + pos[2] + 0.02, pos[1], 0.038, pos[3]])),
+                ("PositionMode".to_string(), Value::chars("auto")),
+                ("Location".to_string(), Value::chars("eastoutside")),
+                ("YAxisLocation".to_string(), Value::chars("right")),
+                ("XLim".to_string(), row(&[-1.0, 2.0])),
+                ("YLim".to_string(), row(&[c0, c1])),
+                ("Box".to_string(), Value::chars("on")),
+                ("Limits".to_string(), row(&[c0, c1])),
+                ("LimitsMode".to_string(), Value::chars("auto")),
+                ("ApplicationData".to_string(), Value::Struct(StructArray::scalar())),
+                ("Interruptible".to_string(), Value::chars("off")),
+                ("Tag".to_string(), Value::chars("Colorbar")),
+                ("TagMode".to_string(), Value::chars("auto")),
+                ("Layout".to_string(), Value::empty()),
+                ("Axes".to_string(), Value::num(hv(id))),
+            ];
+            extras.push(node("scribe.colorbar", hv(id) + 3e-5, lp, Vec::new(), Value::empty()));
         }
     }
     kids.extend(extras);
@@ -466,10 +525,40 @@ fn axes_node(it: &mut Interpreter, id: u64, pos: [f64; 4]) -> R<StructArray> {
     }
     let kid_ids = gfx::get_prop(it, id, "Children").ok().and_then(|v| gfx::ids_of(&v)).unwrap_or_default();
     let mut kids: Vec<StructArray> = Vec::new();
-    for k in kid_ids {
-        if let Some(n) = object_node(it, k) {
+    // Bars refer to a baseline object, which MATLAB needs to rebuild them.
+    let baseline = hv(id) + 2e-5;
+    let mut has_bars = false;
+    // Oldest first, as MATLAB writes them.
+    for k in kid_ids.into_iter().rev() {
+        if let Some(mut n) = object_node(it, k) {
+            if n.get("type").and_then(|t| t.text().ok()).as_deref() == Some("specgraph.barseries") {
+                if let Some(Value::Struct(p)) = n.get("properties").cloned() {
+                    let mut p = p;
+                    p.set("BaseLine", Value::num(baseline));
+                    p.set("BarPeers", Value::num(0.0));
+                    p.set("BaseValue", Value::num(0.0));
+                    n.set("properties", Value::Struct(p));
+                }
+                has_bars = true;
+            }
             kids.push(n);
         }
+    }
+    if has_bars {
+        let row = |v: &[f64]| Value::Num(Matrix::row(v.to_vec()));
+        let bp = vec![
+            ("Color".to_string(), row(&[0.15, 0.15, 0.15])),
+            ("ColorMode".to_string(), Value::chars("auto")),
+            ("Axis".to_string(), Value::num(1.0)),
+            ("AxisMode".to_string(), Value::chars("auto")),
+            ("Description".to_string(), Value::chars("Axes YBaseline")),
+            ("DescriptionMode".to_string(), Value::chars("auto")),
+            ("HandleVisibility".to_string(), Value::chars("off")),
+            ("HandleVisibilityMode".to_string(), Value::chars("auto")),
+            ("Internal".to_string(), Value::bool(true)),
+            ("Orientation".to_string(), Value::chars("X")),
+        ];
+        kids.push(node("specgraph.baseline", baseline, bp, Vec::new(), Value::empty()));
     }
     let mut special = vec![0.0; 4];
     for (s, part) in ["Title", "XLabel", "YLabel", "ZLabel"].iter().enumerate() {
@@ -479,10 +568,10 @@ fn axes_node(it: &mut Interpreter, id: u64, pos: [f64; 4]) -> R<StructArray> {
             continue;
         }
         let tp = read_props(it, h, &["String", "Color", "FontSize", "FontWeight"]);
-        kids.push(node("text", h as f64, tp, Vec::new(), Value::empty()));
+        kids.push(node("text", hv(h), tp, Vec::new(), Value::empty()));
         special[s] = kids.len() as f64;
     }
-    Ok(node("axes", id as f64, props, kids, Value::Num(Matrix::new(4, 1, special))))
+    Ok(node("axes", hv(id), props, kids, Value::Num(Matrix::new(4, 1, special))))
 }
 
 fn object_node(it: &mut Interpreter, id: u64) -> Option<StructArray> {
@@ -501,5 +590,5 @@ fn object_node(it: &mut Interpreter, id: u64) -> Option<StructArray> {
     };
     let mut props = read_props(it, id, names);
     props.retain(|(n, v)| !(n == "ZData" && v.numel() == 0) && !(n == "DisplayName" && v.text().map(|t| t.is_empty()).unwrap_or(false)));
-    Some(node(t, id as f64, props, Vec::new(), Value::empty()))
+    Some(node(t, hv(id), props, Vec::new(), Value::empty()))
 }
