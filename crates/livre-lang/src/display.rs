@@ -432,6 +432,7 @@ pub(crate) fn field_text(v: &Value, f: NumFormat) -> String {
                 .collect();
             format!("{{{}}}", items.join("  "))
         }
+        Value::Cell(c) if c.dims == [0, 0] => "{}".to_string(),
         Value::Cell(_) => format!("{{{}}}", summary(v, f)),
         Value::Object(_) if crate::containers::is_categorical(v) && v.numel() == 1 => summary(v, f),
         Value::Struct(_) | Value::Object(_) | Value::Table(_) => format!("[{}]", summary(v, f)),

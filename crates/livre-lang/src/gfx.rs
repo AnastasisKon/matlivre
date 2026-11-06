@@ -414,7 +414,7 @@ fn style_name(s: LineStyle) -> &'static str {
     }
 }
 
-fn marker_name(m: Option<Marker>) -> &'static str {
+pub(crate) fn marker_name(m: Option<Marker>) -> &'static str {
     match m {
         None => "none",
         Some(Marker::Circle) => "o",
@@ -429,7 +429,7 @@ fn marker_name(m: Option<Marker>) -> &'static str {
     }
 }
 
-fn parse_marker(t: &str) -> Option<Marker> {
+pub(crate) fn parse_marker(t: &str) -> Option<Marker> {
     match t.to_lowercase().as_str() {
         "square" => Some(Marker::Square),
         "diamond" => Some(Marker::Diamond),

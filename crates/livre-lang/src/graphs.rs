@@ -1369,100 +1369,75 @@ fn biconnected(g: &Gr) -> (Vec<usize>, Vec<usize>) {
     (bins.into_iter().map(|b| if b == usize::MAX { 0 } else { b }).collect(), cuts.into_iter().collect())
 }
 
-/// `plot(G)`: nodes on a layered layout (DAGs) or a force-directed one, edges as lines (with
-/// arrowheads for digraphs) and node labels.
+/// `plot(G)`: a GraphPlot (see `charts`) with the nodes on a layered layout (DAGs), a circle or
+/// a force-directed one.
 fn plot(it: &mut Interpreter, g: &Gr, a: &[Value], nargout: usize) -> Ret {
-    let n = g.n;
-    let layout = a.windows(2).find(|p| p[0].text().map(|t| t.eq_ignore_ascii_case("Layout")).unwrap_or(false)).map(|p| p[1].text()).transpose()?.unwrap_or_else(|| "auto".into()).to_lowercase();
-    let pos = layout_nodes(g, &layout);
-    // Arrowheads and padding scale with the drawing.
-    let (x0, x1) = pos.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |a, p| (a.0.min(p.0), a.1.max(p.0)));
-    let (y0, y1) = pos.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |a, p| (a.0.min(p.1), a.1.max(p.1)));
-    let span = (x1 - x0).max(y1 - y0).max(1.0);
-    let (mut ex, mut ey) = (Vec::new(), Vec::new());
-    for &(s, t) in &g.edges {
-        let (p, q) = (pos[s], pos[t]);
-        ex.extend([p.0, q.0, f64::NAN]);
-        ey.extend([p.1, q.1, f64::NAN]);
-        if g.directed && s != t {
-            let (dx, dy) = (q.0 - p.0, q.1 - p.1);
-            let len = dx.hypot(dy).max(1e-9);
-            let (ux, uy) = (dx / len, dy / len);
-            let tip = (q.0 - ux * 0.02 * span, q.1 - uy * 0.02 * span);
-            for side in [-1.0, 1.0] {
-                let ang: f64 = 0.4 * side;
-                let head = 0.045 * span;
-                let (bx, by) = (-(ux * ang.cos() - uy * ang.sin()) * head, -(ux * ang.sin() + uy * ang.cos()) * head);
-                ex.extend([tip.0, tip.0 + bx, f64::NAN]);
-                ey.extend([tip.1, tip.1 + by, f64::NAN]);
-            }
+    let mut layout = "auto".to_string();
+    let mut direction = "down".to_string();
+    let mut props: Vec<(String, Value)> = Vec::new();
+    let mut i = 0;
+    // A line spec ('r-o') may come first.
+    if let Some(Value::Num(m)) = a.first() {
+        if m.kind == Kind::Char && a.len() % 2 == 1 {
+            props.extend(crate::charts::graph_linespec(&a[0].text()?));
+            i = 1;
         }
     }
-    use crate::graphics::{LineStyle, Marker, Series, SeriesKind, XAxisKind};
-    let mut edges = Series::new(SeriesKind::Line, ex, ey);
-    edges.line_width = 0.5;
-    let mut nodes = Series::new(SeriesKind::Scatter, pos.iter().map(|p| p.0).collect(), pos.iter().map(|p| p.1).collect());
-    nodes.line_style = LineStyle::None;
-    nodes.marker = Some(Marker::Circle);
-    nodes.marker_size = 5.0;
-    nodes.class_hint = Some("matlab.graphics.chart.primitive.GraphPlot");
-    let color = Some([0, 0x72, 0xBD]);
-    edges.color = color;
-    nodes.color = color;
-    let mut series = vec![nodes, edges];
-    for (k, p) in pos.iter().enumerate() {
-        let mut t = Series::new(SeriesKind::Text, vec![p.0 + 0.02 * span], vec![p.1 + 0.03 * span]);
-        t.label = match &g.names {
-            Some(nm) => nm[k].clone(),
-            None => num2str_scalar((k + 1) as f64),
-        };
-        t.font_size = Some(8.0);
-        series.push(t);
+    while i + 1 < a.len() {
+        let k = a[i].text()?;
+        match k.to_ascii_lowercase().as_str() {
+            "layout" => layout = a[i + 1].text()?.to_lowercase(),
+            "direction" => direction = a[i + 1].text()?.to_lowercase(),
+            _ => props.push((k, a[i + 1].clone())),
+        }
+        i += 2;
     }
-    let ids = it.add_series(series, XAxisKind::Numeric);
-    let pad = 0.1 * span;
-    let ax = it.current_figure().axes_mut();
-    ax.xlim = Some((x0 - pad, x1 + pad));
-    ax.ylim = Some((y0 - pad, y1 + pad));
-    let _ = n;
-    crate::builtins_plot::handles_out(it, &ids[..1], nargout)
+    check_layout(&layout)?;
+    let pos = layout_nodes(g, &layout, &direction);
+    let labels: Vec<String> = match &g.names {
+        Some(nm) => nm.clone(),
+        None => (1..=g.n).map(|k| num2str_scalar(k as f64)).collect(),
+    };
+    let graph = crate::charts::GraphData { directed: g.directed, edges: g.edges.clone(), names: g.names.clone() };
+    crate::charts::graphplot(it, graph, pos, labels, &props, nargout)
 }
 
-fn layout_nodes(g: &Gr, layout: &str) -> Vec<(f64, f64)> {
+fn check_layout(layout: &str) -> R<()> {
+    const OK: [&str; 7] = ["auto", "circle", "force", "layered", "subspace", "force3", "subspace3"];
+    if OK.contains(&layout) {
+        return Ok(());
+    }
+    rt(format!("Expected input to match one of these values:
+
+'auto', 'circle', 'force', 'layered', 'subspace', 'force3', 'subspace3'
+
+The input, '{layout}', did not match any of the valid values."))
+}
+
+/// `layout(h, method, ...)` for a GraphPlot: the node positions of a graph given by its edges.
+pub(crate) fn relayout(n: usize, edges: &[(usize, usize)], directed: bool, layout: &str, direction: &str) -> R<Vec<(f64, f64)>> {
+    let layout = layout.to_lowercase();
+    check_layout(&layout)?;
+    let g = Gr { directed, n, names: None, edges: edges.to_vec(), weights: None };
+    Ok(layout_nodes(&g, &layout, &direction.to_lowercase()))
+}
+
+fn layout_nodes(g: &Gr, layout: &str, direction: &str) -> Vec<(f64, f64)> {
     let n = g.n;
     if n == 0 {
         return Vec::new();
     }
     let layered = layout == "layered" || (layout == "auto" && g.directed && !g.has_cycle());
     if layout == "circle" {
+        // Counterclockwise from (1, 0).
         return (0..n).map(|k| {
-            let a = std::f64::consts::FRAC_PI_2 - 2.0 * std::f64::consts::PI * k as f64 / n as f64;
-            (a.cos(), a.sin())
+            let a = 2.0 * std::f64::consts::PI * k as f64 / n as f64;
+            let (s, c) = a.sin_cos();
+            (if c.abs() < 1e-12 { 0.0 } else { c }, if s.abs() < 1e-12 { 0.0 } else { s })
         }).collect();
     }
     if layered {
-        // Longest-path layers from the sources, nodes spread evenly within a layer.
-        let adj = g.out_adj();
-        let mut level = vec![0usize; n];
-        for _ in 0..n {
-            for u in 0..n {
-                for &(v, _) in &adj[u] {
-                    if level[v] < level[u] + 1 {
-                        level[v] = level[u] + 1;
-                    }
-                }
-            }
-        }
-        let top = *level.iter().max().unwrap_or(&0);
-        let mut pos = vec![(0.0, 0.0); n];
-        for l in 0..=top {
-            let members: Vec<usize> = (0..n).filter(|&v| level[v] == l).collect();
-            let m = members.len();
-            for (i, &v) in members.iter().enumerate() {
-                pos[v] = (i as f64 - (m as f64 - 1.0) / 2.0, (top - l) as f64);
-            }
-        }
-        return pos;
+        return layered_layout(g, direction);
     }
     // Force-directed (Fruchterman-Reingold) from a circle, deterministic.
     let mut p: Vec<(f64, f64)> = (0..n)
@@ -1507,6 +1482,88 @@ fn layout_nodes(g: &Gr, layout: &str) -> Vec<(f64, f64)> {
         temp *= 0.98;
     }
     p
+}
+
+/// Layers by longest path from the sources (top layer first). The widest layer spreads its
+/// nodes at 1, 2, ...; every other node sits at the median of its descendants (above) or
+/// ancestors (below) in that layer, then nodes in a layer are pushed apart to unit spacing.
+fn layered_layout(g: &Gr, direction: &str) -> Vec<(f64, f64)> {
+    let n = g.n;
+    let adj = g.out_adj();
+    let mut level = vec![0usize; n];
+    for _ in 0..n {
+        let mut changed = false;
+        for u in 0..n {
+            for &(v, _) in &adj[u] {
+                if v != u && level[v] < level[u] + 1 && level[u] + 1 < n {
+                    level[v] = level[u] + 1;
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let top = *level.iter().max().unwrap_or(&0);
+    let layers: Vec<Vec<usize>> = (0..=top).map(|l| (0..n).filter(|&v| level[v] == l).collect()).collect();
+    let wide = (0..=top).max_by_key(|&l| (layers[l].len(), std::cmp::Reverse(l))).unwrap_or(0);
+    let mut x = vec![f64::NAN; n];
+    for (i, &v) in layers[wide].iter().enumerate() {
+        x[v] = (i + 1) as f64;
+    }
+    // Reachability to the widest layer, downward and upward.
+    let mut radj = vec![Vec::new(); n];
+    for &(s, t) in &g.edges {
+        radj[t].push(s);
+    }
+    let reach = |start: usize, down: bool| -> Vec<usize> {
+        let mut seen = vec![false; n];
+        let mut stack = vec![start];
+        let mut out = Vec::new();
+        while let Some(u) = stack.pop() {
+            let next: Vec<usize> = if down { adj[u].iter().map(|e| e.0).collect() } else { radj[u].clone() };
+            for v in next {
+                if !seen[v] {
+                    seen[v] = true;
+                    if level[v] == wide {
+                        out.push(v);
+                    }
+                    stack.push(v);
+                }
+            }
+        }
+        out
+    };
+    for l in 0..=top {
+        if l == wide {
+            continue;
+        }
+        let mut prev = f64::NEG_INFINITY;
+        for (i, &v) in layers[l].iter().enumerate() {
+            let mut xs: Vec<f64> = reach(v, l < wide).iter().map(|&w| x[w]).collect();
+            xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let m = xs.len();
+            let mut p = if m == 0 { (i + 1) as f64 } else if m % 2 == 1 { xs[m / 2] } else { (xs[m / 2 - 1] + xs[m / 2]) / 2.0 };
+            if p < prev + 1.0 {
+                p = prev + 1.0;
+            }
+            x[v] = p;
+            prev = p;
+        }
+    }
+    let layers_n = (top + 1) as f64;
+    (0..n)
+        .map(|v| {
+            let depth = level[v] as f64;
+            match direction {
+                "up" => (x[v], depth + 1.0),
+                "right" => (depth + 1.0, x[v]),
+                "left" => (layers_n - depth, x[v]),
+                _ => (x[v], layers_n - depth),
+            }
+        })
+        .collect()
 }
 
 /// `G = ...` display: the class and the sizes of its tables.

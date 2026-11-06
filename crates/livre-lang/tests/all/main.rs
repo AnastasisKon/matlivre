@@ -18,6 +18,7 @@ mod func_objects;
 mod funfun;
 mod gfx_utilities;
 mod graph3d;
+mod graph_plot;
 mod graphs;
 mod handles;
 mod histogram_bins;

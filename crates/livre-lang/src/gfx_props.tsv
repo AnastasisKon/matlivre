@@ -2116,3 +2116,57 @@ matlab.graphics.illustration.BubbleLegend	SelectionHighlight	'on'
 matlab.graphics.illustration.BubbleLegend	HitTest	'on'
 matlab.graphics.illustration.BubbleLegend	PickableParts	'visible'
 matlab.graphics.illustration.BubbleLegend	Layout	<matlab.ui.layout.LayoutOptions [0 0]>
+matlab.graphics.chart.primitive.GraphPlot	EdgeColor	[0 0.447 0.741]
+matlab.graphics.chart.primitive.GraphPlot	EdgeCData	[]
+matlab.graphics.chart.primitive.GraphPlot	EdgeLabel	{}
+matlab.graphics.chart.primitive.GraphPlot	EdgeLabelColor	[0 0 0]
+matlab.graphics.chart.primitive.GraphPlot	EdgeFontSize	8
+matlab.graphics.chart.primitive.GraphPlot	EdgeFontName	'Helvetica'
+matlab.graphics.chart.primitive.GraphPlot	EdgeFontAngle	'italic'
+matlab.graphics.chart.primitive.GraphPlot	EdgeFontWeight	'normal'
+matlab.graphics.chart.primitive.GraphPlot	LineStyle	'-'
+matlab.graphics.chart.primitive.GraphPlot	LineWidth	0.5
+matlab.graphics.chart.primitive.GraphPlot	ArrowSize	7
+matlab.graphics.chart.primitive.GraphPlot	ArrowPosition	0.5
+matlab.graphics.chart.primitive.GraphPlot	ShowArrows	'off'
+matlab.graphics.chart.primitive.GraphPlot	NodeColor	[0 0.447 0.741]
+matlab.graphics.chart.primitive.GraphPlot	NodeCData	[]
+matlab.graphics.chart.primitive.GraphPlot	NodeLabel	{}
+matlab.graphics.chart.primitive.GraphPlot	NodeLabelColor	[0 0 0]
+matlab.graphics.chart.primitive.GraphPlot	NodeFontSize	8
+matlab.graphics.chart.primitive.GraphPlot	NodeFontName	'Helvetica'
+matlab.graphics.chart.primitive.GraphPlot	NodeFontAngle	'normal'
+matlab.graphics.chart.primitive.GraphPlot	NodeFontWeight	'normal'
+matlab.graphics.chart.primitive.GraphPlot	Interpreter	'tex'
+matlab.graphics.chart.primitive.GraphPlot	Marker	'o'
+matlab.graphics.chart.primitive.GraphPlot	MarkerSize	4
+matlab.graphics.chart.primitive.GraphPlot	XData	zeros(1,0)
+matlab.graphics.chart.primitive.GraphPlot	YData	zeros(1,0)
+matlab.graphics.chart.primitive.GraphPlot	ZData	zeros(1,0)
+matlab.graphics.chart.primitive.GraphPlot	EdgeLabelMode	'manual'
+matlab.graphics.chart.primitive.GraphPlot	NodeLabelMode	'manual'
+matlab.graphics.chart.primitive.GraphPlot	EdgeAlpha	0.5
+matlab.graphics.chart.primitive.GraphPlot	NodeColorMode	'auto'
+matlab.graphics.chart.primitive.GraphPlot	EdgeColorMode	'auto'
+matlab.graphics.chart.primitive.GraphPlot	Children	<matlab.graphics.GraphicsPlaceholder [0 0]>
+matlab.graphics.chart.primitive.GraphPlot	Parent	<matlab.graphics.axis.Axes [1 1]>
+matlab.graphics.chart.primitive.GraphPlot	Visible	'on'
+matlab.graphics.chart.primitive.GraphPlot	HandleVisibility	'on'
+matlab.graphics.chart.primitive.GraphPlot	DisplayName	''
+matlab.graphics.chart.primitive.GraphPlot	Annotation	<matlab.graphics.eventdata.Annotation [1 1]>
+matlab.graphics.chart.primitive.GraphPlot	Selected	'off'
+matlab.graphics.chart.primitive.GraphPlot	SelectionHighlight	'on'
+matlab.graphics.chart.primitive.GraphPlot	HitTest	'on'
+matlab.graphics.chart.primitive.GraphPlot	PickableParts	'visible'
+matlab.graphics.chart.primitive.GraphPlot	DataTipTemplate	<matlab.graphics.datatip.DataTipTemplate [1 1]>
+matlab.graphics.chart.primitive.GraphPlot	ButtonDownFcn	''
+matlab.graphics.chart.primitive.GraphPlot	ContextMenu	<matlab.graphics.GraphicsPlaceholder [0 0]>
+matlab.graphics.chart.primitive.GraphPlot	BusyAction	'queue'
+matlab.graphics.chart.primitive.GraphPlot	BeingDeleted	'off'
+matlab.graphics.chart.primitive.GraphPlot	Interruptible	'on'
+matlab.graphics.chart.primitive.GraphPlot	CreateFcn	''
+matlab.graphics.chart.primitive.GraphPlot	DeleteFcn	''
+matlab.graphics.chart.primitive.GraphPlot	Type	'graphplot'
+matlab.graphics.chart.primitive.GraphPlot	Tag	''
+matlab.graphics.chart.primitive.GraphPlot	UserData	[]
+matlab.graphics.chart.primitive.GraphPlot	SeriesIndex	1

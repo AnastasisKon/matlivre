@@ -19,6 +19,7 @@ type R<T> = Result<T, LangError>;
 pub const NAMES: &[&str] = &[
     "heatmap", "boxchart", "swarmchart", "swarmchart3", "bubblechart", "bubblechart3", "polarbubblechart", "bubblesize", "bubblelim", "bubblelegend",
     "binscatter", "piechart", "donutchart", "bubblecloud", "parallelplot", "stackedplot", "scatterhistogram", "wordcloud", "geobubble", "yyaxis", "datetick", "sortx", "sorty",
+    "highlight", "labelnode", "labeledge", "layout",
 ];
 
 const HEATMAP: &str = "matlab.graphics.chart.HeatmapChart";
@@ -34,8 +35,9 @@ const SCATTERHIST: &str = "matlab.graphics.chart.ScatterHistogramChart";
 const WORDCLOUD: &str = "matlab.graphics.chart.WordCloudChart";
 const GEOBUBBLE: &str = "matlab.graphics.chart.GeographicBubbleChart";
 const BUBBLELEGEND: &str = "matlab.graphics.illustration.BubbleLegend";
+const GRAPHPLOT: &str = "matlab.graphics.chart.primitive.GraphPlot";
 
-const CHARTS: &[&str] = &[HEATMAP, BOX, BINSCATTER, PIE, DONUT, CLOUD, PARALLEL, STACKED, SCATTERHIST, WORDCLOUD, GEOBUBBLE, BUBBLELEGEND];
+const CHARTS: &[&str] = &[HEATMAP, BOX, BINSCATTER, PIE, DONUT, CLOUD, PARALLEL, STACKED, SCATTERHIST, WORDCLOUD, GEOBUBBLE, BUBBLELEGEND, GRAPHPLOT];
 
 /// Hidden store keys: the parts a chart is drawn with, and bookkeeping flags.
 const PARTS: &str = "\u{1}parts";
@@ -52,7 +54,7 @@ pub fn is_chart(class: &str) -> bool {
 
 /// Charts that are children of axes rather than of the figure.
 pub fn in_axes(class: &str) -> bool {
-    matches!(class, BOX | BINSCATTER | BUBBLELEGEND)
+    matches!(class, BOX | BINSCATTER | BUBBLELEGEND | GRAPHPLOT)
 }
 
 pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Ret {
@@ -60,6 +62,10 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         "heatmap" => heatmap(it, a, nargout),
         "sortx" => sort_heatmap(it, a, true),
         "sorty" => sort_heatmap(it, a, false),
+        "highlight" => highlight(it, a),
+        "labelnode" => label_graph(it, a, true),
+        "labeledge" => label_graph(it, a, false),
+        "layout" => graph_layout(it, a),
         "boxchart" => boxchart(it, a, nargout),
         "swarmchart" => swarmchart(it, a, nargout, false),
         "swarmchart3" => swarmchart(it, a, nargout, true),
@@ -338,6 +344,7 @@ fn redraw(it: &mut Interpreter, id: u64) -> R<()> {
         SCATTERHIST => scatterhist_parts(it, id, f)?,
         WORDCLOUD => wordcloud_parts(it, id, f, a)?,
         GEOBUBBLE => geobubble_parts(it, id, f, a)?,
+        GRAPHPLOT => graph_parts(it, id, f, a)?,
         _ => Vec::new(),
     };
     let mut ids = Vec::with_capacity(parts.len());
@@ -365,6 +372,18 @@ pub fn set(it: &mut Interpreter, id: u64, name: &str, v: Value) -> R<()> {
             let t = texts(it, &v)?;
             str_row(&t)
         }
+        (GRAPHPLOT, "NodeLabel" | "EdgeLabel") => {
+            let t = if v.numel() == 0 { Vec::new() } else { texts(it, &v)? };
+            if t.is_empty() { Value::Cell(CellArray::new(0, 0, Vec::new())) } else { cell_row(&t) }
+        }
+        (GRAPHPLOT, "NodeColor" | "EdgeColor") if matches!(&v, Value::Num(m) if m.kind == Kind::Char) || matches!(&v, Value::Str(_)) => match gfx::color_arg(&v)? {
+            Some(c) => row(c.1.to_vec()),
+            None => v,
+        },
+        (GRAPHPLOT, "Marker") => match &v {
+            Value::Cell(c) => Value::Cell(CellArray::row(c.data.iter().map(|m| Value::chars(&marker_long(&text(m)))).collect())),
+            _ => v,
+        },
         _ => v,
     };
     gfx::store(it, id, name, v);
@@ -413,6 +432,7 @@ pub fn short_props(class: &str, it: &Interpreter, id: u64) -> Vec<&'static str> 
         SCATTERHIST => vec!["XData", "YData", "GroupData"],
         WORDCLOUD if table => vec!["SourceTable", "WordVariable", "SizeVariable", "MaxDisplayWords"],
         WORDCLOUD => vec!["WordData", "SizeData", "MaxDisplayWords"],
+        GRAPHPLOT => vec!["NodeColor", "MarkerSize", "Marker", "EdgeColor", "LineWidth", "LineStyle", "NodeLabel", "EdgeLabel", "XData", "YData", "ZData"],
         GEOBUBBLE => vec!["Basemap", "MapLayout", "LatitudeData", "LongitudeData", "SizeData", "ColorData"],
         _ => vec!["Location", "Style", "FontSize", "Position", "Units"],
     }
@@ -2057,4 +2077,445 @@ fn sort_heatmap(it: &mut Interpreter, a: &[Value], x: bool) -> Ret {
     put(it, id, vec![("ColorDisplayData", Value::Num(Matrix::from_dims(vec![nr, nc], data)))]);
     redraw(it, id)?;
     Ok(Some(Vec::new()))
+}
+
+
+// ---- graph plots -----------------------------------------------------------------------------
+
+/// The graph a GraphPlot draws: its edges (0-based end nodes), direction and node names.
+pub struct GraphData {
+    pub directed: bool,
+    pub edges: Vec<(usize, usize)>,
+    pub names: Option<Vec<String>>,
+}
+
+const G_EDGES: &str = "\u{1}gedges";
+const G_DIRECTED: &str = "\u{1}gdirected";
+const G_NAMES: &str = "\u{1}gnames";
+
+/// Line-spec options for `plot(G, 'r--o')`.
+pub fn graph_linespec(spec: &str) -> Vec<(String, Value)> {
+    let mut out = Vec::new();
+    if let Some((color, style, marker)) = crate::graphics::parse_line_spec(spec) {
+        if let Some(c) = color {
+            let v = row(c.iter().map(|&b| b as f64 / 255.0).collect());
+            out.push(("NodeColor".to_string(), v.clone()));
+            out.push(("EdgeColor".to_string(), v));
+        }
+        if let Some(s) = style {
+            let t = match s {
+                LineStyle::Dashed => "--",
+                LineStyle::Dotted => ":",
+                LineStyle::DashDot => "-.",
+                LineStyle::None => "none",
+                LineStyle::Solid => "-",
+            };
+            out.push(("LineStyle".to_string(), Value::chars(t)));
+        }
+        if let Some(m) = marker {
+            out.push(("Marker".to_string(), Value::chars(gfx::marker_name(Some(m)))));
+        }
+    }
+    out
+}
+
+/// MATLAB's long names for the one-letter markers.
+fn marker_long(m: &str) -> String {
+    match m {
+        "s" => "square",
+        "d" => "diamond",
+        "p" => "pentagram",
+        "h" => "hexagram",
+        other => other,
+    }
+    .to_string()
+}
+
+/// `plot(G)`: a GraphPlot in the current axes with nodes at `pos`.
+pub fn graphplot(it: &mut Interpreter, g: GraphData, pos: Vec<(f64, f64)>, labels: Vec<String>, props: &[(String, Value)], nargout: usize) -> Ret {
+    let id = new_axes_chart(it, GRAPHPLOT);
+    let m = g.edges.len();
+    let mut ends = Vec::with_capacity(2 * m);
+    for &(s, t) in &g.edges {
+        ends.push(s as f64);
+        ends.push(t as f64);
+    }
+    let color = row(COLOR_ORDER[0].to_vec());
+    put(it, id, vec![
+        (G_EDGES, Value::Num(Matrix::new(2, m, ends))),
+        (G_DIRECTED, Value::num(if g.directed { 1.0 } else { 0.0 })),
+        ("XData", row(pos.iter().map(|p| p.0).collect())),
+        ("YData", row(pos.iter().map(|p| p.1).collect())),
+        ("ZData", row(vec![0.0; pos.len()])),
+        ("NodeLabel", cell_row(&labels)),
+        ("NodeColor", color.clone()),
+        ("EdgeColor", color),
+        ("ShowArrows", Value::chars(if g.directed { "on" } else { "off" })),
+    ]);
+    if let Some(nm) = &g.names {
+        put(it, id, vec![(G_NAMES, cell_row(nm))]);
+    }
+    finish(it, &[id], props, nargout)
+}
+
+fn graph_id(it: &Interpreter, h: Option<&Value>) -> R<u64> {
+    let id = h.and_then(gfx::ids_of).and_then(|v| v.first().copied());
+    match id {
+        Some(id) if class_at(it, id) == Some(GRAPHPLOT) => Ok(id),
+        _ => rt("First argument must be a GraphPlot object."),
+    }
+}
+
+fn graph_edges(it: &Interpreter, id: u64) -> Vec<(usize, usize)> {
+    let v = gfx::stored(it, id, G_EDGES).map(|v| nums(&v)).unwrap_or_default();
+    v.chunks(2).map(|p| (p[0] as usize, p[1] as usize)).collect()
+}
+
+fn graph_nodes(it: &mut Interpreter, id: u64) -> usize {
+    nums(&get(it, id, "XData")).len()
+}
+
+/// Node indices (0-based) from numbers, names or a logical mask.
+fn node_ids(it: &mut Interpreter, id: u64, v: &Value) -> R<Vec<usize>> {
+    let n = graph_nodes(it, id);
+    let bad = || LangError::new("Nodes must be a numeric vector, a vector of node names, or a logical vector of length equal to the number of nodes.", 0);
+    match v {
+        Value::Num(m) if m.kind == Kind::Logical => {
+            if m.numel() != n {
+                return Err(bad());
+            }
+            Ok((0..n).filter(|&k| m.data[k] != 0.0).collect())
+        }
+        Value::Num(m) if m.kind != Kind::Char => m
+            .data
+            .iter()
+            .map(|&x| if x >= 1.0 && x <= n as f64 && x.fract() == 0.0 { Ok(x as usize - 1) } else { Err(bad()) })
+            .collect(),
+        _ => {
+            let names = match gfx::stored(it, id, G_NAMES) {
+                Some(v) => texts(it, &v)?,
+                None => return Err(bad()),
+            };
+            texts(it, v)?.iter().map(|t| names.iter().position(|x| x == t).ok_or_else(bad)).collect()
+        }
+    }
+}
+
+/// Edge indices from end nodes `s`, `t` (either direction for undirected graphs).
+fn edge_ids(it: &mut Interpreter, id: u64, s: &Value, t: &Value) -> R<Vec<usize>> {
+    let (s, t) = (node_ids(it, id, s)?, node_ids(it, id, t)?);
+    let bad = || LangError::new("s and t must specify edges in the graph.", 0);
+    if s.is_empty() || t.is_empty() || (s.len() != t.len() && s.len() != 1 && t.len() != 1) {
+        return Err(bad());
+    }
+    let directed = flag(it, id, G_DIRECTED);
+    let edges = graph_edges(it, id);
+    let k = s.len().max(t.len());
+    let mut out = Vec::new();
+    for i in 0..k {
+        let (a, b) = (s[i.min(s.len() - 1)], t[i.min(t.len() - 1)]);
+        let mut found = false;
+        for (e, &(p, q)) in edges.iter().enumerate() {
+            if (p, q) == (a, b) || (!directed && (q, p) == (a, b)) {
+                out.push(e);
+                found = true;
+            }
+        }
+        if !found {
+            return Err(bad());
+        }
+    }
+    Ok(out)
+}
+
+/// Per-element colors of `NodeColor` / `EdgeColor` (`None` for 'none').
+fn per_colors(it: &mut Interpreter, id: u64, name: &str, n: usize) -> Vec<Option<[f64; 3]>> {
+    let v = get(it, id, name);
+    if let Value::Num(m) = &v {
+        if m.kind != Kind::Char && m.cols() == 3 && m.rows() == n && n != 1 {
+            return (0..n).map(|r| Some([m.get(r, 0), m.get(r, 1), m.get(r, 2)])).collect();
+        }
+    }
+    let c = gfx::color_arg(&v).ok().flatten().map(|c| c.1);
+    vec![c; n]
+}
+
+fn per_numbers(it: &mut Interpreter, id: u64, name: &str, n: usize) -> Vec<f64> {
+    let v = nums(&get(it, id, name));
+    if v.len() == n && n != 1 { v } else { vec![v.first().copied().unwrap_or(1.0); n] }
+}
+
+fn per_texts(it: &mut Interpreter, id: u64, name: &str, n: usize) -> R<Vec<String>> {
+    let v = get(it, id, name);
+    Ok(match &v {
+        Value::Cell(c) if c.data.len() == n => texts(it, &v)?,
+        _ => vec![text(&v); n],
+    })
+}
+
+fn colors_value(c: &[Option<[f64; 3]>]) -> Value {
+    let n = c.len();
+    let mut data = vec![0.0; 3 * n];
+    for (r, x) in c.iter().enumerate() {
+        let x = x.unwrap_or([0.0; 3]);
+        for k in 0..3 {
+            data[k * n + r] = x[k];
+        }
+    }
+    Value::Num(Matrix::new(n, 3, data))
+}
+
+/// Applies the highlight options in `props` to nodes `nodes` and edges `edges`.
+fn graph_style(it: &mut Interpreter, id: u64, nodes: &[usize], edges: &[usize], props: &[(String, Value)]) -> R<()> {
+    let n = graph_nodes(it, id);
+    let m = graph_edges(it, id).len();
+    for (k, v) in props {
+        let key = k.to_ascii_lowercase();
+        match key.as_str() {
+            "nodecolor" | "edgecolor" => {
+                let c = gfx::color_arg(v)?.map(|c| c.1).ok_or_else(|| LangError::new("Invalid color.", 0))?;
+                let (prop, count, sel) = if key == "nodecolor" { ("NodeColor", n, nodes) } else { ("EdgeColor", m, edges) };
+                let mut cur = per_colors(it, id, prop, count);
+                for &i in sel {
+                    cur[i] = Some(c);
+                }
+                gfx::store(it, id, prop, colors_value(&cur));
+            }
+            "markersize" | "linewidth" | "arrowsize" => {
+                let (prop, count, sel) = match key.as_str() {
+                    "markersize" => ("MarkerSize", n, nodes),
+                    "linewidth" => ("LineWidth", m, edges),
+                    _ => ("ArrowSize", m, edges),
+                };
+                let x = v.scalar()?;
+                let mut cur = per_numbers(it, id, prop, count);
+                for &i in sel {
+                    cur[i] = x;
+                }
+                gfx::store(it, id, prop, row(cur));
+            }
+            "marker" | "linestyle" => {
+                let (prop, count, sel) = if key == "marker" { ("Marker", n, nodes) } else { ("LineStyle", m, edges) };
+                let x = if prop == "Marker" { marker_long(&text(v)) } else { text(v) };
+                let mut cur = per_texts(it, id, prop, count)?;
+                for &i in sel {
+                    cur[i] = x.clone();
+                }
+                gfx::store(it, id, prop, cell_row(&cur));
+            }
+            _ => return rt(format!("'{k}' is not a valid highlight option.")),
+        }
+    }
+    Ok(())
+}
+
+/// `highlight(h, nodes, ...)`, `highlight(h, s, t, ...)`.
+fn highlight(it: &mut Interpreter, a: &[Value]) -> Ret {
+    let id = graph_id(it, a.first())?;
+    let nodes_v = arg(a, 1, "highlight")?;
+    let edge_form = a.get(2).is_some_and(|v| !is_name(v) || matches!(v, Value::Cell(_)));
+    let (nodes, edges, rest) = if edge_form {
+        let e = edge_ids(it, id, nodes_v, &a[2])?;
+        (Vec::new(), e, &a[3..])
+    } else {
+        let nodes = node_ids(it, id, nodes_v)?;
+        let all = graph_edges(it, id);
+        let e: Vec<usize> = (0..all.len()).filter(|&k| nodes.contains(&all[k].0) && nodes.contains(&all[k].1)).collect();
+        (nodes, e, &a[2..])
+    };
+    let props = name_values(rest)?;
+    if props.is_empty() {
+        // Without options: larger markers for nodes, thicker lines for edges.
+        if edge_form {
+            let m = graph_edges(it, id).len();
+            let mut w = per_numbers(it, id, "LineWidth", m);
+            for &e in &edges {
+                w[e] *= 2.0;
+            }
+            gfx::store(it, id, "LineWidth", row(w));
+        } else {
+            let n = graph_nodes(it, id);
+            let mut s = per_numbers(it, id, "MarkerSize", n);
+            for &k in &nodes {
+                s[k] *= 2.0;
+            }
+            gfx::store(it, id, "MarkerSize", row(s));
+        }
+    } else {
+        graph_style(it, id, &nodes, &edges, &props)?;
+    }
+    redraw(it, id)?;
+    none()
+}
+
+/// `labelnode(h, nodes, labels)` / `labeledge(h, edges, labels)` / `labeledge(h, s, t, labels)`.
+fn label_graph(it: &mut Interpreter, a: &[Value], node: bool) -> Ret {
+    let name = if node { "labelnode" } else { "labeledge" };
+    let id = graph_id(it, a.first())?;
+    let (sel, labels_v) = if node {
+        let v = arg(a, 1, name)?.clone();
+        (node_ids(it, id, &v)?, arg(a, 2, name)?.clone())
+    } else if a.len() >= 4 {
+        (edge_ids(it, id, &a[1], &a[2])?, a[3].clone())
+    } else {
+        let m = graph_edges(it, id).len();
+        let idx = nums(arg(a, 1, name)?);
+        let mut sel = Vec::new();
+        for x in idx {
+            if x < 1.0 || x > m as f64 || x.fract() != 0.0 {
+                return rt("Edge indices must be positive integers less than or equal to the number of edges.");
+            }
+            sel.push(x as usize - 1);
+        }
+        (sel, arg(a, 2, name)?.clone())
+    };
+    let labels = texts(it, &labels_v)?;
+    if labels.is_empty() || (labels.len() != 1 && labels.len() != sel.len()) {
+        return rt(if node { "Number of labels must equal number of nodes." } else { "Number of labels must equal number of edges." });
+    }
+    let count = if node { graph_nodes(it, id) } else { graph_edges(it, id).len() };
+    let prop = if node { "NodeLabel" } else { "EdgeLabel" };
+    let cur_v = get(it, id, prop);
+    let mut cur = if cur_v.numel() == count { texts(it, &cur_v)? } else { vec![String::new(); count] };
+    for (k, &i) in sel.iter().enumerate() {
+        cur[i] = labels[k.min(labels.len() - 1)].clone();
+    }
+    gfx::store(it, id, prop, cell_row(&cur));
+    redraw(it, id)?;
+    none()
+}
+
+/// `layout(h, method, Name, Value)`.
+fn graph_layout(it: &mut Interpreter, a: &[Value]) -> Ret {
+    let id = graph_id(it, a.first())?;
+    let method = a.get(1).map(text).unwrap_or_else(|| "auto".into());
+    let props = name_values(a.get(2..).unwrap_or(&[]))?;
+    let direction = props.iter().find(|(k, _)| k.eq_ignore_ascii_case("Direction")).map(|(_, v)| text(v)).unwrap_or_else(|| "down".into());
+    let n = graph_nodes(it, id);
+    let directed = flag(it, id, G_DIRECTED);
+    let pos = crate::graphs::relayout(n, &graph_edges(it, id), directed, &method, &direction)?;
+    put(it, id, vec![("XData", row(pos.iter().map(|p| p.0).collect())), ("YData", row(pos.iter().map(|p| p.1).collect()))]);
+    redraw(it, id)?;
+    none()
+}
+
+fn style_of(t: &str) -> LineStyle {
+    match t {
+        "--" => LineStyle::Dashed,
+        ":" => LineStyle::Dotted,
+        "-." => LineStyle::DashDot,
+        "none" => LineStyle::None,
+        _ => LineStyle::Solid,
+    }
+}
+
+fn u8_of(c: [f64; 3]) -> [u8; 3] {
+    [(c[0] * 255.0).round() as u8, (c[1] * 255.0).round() as u8, (c[2] * 255.0).round() as u8]
+}
+
+type StyleGroup = ((Option<[u8; 3]>, u32, String), Vec<f64>, Vec<f64>);
+
+fn graph_parts(it: &mut Interpreter, id: u64, f: usize, a: usize) -> R<Vec<(usize, Series)>> {
+    let x = nums(&get(it, id, "XData"));
+    let y = nums(&get(it, id, "YData"));
+    let n = x.len().min(y.len());
+    let edges = graph_edges(it, id);
+    let m = edges.len();
+    let arrows = text(&get(it, id, "ShowArrows")) == "on";
+    let ecol = per_colors(it, id, "EdgeColor", m);
+    let ewid = per_numbers(it, id, "LineWidth", m);
+    let esty = per_texts(it, id, "LineStyle", m)?;
+    let ncol = per_colors(it, id, "NodeColor", n);
+    let nsize = per_numbers(it, id, "MarkerSize", n);
+    let nmark = per_texts(it, id, "Marker", n)?;
+    let (x0, x1) = x.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |a, &p| (a.0.min(p), a.1.max(p)));
+    let (y0, y1) = y.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |a, &p| (a.0.min(p), a.1.max(p)));
+    let span = (x1 - x0).max(y1 - y0).max(1.0);
+    let mut parts = Vec::new();
+    // Edges grouped by style, each group a polyline broken by NaN.
+    let mut groups: Vec<StyleGroup> = Vec::new();
+    for (k, &(s, t)) in edges.iter().enumerate() {
+        if s >= n || t >= n {
+            continue;
+        }
+        let key = (ecol[k].map(u8_of), (ewid[k] * 100.0) as u32, esty[k].clone());
+        let gi = match groups.iter().position(|g| g.0 == key) {
+            Some(i) => i,
+            None => {
+                groups.push((key, Vec::new(), Vec::new()));
+                groups.len() - 1
+            }
+        };
+        let (p, q) = ((x[s], y[s]), (x[t], y[t]));
+        let g = &mut groups[gi];
+        g.1.extend([p.0, q.0, f64::NAN]);
+        g.2.extend([p.1, q.1, f64::NAN]);
+        if arrows && s != t {
+            // Arrowheads halfway along the edge (ArrowPosition 0.5).
+            let (dx, dy) = (q.0 - p.0, q.1 - p.1);
+            let len = dx.hypot(dy).max(1e-9);
+            let (ux, uy) = (dx / len, dy / len);
+            let tip = ((p.0 + q.0) / 2.0 + ux * 0.02 * span, (p.1 + q.1) / 2.0 + uy * 0.02 * span);
+            for side in [-1.0, 1.0] {
+                let ang: f64 = 0.4 * side;
+                let head = 0.04 * span;
+                let (bx, by) = (-(ux * ang.cos() - uy * ang.sin()) * head, -(ux * ang.sin() + uy * ang.cos()) * head);
+                g.1.extend([tip.0, tip.0 + bx, f64::NAN]);
+                g.2.extend([tip.1, tip.1 + by, f64::NAN]);
+            }
+        }
+    }
+    for ((c, w, st), gx, gy) in groups {
+        let Some(c) = c else { continue };
+        let mut l = line(gx, gy, c, w as f32 / 100.0);
+        l.line_style = style_of(&st);
+        parts.push((a, l));
+    }
+    // Nodes grouped by color, size and marker.
+    let mut ngroups: Vec<StyleGroup> = Vec::new();
+    for i in 0..n {
+        let key = (ncol[i].map(u8_of), (nsize[i] * 100.0) as u32, nmark[i].clone());
+        match ngroups.iter_mut().find(|g| g.0 == key) {
+            Some(g) => {
+                g.1.push(x[i]);
+                g.2.push(y[i]);
+            }
+            None => ngroups.push((key, vec![x[i]], vec![y[i]])),
+        }
+    }
+    for ((c, size, mk), gx, gy) in ngroups {
+        let (Some(c), Some(marker)) = (c, gfx::parse_marker(&mk)) else { continue };
+        let mut s = Series::new(SeriesKind::Scatter, gx, gy);
+        s.line_style = LineStyle::None;
+        s.marker = Some(marker);
+        s.marker_size = size as f32 / 100.0;
+        s.color = Some(c);
+        parts.push((a, s));
+    }
+    // Labels beside the nodes and at the middle of the edges.
+    let dark = [0x26, 0x26, 0x26];
+    let nl = get(it, id, "NodeLabel");
+    let nlabels = if nl.numel() == n { texts(it, &nl)? } else { Vec::new() };
+    for (i, t) in nlabels.iter().enumerate() {
+        if !t.is_empty() {
+            let mut s = label(x[i] + 0.02 * span, y[i] + 0.03 * span, t, dark, Some(8.0));
+            s.centered = false;
+            parts.push((a, s));
+        }
+    }
+    let el = get(it, id, "EdgeLabel");
+    let elabels = if el.numel() == m { texts(it, &el)? } else { Vec::new() };
+    for (k, t) in elabels.iter().enumerate() {
+        let (s, e) = edges[k];
+        if !t.is_empty() && s < n && e < n {
+            parts.push((a, label((x[s] + x[e]) / 2.0, (y[s] + y[e]) / 2.0, t, dark, Some(8.0))));
+        }
+    }
+    if n > 0 {
+        let pad = 0.1 * span;
+        let ax = &mut it.figures[f].axes[a];
+        ax.xlim = Some((x0 - pad, x1 + pad));
+        ax.ylim = Some((y0 - pad, y1 + pad));
+    }
+    Ok(parts)
 }
