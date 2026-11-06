@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1855 |
+| Implemented | 1857 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **167** |
+| **To implement** | **165** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -210,23 +210,21 @@ Implemented: `addpoints`, `animatedline`, `bar`, `bar3`, `bar3h`, `barh`, `binsc
 
 ## MATLAB > Graphics > Formatting and Annotation
 
-Implemented: 113. To implement: 11. In a branch: 0. Out of scope: 0.
+Implemented: 115. To implement: 9. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `cameratoolbar`
 - [ ] `colordef`
 - [ ] `Colormap Editor`
-- [ ] `contrast`
 - [ ] `ginput`
 - [ ] `graymon`
 - [ ] `gtext`
-- [ ] `plotyy`
 - [ ] `spinmap`
 - [ ] `tightPosition`
 - [ ] `whitebg`
 
-Implemented: `abyss`, `alim`, `alpha`, `alphamap`, `annotation`, `autumn`, `axes`, `axis`, `bone`, `box`, `brighten`, `camdolly`, `camlight`, `camlookat`, `camorbit`, `campan`, `campos`, `camproj`, `camroll`, `camtarget`, `camup`, `camva`, `camzoom`, `cla`, `clf`, `clim`, `colorbar`, `colorcube`, `colormap`, `colororder`, `cool`, `copper`, `daspect`, `datatip`, `datetick`, `diffuse`, `figure`, `flag`, `fontname`, `fontsize`, `gray`, `grid`, `hold`, `hot`, `hsv`, `hsv2rgb`, `jet`, `legend`, `light`, `lightangle`, `lighting`, `line`, `lines`, `makehgtform`, `material`, `nexttile`, `num2ruler`, `orderedcolors`, `parula`, `pbaspect`, `pink`, `prism`, `rectangle`, `rgb2hsv`, `rgbplot`, `ruler2num`, `sgtitle`, `shading`, `sky`, `specular`, `spring`, `subplot`, `subtitle`, `summer`, `texlabel`, `text`, `tiledlayout`, `tilenum`, `tilerowcol`, `title`, `turbo`, `view`, `viewmtx`, `winter`, `xlabel`, `xlim`, `xline`, `xregion`, `xscale`, `xsecondarylabel`, `xtickangle`, `xtickformat`, `xticklabels`, `xticks`, `ylabel`, `ylim`, `yline`, `yregion`, `yscale`, `ysecondarylabel`, `ytickangle`, `ytickformat`, `yticklabels`, `yticks`, `yyaxis`, `zlabel`, `zlim`, `zscale`, `zsecondarylabel`, `ztickangle`, `ztickformat`, `zticklabels`, `zticks`
+Implemented: `abyss`, `alim`, `alpha`, `alphamap`, `annotation`, `autumn`, `axes`, `axis`, `bone`, `box`, `brighten`, `camdolly`, `camlight`, `camlookat`, `camorbit`, `campan`, `campos`, `camproj`, `camroll`, `camtarget`, `camup`, `camva`, `camzoom`, `cla`, `clf`, `clim`, `colorbar`, `colorcube`, `colormap`, `colororder`, `contrast`, `cool`, `copper`, `daspect`, `datatip`, `datetick`, `diffuse`, `figure`, `flag`, `fontname`, `fontsize`, `gray`, `grid`, `hold`, `hot`, `hsv`, `hsv2rgb`, `jet`, `legend`, `light`, `lightangle`, `lighting`, `line`, `lines`, `makehgtform`, `material`, `nexttile`, `num2ruler`, `orderedcolors`, `parula`, `pbaspect`, `pink`, `plotyy`, `prism`, `rectangle`, `rgb2hsv`, `rgbplot`, `ruler2num`, `sgtitle`, `shading`, `sky`, `specular`, `spring`, `subplot`, `subtitle`, `summer`, `texlabel`, `text`, `tiledlayout`, `tilenum`, `tilerowcol`, `title`, `turbo`, `view`, `viewmtx`, `winter`, `xlabel`, `xlim`, `xline`, `xregion`, `xscale`, `xsecondarylabel`, `xtickangle`, `xtickformat`, `xticklabels`, `xticks`, `ylabel`, `ylim`, `yline`, `yregion`, `yscale`, `ysecondarylabel`, `ytickangle`, `ytickformat`, `yticklabels`, `yticks`, `yyaxis`, `zlabel`, `zlim`, `zscale`, `zsecondarylabel`, `ztickangle`, `ztickformat`, `zticklabels`, `zticks`
 
 ## MATLAB > Graphics > Graphics Objects
 
