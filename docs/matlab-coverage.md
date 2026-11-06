@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1857 |
+| Implemented | 1858 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **165** |
+| **To implement** | **164** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -228,11 +228,10 @@ Implemented: `abyss`, `alim`, `alpha`, `alphamap`, `annotation`, `autumn`, `axes
 
 ## MATLAB > Graphics > Graphics Objects
 
-Implemented: 20. To implement: 10. In a branch: 0. Out of scope: 0.
+Implemented: 21. To implement: 9. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `copyobj`
 - [ ] `dragrect`
 - [ ] `hggroup`
 - [ ] `hgtransform`
@@ -243,7 +242,7 @@ To implement:
 - [ ] `uicontextmenu`
 - [ ] `uimenu`
 
-Implemented: `allchild`, `ancestor`, `delete`, `findall`, `findfigs`, `findobj`, `gca`, `gcbf`, `gcbo`, `gcf`, `gco`, `gobjects`, `groot`, `ishandle`, `ishghandle`, `ishold`, `newplot`, `refresh`, `reset`, `shg`
+Implemented: `allchild`, `ancestor`, `copyobj`, `delete`, `findall`, `findfigs`, `findobj`, `gca`, `gcbf`, `gcbo`, `gcf`, `gco`, `gobjects`, `groot`, `ishandle`, `ishghandle`, `ishold`, `newplot`, `refresh`, `reset`, `shg`
 
 ## MATLAB > Graphics > Graphics Performance
 
@@ -331,7 +330,7 @@ Implemented: `&amp;`, `&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `'`, `*`, `+`, `-`, `.'`
 
 Implemented: 84. To implement: 0. In a branch: 0. Out of scope: 0.
 
-Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isInterior`, `isinterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
+Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isinterior`, `isInterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
 
 ## MATLAB > Mathematics > Elementary Math
 
