@@ -20,6 +20,7 @@ type R<T> = Result<T, LangError>;
 pub const NAMES: &[&str] = &[
     "fzero", "fminbnd", "fminsearch", "lsqnonneg", "optimset", "optimget", "integral", "integral2", "integral3", "quadgk", "quad", "quadl",
     "quadv", "dblquad", "triplequad", "quad2d", "ode45", "ode23", "odeset", "odeget", "deval", "odeprint", "odeplot", "odephas2", "odephas3", "numjac",
+    "optimplotfval", "optimplotx", "optimplotfunccount",
 ];
 
 // ---- shared helpers ----------------------------------------------------------------------
@@ -306,6 +307,7 @@ fn fzero(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
     if x0.data.iter().any(|v| !v.is_finite()) {
         return rt("Second argument must be finite.");
     }
+    let mut hooks = OptimHooks::new(o);
     let mut fcount: usize;
     let mut iter = 0usize;
     let mut intervaliter = 0usize;
@@ -319,6 +321,25 @@ fn fzero(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
         ]);
         vec![Value::num(x), Value::num(fx), Value::num(flag), out].into_iter().take(nargout.max(1)).collect()
     };
+    // optimValues: the point, its value and the bracket [a, b] with its values.
+    let num_or_empty = |v: Option<f64>| v.map(Value::num).unwrap_or_else(Value::empty);
+    #[allow(clippy::too_many_arguments)]
+    let values = |fcount: usize, iter: usize, intervaliter: usize, fval: Option<f64>, how: &str, ab: Option<(f64, f64, f64, f64)>| {
+        info_struct(vec![
+            ("funccount", Value::num(fcount as f64)),
+            ("iteration", Value::num(iter as f64)),
+            ("intervaliteration", Value::num(intervaliter as f64)),
+            ("fval", num_or_empty(fval)),
+            ("procedure", Value::chars(how)),
+            ("intervala", num_or_empty(ab.map(|t| t.0))),
+            ("fvala", num_or_empty(ab.map(|t| t.1))),
+            ("intervalb", num_or_empty(ab.map(|t| t.2))),
+            ("fvalb", num_or_empty(ab.map(|t| t.3))),
+        ])
+    };
+    if hooks.active() && hooks.call(it, &Value::empty(), &values(0, 0, 0, None, " ", None), "init")? {
+        return Ok(Some(user_stop(it, quiet, finish(x0.data[0], f64::NAN, -1.0, 0, 0, 0, USER_STOP))));
+    }
     let (mut a_, mut fa, mut b, mut fb, savefa, savefb, savea, saveb);
     match x0.numel() {
         2 => {
@@ -360,6 +381,10 @@ fn fzero(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
             fa = fx;
             b = x;
             fb = fx;
+            if hooks.active() && hooks.call(it, &Value::num(x), &values(fcount, 0, 0, Some(fx), " ", Some((a_, fa, b, fb))), "iter")? {
+                return Ok(Some(user_stop(it, quiet, finish(x, fx, -1.0, 0, 0, fcount, USER_STOP))));
+            }
+            let mut at_a;
             // Widen an interval around x until f changes sign.
             while (fa > 0.0) == (fb > 0.0) {
                 intervaliter += 1;
@@ -374,18 +399,24 @@ fn fzero(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
                     }
                     return Ok(Some(finish(f64::NAN, f64::NAN, -3.0, 0, intervaliter, fcount, msg)));
                 }
-                if (fa > 0.0) != (fb > 0.0) {
-                    break;
-                }
-                b = x + dx;
-                fb = fcall_scalar(it, &f, Value::num(b), &extra)?;
-                fcount += 1;
-                if !fb.is_finite() || !b.is_finite() {
-                    let msg = "Exiting fzero: aborting search for an interval containing a sign change\n    because NaN or Inf function value encountered during search.";
-                    if !quiet {
-                        it.emit(OutputKind::Text(format!("{msg}\nCheck function or try again with a different starting value.\n")));
+                at_a = (fa > 0.0) != (fb > 0.0);
+                if !at_a {
+                    b = x + dx;
+                    fb = fcall_scalar(it, &f, Value::num(b), &extra)?;
+                    fcount += 1;
+                    if !fb.is_finite() || !b.is_finite() {
+                        let msg = "Exiting fzero: aborting search for an interval containing a sign change\n    because NaN or Inf function value encountered during search.";
+                        if !quiet {
+                            it.emit(OutputKind::Text(format!("{msg}\nCheck function or try again with a different starting value.\n")));
+                        }
+                        return Ok(Some(finish(f64::NAN, f64::NAN, -3.0, 0, intervaliter, fcount, msg)));
                     }
-                    return Ok(Some(finish(f64::NAN, f64::NAN, -3.0, 0, intervaliter, fcount, msg)));
+                }
+                if hooks.active() && hooks.call(it, &Value::num(x), &values(fcount, 0, intervaliter, Some(fx), " ", Some((a_, fa, b, fb))), "iter")? {
+                    return Ok(Some(user_stop(it, quiet, finish(x, fx, -1.0, 0, intervaliter, fcount, USER_STOP))));
+                }
+                if at_a {
+                    break;
                 }
             }
             savefa = fa;
@@ -395,29 +426,42 @@ fn fzero(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
         }
         _ => return rt("Second argument must be a scalar or vector of length 2."),
     }
-    // Brent's method.
+    let bracket = Some((savea, savefa, saveb, savefb));
+    // Brent's method. After each evaluation c is set to the end of the bracket across the
+    // sign change and b to the end with the smaller |f|: the point reported to the output
+    // functions.
     let mut fc = fb;
     let (mut c, mut d, mut e) = (a_, b - a_, b - a_);
+    macro_rules! arrange {
+        () => {
+            if (fb > 0.0) == (fc > 0.0) {
+                c = a_;
+                fc = fa;
+                d = b - a_;
+                e = d;
+            }
+            if fc.abs() < fb.abs() {
+                a_ = b;
+                b = c;
+                c = a_;
+                fa = fb;
+                fb = fc;
+                fc = fa;
+            }
+        };
+    }
+    arrange!();
+    if hooks.active() && hooks.call(it, &Value::num(b), &values(fcount, 0, intervaliter, Some(fb), "initial", bracket), "iter")? {
+        return Ok(Some(user_stop(it, quiet, finish(b, fb, -1.0, 0, intervaliter, fcount, USER_STOP))));
+    }
+    let mut how = "initial";
     while fb != 0.0 && a_ != b {
-        if (fb > 0.0) == (fc > 0.0) {
-            c = a_;
-            fc = fa;
-            d = b - a_;
-            e = d;
-        }
-        if fc.abs() < fb.abs() {
-            a_ = b;
-            b = c;
-            c = a_;
-            fa = fb;
-            fb = fc;
-            fc = fa;
-        }
         let m = 0.5 * (c - b);
         let toler = 2.0 * tol * b.abs().max(1.0);
         if m.abs() <= toler || fb == 0.0 {
             break;
         }
+        how = "bisection";
         if e.abs() < toler || fa.abs() <= fb.abs() {
             d = m;
             e = m;
@@ -441,6 +485,7 @@ fn fzero(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
             if 2.0 * p < 3.0 * m * q - (toler * q).abs() && p < (0.5 * e * q).abs() {
                 e = d;
                 d = p / q;
+                how = "interpolation";
             } else {
                 d = m;
                 e = m;
@@ -458,6 +503,13 @@ fn fzero(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
         fb = fcall_scalar(it, &f, Value::num(b), &extra)?;
         fcount += 1;
         iter += 1;
+        arrange!();
+        if hooks.active() && hooks.call(it, &Value::num(b), &values(fcount, iter, intervaliter, Some(fb), how, bracket), "iter")? {
+            return Ok(Some(user_stop(it, quiet, finish(b, fb, -1.0, iter, intervaliter, fcount, USER_STOP))));
+        }
+    }
+    if hooks.active() {
+        hooks.call(it, &Value::num(b), &values(fcount, iter, intervaliter, Some(fb), how, bracket), "done")?;
     }
     if fb.abs() <= savefa.abs().max(savefb.abs()) {
         let msg = fmt("Zero found in the interval [%g, %g]", &[savea, saveb]);
@@ -486,21 +538,34 @@ fn fminbnd(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
     let maxfun = opt_num(o, "MaxFunEvals", 500.0)?;
     let maxiter = opt_num(o, "MaxIter", 500.0)?;
     let quiet = matches!(opt_text(o, "Display", "notify")?.as_str(), "off" | "none");
-    let pack = |x: f64, fx: f64, flag: f64, iter: usize, num: usize, msg: &str| -> Ret {
+    let pack = |x: f64, fx: f64, flag: f64, iter: usize, num: usize, msg: &str| -> Vec<Value> {
         let out = info_struct(vec![
             ("iterations", Value::num(iter as f64)),
             ("funcCount", Value::num(num as f64)),
             ("algorithm", Value::chars("golden section search, parabolic interpolation")),
             ("message", Value::chars(msg)),
         ]);
-        Ok(Some(vec![Value::num(x), Value::num(fx), Value::num(flag), out].into_iter().take(nargout.max(1)).collect()))
+        vec![Value::num(x), Value::num(fx), Value::num(flag), out].into_iter().take(nargout.max(1)).collect()
     };
     if ax > bx {
         let msg = "Exiting: The bound ax must be less than or equal to bx.";
         if !quiet {
             it.emit(OutputKind::Text(format!("{msg}\n")));
         }
-        return pack(f64::NAN, f64::NAN, -2.0, 0, 0, msg);
+        return Ok(Some(pack(f64::NAN, f64::NAN, -2.0, 0, 0, msg)));
+    }
+    let mut hooks = OptimHooks::new(o);
+    let values = |num: usize, iter: usize, fval: Option<f64>, how: &str| {
+        info_struct(vec![
+            ("funccount", Value::num(num as f64)),
+            ("iteration", Value::num(iter as f64)),
+            ("fval", fval.map(Value::num).unwrap_or_else(Value::empty)),
+            ("procedure", Value::chars(how)),
+        ])
+    };
+    const INITIAL: &str = "       initial";
+    if hooks.active() && hooks.call(it, &Value::empty(), &values(0, 0, None, INITIAL), "init")? {
+        return Ok(Some(user_stop(it, quiet, pack(f64::NAN, f64::NAN, -1.0, 0, 0, USER_STOP))));
     }
     let seps = f64::EPSILON.sqrt();
     let c = 0.5 * (3.0 - 5f64.sqrt());
@@ -512,11 +577,15 @@ fn fminbnd(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
     let mut fx = fcall_scalar(it, &f, Value::num(xf), &extra)?;
     let mut num = 1usize;
     let mut iter = 0usize;
+    if hooks.active() && hooks.call(it, &Value::num(xf), &values(num, iter, Some(fx), INITIAL), "iter")? {
+        return Ok(Some(user_stop(it, quiet, pack(xf, fx, -1.0, iter, num, USER_STOP))));
+    }
+    let mut how = INITIAL;
     let (mut fv, mut fw) = (fx, fx);
     let mut xm = 0.5 * (a_ + b);
     let mut tol1 = seps * xf.abs() + tol / 3.0;
     let mut tol2 = 2.0 * tol1;
-    let mut flag = 1.0;
+    let mut exceeded = None;
     while (xf - xm).abs() > tol2 - 0.5 * (b - a_) {
         let mut gs = true;
         if e.abs() > tol1 {
@@ -546,11 +615,15 @@ fn fminbnd(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
             e = if xf >= xm { a_ - xf } else { b - xf };
             d = c * e;
         }
+        how = if gs { "       golden" } else { "       parabolic" };
         let si = d.signum_or_one();
         let x = xf + si * d.abs().max(tol1);
         let fu = fcall_scalar(it, &f, Value::num(x), &extra)?;
         num += 1;
         iter += 1;
+        if hooks.active() && hooks.call(it, &Value::num(x), &values(num, iter, Some(fu), how), "iter")? {
+            return Ok(Some(user_stop(it, quiet, pack(x, fu, -1.0, iter, num, USER_STOP))));
+        }
         if fu <= fx {
             if x >= xf {
                 a_ = xf;
@@ -583,16 +656,23 @@ fn fminbnd(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
         tol1 = seps * xf.abs() + tol / 3.0;
         tol2 = 2.0 * tol1;
         if num as f64 >= maxfun || iter as f64 >= maxiter {
-            flag = 0.0;
-            let msg = exceeded_message(if num as f64 >= maxfun { "evals" } else { "iter" }, fx);
-            if !quiet {
-                it.emit(OutputKind::Text(msg.clone() + "\n"));
-            }
-            return pack(xf, fx, flag, iter, num, &msg);
+            exceeded = Some(if num as f64 >= maxfun { "evals" } else { "iter" });
+            break;
         }
     }
+    // The limit message comes before the 'done' call.
+    let limit_msg = exceeded.map(|what| exceeded_message(what, fx));
+    if let (Some(msg), false) = (&limit_msg, quiet) {
+        it.emit(OutputKind::Text(format!(" \n{msg}\n")));
+    }
+    if hooks.active() {
+        hooks.call(it, &Value::num(xf), &values(num, iter, Some(fx), how), "done")?;
+    }
+    if let Some(msg) = limit_msg {
+        return Ok(Some(pack(xf, fx, 0.0, iter, num, &msg)));
+    }
     let msg = fmt("Optimization terminated:\n the current x satisfies the termination criteria using OPTIONS.TolX of %e \n", &[tol]);
-    pack(xf, fx, flag, iter, num, &msg)
+    Ok(Some(pack(xf, fx, 1.0, iter, num, &msg)))
 }
 
 trait SignOrOne {
@@ -629,6 +709,30 @@ fn fminsearch(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
     let xin = x0.data.clone();
     let mut v: Vec<Vec<f64>> = vec![xin.clone()];
     let mut fv = vec![eval(it, &xin)?];
+    let finish = |x: Value, fval: f64, flag: f64, iters: usize, evals: usize, msg: &str| -> Vec<Value> {
+        let out = info_struct(vec![
+            ("iterations", Value::num(iters as f64)),
+            ("funcCount", Value::num(evals as f64)),
+            ("algorithm", Value::chars("Nelder-Mead simplex direct search")),
+            ("message", Value::chars(msg)),
+        ]);
+        vec![x, Value::num(fval), Value::num(flag), out].into_iter().take(nargout.max(1)).collect()
+    };
+    let mut hooks = OptimHooks::new(o);
+    let values = |iters: usize, evals: usize, fval: f64, how: &str| {
+        info_struct(vec![
+            ("iteration", Value::num(iters as f64)),
+            ("funccount", Value::num(evals as f64)),
+            ("fval", Value::num(fval)),
+            ("procedure", Value::chars(how)),
+        ])
+    };
+    if hooks.active() {
+        let ov = values(0, 1, fv[0], "");
+        if hooks.call(it, &shaped(&xin), &ov, "init")? || hooks.call(it, &shaped(&xin), &ov, "iter")? {
+            return Ok(Some(user_stop(it, quiet, finish(shaped(&xin), fv[0], -1.0, 0, 1, USER_STOP))));
+        }
+    }
     for j in 0..n {
         let mut y = xin.clone();
         y[j] = if y[j] != 0.0 { 1.05 * y[j] } else { 0.00025 };
@@ -644,6 +748,10 @@ fn fminsearch(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
     sort(&mut v, &mut fv);
     let mut itercount = 1usize;
     let mut func_evals = n + 1;
+    let mut how = "initial simplex";
+    if hooks.active() && hooks.call(it, &shaped(&v[0]), &values(itercount, func_evals, fv[0], how), "iter")? {
+        return Ok(Some(user_stop(it, quiet, finish(shaped(&v[0]), fv[0], -1.0, itercount, func_evals, USER_STOP))));
+    }
     let eps_of = |x: f64| {
         let x = x.abs();
         if x == 0.0 { f64::from_bits(1) } else { 2f64.powf(x.log2().floor() - 52.0) }
@@ -668,13 +776,16 @@ fn fminsearch(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
             if fxe < fxr {
                 v[n] = xe;
                 fv[n] = fxe;
+                how = "expand";
             } else {
                 v[n] = xr;
                 fv[n] = fxr;
+                how = "reflect";
             }
         } else if fxr < fv[n - 1] {
             v[n] = xr;
             fv[n] = fxr;
+            how = "reflect";
         } else {
             let mut shrink = false;
             if fxr < fv[n] {
@@ -684,6 +795,7 @@ fn fminsearch(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
                 if fxc <= fxr {
                     v[n] = xc;
                     fv[n] = fxc;
+                    how = "contract outside";
                 } else {
                     shrink = true;
                 }
@@ -694,6 +806,7 @@ fn fminsearch(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
                 if fxcc < fv[n] {
                     v[n] = xcc;
                     fv[n] = fxcc;
+                    how = "contract inside";
                 } else {
                     shrink = true;
                 }
@@ -705,10 +818,17 @@ fn fminsearch(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
                     v[j] = p;
                 }
                 func_evals += n;
+                how = "shrink";
             }
         }
         sort(&mut v, &mut fv);
         itercount += 1;
+        if hooks.active() && hooks.call(it, &shaped(&v[0]), &values(itercount, func_evals, fv[0], how), "iter")? {
+            return Ok(Some(user_stop(it, quiet, finish(shaped(&v[0]), fv[0], -1.0, itercount, func_evals, USER_STOP))));
+        }
+    }
+    if hooks.active() {
+        hooks.call(it, &shaped(&v[0]), &values(itercount, func_evals, fv[0], how), "done")?;
     }
     let (flag, msg) = if func_evals as f64 >= maxfun {
         (0.0, exceeded_message("evals", fv[0]))
@@ -724,15 +844,9 @@ fn fminsearch(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
         )
     };
     if flag == 0.0 && !quiet {
-        it.emit(OutputKind::Text(msg.clone() + "\n"));
+        it.emit(OutputKind::Text(format!(" \n{msg}\n")));
     }
-    let out = info_struct(vec![
-        ("iterations", Value::num(itercount as f64)),
-        ("funcCount", Value::num(func_evals as f64)),
-        ("algorithm", Value::chars("Nelder-Mead simplex direct search")),
-        ("message", Value::chars(&msg)),
-    ]);
-    Ok(Some(vec![shaped(&v[0]), Value::num(fv[0]), Value::num(flag), out].into_iter().take(nargout.max(1)).collect()))
+    Ok(Some(finish(shaped(&v[0]), fv[0], flag, itercount, func_evals, &msg)))
 }
 
 fn lsqnonneg(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
@@ -1944,6 +2058,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
     let r = match name {
         "odeprint" | "odeplot" | "odephas2" | "odephas3" => return output_function(it, name, a),
         "numjac" => return numjac(it, a, nargout),
+        "optimplotfval" | "optimplotx" | "optimplotfunccount" => return optim_plot(it, name, a),
         "optimset" => return optimset(it, a, nargout),
         "optimget" => optget(a, OPTIM_FIELDS, "parameter"),
         "odeset" => {
@@ -2140,4 +2255,218 @@ fn numjac(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
         Value::num(calls as f64),
     ];
     Ok(Some(out.into_iter().take(nargout.max(1)).collect()))
+}
+
+// ---- optimization output and plot functions -----------------------------------------------
+
+const USER_STOP: &str = "Optimization terminated prematurely by user.";
+
+/// Prints the message of a stop asked for by an output or plot function (unless the display
+/// is off) and returns the solver's outputs.
+fn user_stop(it: &mut Interpreter, quiet: bool, outs: Vec<Value>) -> Vec<Value> {
+    if !quiet {
+        it.emit(OutputKind::Text(format!("{USER_STOP}\n")));
+    }
+    outs
+}
+
+/// The `OutputFcn` and `PlotFcns` of an fzero, fminbnd or fminsearch call.
+struct OptimHooks {
+    outs: Vec<Value>,
+    plots: Vec<Value>,
+    fig: Option<Value>,
+}
+
+fn fn_list(v: Option<&Value>) -> Vec<Value> {
+    match v {
+        None => Vec::new(),
+        Some(Value::Cell(c)) => c.data.iter().filter(|v| !v.is_empty_value()).cloned().collect(),
+        Some(v) => vec![v.clone()],
+    }
+}
+
+impl OptimHooks {
+    fn new(o: Option<&StructArray>) -> Self {
+        OptimHooks { outs: fn_list(opt(o, "OutputFcn")), plots: fn_list(opt(o, "PlotFcns")), fig: None }
+    }
+
+    fn active(&self) -> bool {
+        !self.outs.is_empty() || !self.plots.is_empty()
+    }
+
+    /// Calls every output function, then every plot function, each plot function in its own
+    /// row of the "Optimization Plot Function" figure. True when one of them asks to stop.
+    fn call(&mut self, it: &mut Interpreter, x: &Value, values: &Value, state: &str) -> R<bool> {
+        let mut stop = false;
+        for f in self.outs.clone() {
+            stop |= hook_call(it, &f, x, values, state)?;
+        }
+        if self.plots.is_empty() {
+            return Ok(stop);
+        }
+        match &self.fig {
+            None => {
+                let args = vec![Value::chars("Name"), Value::chars("Optimization Plot Function"), Value::chars("NumberTitle"), Value::chars("off")];
+                self.fig = it.call_function("figure", args, 1)?.into_iter().next();
+            }
+            Some(fig) => {
+                it.call_function("figure", vec![fig.clone()], 0)?;
+            }
+        }
+        let n = self.plots.len();
+        for (k, f) in self.plots.clone().iter().enumerate() {
+            if n > 1 {
+                it.call_function("subplot", vec![Value::num(n as f64), Value::num(1.0), Value::num((k + 1) as f64)], 0)?;
+            }
+            stop |= hook_call(it, f, x, values, state)?;
+        }
+        Ok(stop)
+    }
+}
+
+fn hook_call(it: &mut Interpreter, f: &Value, x: &Value, values: &Value, state: &str) -> R<bool> {
+    let args = vec![x.clone(), values.clone(), Value::chars(state)];
+    let r = if f.is_text() { it.call_function(&f.text()?, args, 1)? } else { it.call_func_value(f, args, 1)? };
+    Ok(r.first().map(|v| v.is_true().unwrap_or(false)).unwrap_or(false))
+}
+
+thread_local! {
+    /// The function count `optimplotfunccount` saw last (it plots the evaluations per iteration).
+    static LAST_FUNCCOUNT: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
+}
+
+/// The field `name` of the optimValues struct.
+fn optim_field(v: &Value, name: &str) -> R<Value> {
+    match v {
+        Value::Struct(s) => {
+            let k = s.fields.iter().position(|f| f == name).ok_or_else(|| LangError::new(format!("Unrecognized field name \"{name}\"."), 0))?;
+            Ok(s.elems.first().map(|e| e[k].clone()).unwrap_or_else(Value::empty))
+        }
+        _ => rt("Dot indexing is not supported for variables of this type."),
+    }
+}
+
+/// The plot of the current axes made by an earlier call (found by its Tag).
+fn tagged_plot(it: &mut Interpreter, tag: &str) -> R<Option<Value>> {
+    let ax = it.call_function("gca", vec![], 1)?.remove(0);
+    let found = it.call_function("findobj", vec![ax, Value::chars("Tag"), Value::chars(tag)], 1)?.remove(0);
+    Ok((found.numel() > 0).then_some(found))
+}
+
+fn set_props(it: &mut Interpreter, h: &Value, pairs: Vec<(&str, Value)>) -> R<()> {
+    let mut args = vec![h.clone()];
+    for (k, v) in pairs {
+        args.push(Value::chars(k));
+        args.push(v);
+    }
+    it.call_function("set", args, 0)?;
+    Ok(())
+}
+
+fn get_prop_value(it: &mut Interpreter, h: &Value, name: &str) -> R<Matrix> {
+    it.call_function("get", vec![h.clone(), Value::chars(name)], 1)?.remove(0).to_matrix()
+}
+
+fn labels(it: &mut Interpreter, title: &str, xlabel: Option<&str>, ylabel: &str) -> R<()> {
+    it.call_function("title", vec![Value::chars(title)], 0)?;
+    if let Some(x) = xlabel {
+        it.call_function("xlabel", vec![Value::chars(x)], 0)?;
+    }
+    it.call_function("ylabel", vec![Value::chars(ylabel)], 0)?;
+    Ok(())
+}
+
+/// A filled scatter of one point, or a bar chart with no edges, tagged `tag`.
+fn new_optim_plot(it: &mut Interpreter, tag: &str, x: Matrix, y: Matrix, bar: bool) -> R<Value> {
+    let h = if bar {
+        let h = it.call_function("bar", vec![Value::Num(x), Value::Num(y)], 1)?.remove(0);
+        set_props(it, &h, vec![("EdgeColor", Value::chars("none"))])?;
+        h
+    } else {
+        it.call_function("scatter", vec![Value::Num(x), Value::Num(y), Value::chars("filled")], 1)?.remove(0)
+    };
+    set_props(it, &h, vec![("Tag", Value::chars(tag))])?;
+    Ok(h)
+}
+
+/// optimplotfval, optimplotx and optimplotfunccount: plot functions for the PlotFcns option.
+/// They draw at every 'iter' call: iteration 0 makes the plot, later ones extend it.
+fn optim_plot(it: &mut Interpreter, name: &str, a: &[Value]) -> Ret {
+    let x = arg(a, 0, name)?.clone();
+    let values = arg(a, 1, name)?.clone();
+    let state = arg(a, 2, name)?.text()?;
+    if name == "optimplotfunccount" && state == "init" {
+        LAST_FUNCCOUNT.with(|c| c.set(0.0));
+    }
+    if state != "iter" {
+        return one(Value::bool(false));
+    }
+    let iteration = optim_field(&values, "iteration")?.scalar()?;
+    let existing = if iteration == 0.0 { None } else { tagged_plot(it, name)? };
+    let row = |v: Vec<f64>| Matrix::row(v);
+    match name {
+        "optimplotfval" => {
+            let fval = optim_field(&values, "fval")?.to_matrix()?;
+            if fval.numel() == 1 {
+                let fv = fval.data[0];
+                match existing {
+                    Some(h) => {
+                        let mut xs = get_prop_value(it, &h, "XData")?.data;
+                        let mut ys = get_prop_value(it, &h, "YData")?.data;
+                        xs.push(iteration);
+                        ys.push(fv);
+                        set_props(it, &h, vec![("XData", Value::Num(row(xs))), ("YData", Value::Num(row(ys)))])?;
+                        it.call_function("title", vec![Value::chars(&fmt("Current Function Value: %g", &[fv]))], 0)?;
+                    }
+                    None => {
+                        new_optim_plot(it, name, row(vec![iteration]), row(vec![fv]), false)?;
+                        labels(it, &fmt("Current Function Value: %g", &[fv]), Some("Iteration"), "Function value")?;
+                    }
+                }
+            } else {
+                let n = fval.numel();
+                match existing {
+                    Some(h) => set_props(it, &h, vec![("YData", Value::Num(row(fval.data)))])?,
+                    None => {
+                        new_optim_plot(it, name, row((1..=n).map(|k| k as f64).collect()), row(fval.data), true)?;
+                        labels(it, "Current Function Values", Some("Function value number"), "Function value")?;
+                        it.call_function("xticks", vec![Value::Num(row((1..=n).map(|k| k as f64).collect()))], 0)?;
+                    }
+                }
+            }
+        }
+        "optimplotx" => {
+            let xm = x.to_matrix()?;
+            let n = xm.numel();
+            match existing {
+                Some(h) => set_props(it, &h, vec![("YData", Value::Num(row(xm.data)))])?,
+                None => {
+                    new_optim_plot(it, name, row((1..=n).map(|k| k as f64).collect()), row(xm.data), true)?;
+                    labels(it, "Current Point", Some("Variable number"), "Current point")?;
+                    it.call_function("xticks", vec![Value::Num(row((1..=n).map(|k| k as f64).collect()))], 0)?;
+                }
+            }
+        }
+        _ => {
+            let count = optim_field(&values, "funccount")?.scalar()?;
+            let title = fmt("Total Function Evaluations: %d", &[count]);
+            match existing {
+                Some(h) => {
+                    let prev = LAST_FUNCCOUNT.with(|c| c.get());
+                    let mut xs = get_prop_value(it, &h, "XData")?.data;
+                    let mut ys = get_prop_value(it, &h, "YData")?.data;
+                    xs.push(iteration);
+                    ys.push(count - prev);
+                    set_props(it, &h, vec![("XData", Value::Num(row(xs))), ("YData", Value::Num(row(ys)))])?;
+                    it.call_function("title", vec![Value::chars(&title)], 0)?;
+                }
+                None => {
+                    new_optim_plot(it, name, row(vec![iteration]), row(vec![count]), false)?;
+                    labels(it, &title, Some("Iteration"), "Function evaluations")?;
+                }
+            }
+            LAST_FUNCCOUNT.with(|c| c.set(count));
+        }
+    }
+    one(Value::bool(false))
 }

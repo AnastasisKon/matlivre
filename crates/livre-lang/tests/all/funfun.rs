@@ -88,7 +88,7 @@ fn solver_errors_and_limits() {
     let (_, out) = run("fzero(@(x) x.^2 + 1, [0 1])");
     assert_eq!(out, ["Error: The function values at the interval endpoints must differ in sign."]);
     let (it, out) = run("[x, fv, ef] = fminsearch(@(x) x^2, 5, optimset('MaxFunEvals', 10));");
-    assert!(out[0].starts_with("Exiting: Maximum number of function evaluations has been exceeded"), "{out:?}");
+    assert!(out[0].starts_with(" \nExiting: Maximum number of function evaluations has been exceeded"), "{out:?}");
     close(&it, "ef", &[0.0], 0.0);
     let (it, out) = run("[x, fv, ef] = fminsearch(@(x) x^2, 5, optimset('MaxFunEvals', 10, 'Display', 'off'));");
     assert!(out.is_empty(), "{out:?}");

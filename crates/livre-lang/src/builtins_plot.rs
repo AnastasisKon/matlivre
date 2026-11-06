@@ -602,6 +602,7 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
             // scatter(x, y, sz, c): numeric size/color arguments after x, y.
             let mut args2: Vec<Value> = a.to_vec();
             let mut size = None;
+            let filled = kind == SeriesKind::Scatter && a.iter().any(|v| v.is_text() && v.text().map(|t| t == "filled").unwrap_or(false));
             if kind == SeriesKind::Scatter {
                 if args2.len() >= 3 && !args2[2].is_text() {
                     let s = args2.remove(2);
@@ -621,6 +622,9 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
                 }
             }
             let ids = it.add_series(series, x_kind);
+            if filled {
+                apply_props(it, &ids, &[("MarkerFaceColor".to_string(), Value::chars("flat")), ("MarkerEdgeColor".to_string(), Value::chars("none"))])?;
+            }
             apply_props(it, &ids, &props)?;
             handles_out(it, &ids, nargout)
         }

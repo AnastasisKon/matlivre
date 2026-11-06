@@ -1046,6 +1046,11 @@ fn set_prop(it: &mut Interpreter, id: u64, name: &str, v: Value) -> R<()> {
                 }
                 "ZData" => s.z = v.to_matrix()?.data,
                 "CData" => s.c = v.to_matrix()?.data,
+                // Markers colored by CData.
+                "MarkerFaceColor" | "MarkerEdgeColor" if v.text().map(|t| t.eq_ignore_ascii_case("flat")).unwrap_or(false) => {
+                    save = Some(Value::chars("flat"));
+                    keep = true;
+                }
                 "Color" | "FaceColor" | "MarkerFaceColor" | "MarkerEdgeColor" if !(name.starts_with("Marker") && auto) => {
                     let c = color_arg(&v)?;
                     if name == "Color" || name == "FaceColor" || c.is_some() {
@@ -1361,7 +1366,14 @@ pub fn display(it: &mut Interpreter, name: &str, v: &Value) -> R<String> {
             let s = get_prop(it, id, "String")?.text().unwrap_or_default();
             if s.is_empty() { "Text".to_string() } else { format!("Text ({s})") }
         }
-        _ => short(&class).to_string(),
+        // MATLAB names the object by its Tag, else its DisplayName: `Line (data1)`.
+        _ => {
+            let label = ["Tag", "DisplayName"].iter().find_map(|p| get_prop(it, id, p).ok().and_then(|v| v.text().ok()).filter(|s| !s.is_empty()));
+            match label {
+                Some(l) => format!("{} ({l})", short(&class)),
+                None => short(&class).to_string(),
+            }
+        }
     };
     let mut s = StructArray::scalar();
     for p in short_props(&class, it, id) {
