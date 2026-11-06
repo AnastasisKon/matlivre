@@ -14,6 +14,7 @@ mod elfun;
 mod elmat;
 mod excel;
 mod extended;
+mod figfile;
 mod files;
 mod files_more;
 mod func_objects;

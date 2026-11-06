@@ -34,6 +34,7 @@ pub mod builtins_types;
 pub mod class;
 pub mod cplx;
 pub mod decomp;
+pub mod figfile;
 pub mod messages;
 pub mod display;
 pub mod error;

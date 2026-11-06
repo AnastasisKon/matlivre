@@ -210,6 +210,17 @@ fn is_data_class(c: &str) -> bool {
     c.starts_with("matlab.graphics.primitive.") || c.starts_with("matlab.graphics.chart.primitive.")
 }
 
+fn colormap_value(map: Vec<[f64; 3]>) -> Value {
+    let n = map.len();
+    let mut data = vec![0.0; n * 3];
+    for (i, c) in map.iter().enumerate() {
+        for k in 0..3 {
+            data[k * n + i] = c[k];
+        }
+    }
+    Value::Num(Matrix::new(n, 3, data))
+}
+
 /// `[h1 h2 ...]` of graphics handles: an array of their objects, of their common class.
 pub fn concat(items: Vec<Value>, dim: usize) -> R<Value> {
     let mut classes: Vec<String> = Vec::new();
@@ -610,6 +621,7 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
         },
         Target::Figure(f) => match name {
             "Number" => Value::num(it.figures[f].id as f64),
+            "Colormap" => colormap_value(it.figures[f].colormap.clone().unwrap_or_else(|| graphics::colormap("parula", 256).unwrap_or_default())),
             "Children" => {
                 let n = it.figures[f].axes.len();
                 let ids: Vec<u64> = (0..n).rev().map(|a| axes_id(it, f, a)).collect();
@@ -664,6 +676,7 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
                 "YLimMode" => Value::chars(if ax.ylim.is_some() { "manual" } else { "auto" }),
                 "XScale" => Value::chars(if ax.xlog { "log" } else { "linear" }),
                 "YScale" => Value::chars(if ax.ylog { "log" } else { "linear" }),
+                "YDir" => Value::chars(if ax.y_reverse { "reverse" } else { "normal" }),
                 "XGrid" | "YGrid" => on_off_value(ax.grid),
                 "XTick" => row(&tick_values(&ax.xticks, x0, x1)),
                 "YTick" => row(&tick_values(&ax.yticks, y0, y1)),
@@ -737,6 +750,7 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
                     };
                     Value::Num(Matrix::new(s.grid.0, s.grid.1, v.clone()))
                 }
+                "CDataMapping" if s.kind == SeriesKind::Image => Value::chars(if s.direct { "direct" } else { "scaled" }),
                 "CData" if s.kind == SeriesKind::Image => {
                     let dims = if s.channels == 3 { vec![s.grid.0, s.grid.1, 3] } else { vec![s.grid.0, s.grid.1] };
                     Value::Num(Matrix::from_dims(dims, s.c.clone()))
@@ -1000,6 +1014,7 @@ fn set_prop(it: &mut Interpreter, id: u64, name: &str, v: Value) -> R<()> {
                 "YLimMode" if auto => ax.ylim = None,
                 "XScale" => ax.xlog = v.text()?.eq_ignore_ascii_case("log"),
                 "YScale" => ax.ylog = v.text()?.eq_ignore_ascii_case("log"),
+                "YDir" => ax.y_reverse = v.text()?.eq_ignore_ascii_case("reverse"),
                 "XGrid" | "YGrid" | "ZGrid" => ax.grid = on_off(&v)?,
                 "XTick" => ax.xticks.values = Some(v.to_matrix()?.data),
                 "YTick" => ax.yticks.values = Some(v.to_matrix()?.data),
@@ -1046,6 +1061,7 @@ fn set_prop(it: &mut Interpreter, id: u64, name: &str, v: Value) -> R<()> {
             let s = &mut it.figures[f].axes[a].series[si];
             keep = false;
             match name {
+                "CDataMapping" if s.kind == SeriesKind::Image => s.direct = v.text()?.eq_ignore_ascii_case("direct"),
                 "Position" | "Curvature" if s.kind == SeriesKind::Rectangle => {
                     let m = v.to_matrix()?;
                     if name == "Position" {

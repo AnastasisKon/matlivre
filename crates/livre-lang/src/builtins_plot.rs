@@ -371,6 +371,9 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
                 f.axes = vec![Axes::default(); m * n];
             }
             f.current_axes = p - 1;
+            if nargout > 0 {
+                return one(it.current_axes_handle());
+            }
             none()
         }
         "hold" | "grid" => {
@@ -468,8 +471,13 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
                     ax.series
                         .iter()
                         .filter(|s| !matches!(s.kind, SeriesKind::Text | SeriesKind::ConstantLine | SeriesKind::Region) && s.visible)
-                        .enumerate()
-                        .map(|(i, s)| s.name.clone().unwrap_or_else(|| format!("data{}", i + 1)))
+                        // Unnamed objects are numbered among themselves (data1, data2, ...).
+                        .scan(0, |unnamed, s| {
+                            Some(s.name.clone().unwrap_or_else(|| {
+                                *unnamed += 1;
+                                format!("data{unnamed}")
+                            }))
+                        })
                         .collect(),
                 );
             } else {
