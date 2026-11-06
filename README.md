@@ -20,7 +20,7 @@ of MATLAB, written in Rust: no MATLAB installation, license or Java runtime is n
 - **Runs code fast.** On a 12-case benchmark of loops, recursion, array growth, linear
   algebra, sorting, strings, structs and cells, MatLivre is 4.7x faster than MATLAB R2023b and
   65x faster than GNU Octave (geometric mean), with identical results in all three.
-- **Speaks MATLAB.** 1,858 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
+- **Speaks MATLAB.** 1,862 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
   error messages and semantics, checked against MATLAB R2023b output.
 - **One small program.** A single 36 MB executable that depends only on DLLs shipped with
   Windows.
@@ -126,7 +126,7 @@ per-case Octave comparison are in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.m
   histogram, polar plots and more; charts (heatmaps, box, swarm and bubble charts, pie and
   donut charts, word clouds, stacked and parallel coordinates plots); two y axes (`yyaxis`, `plotyy`),
   secondary axis labels, date ticks, tiled layouts, annotations, data tips and colorbars, with a crosshair that reads values off
-  the plot. Graphics objects are handles (`get`, `set`, `findobj`, `copyobj`, arrays of them). `saveas`, `print` and `exportgraphics` write PNG and SVG.
+  the plot. Graphics objects are handles (`get`, `set`, `findobj`, `copyobj`, arrays of them). `saveas`, `print` and `exportgraphics` write PNG and SVG; `savefig` and `openfig` save and reopen MATLAB `.fig` files.
 - A files panel (open a folder as the project root, like VS Code), workspace browser, command window and floating figure windows; tabs that can
   be dragged between windows; light and dark themes.
 - Code runs on its own engine thread, so the editor never freezes while a script runs.
@@ -158,7 +158,7 @@ per-case Octave comparison are in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.m
 
 MATLAB compatibility is the rule: semantics, display and error messages follow MATLAB R2023b.
 [`docs/matlab-coverage.md`](docs/matlab-coverage.md) lists every function of the MATLAB and
-Symbolic Math Toolbox references and its status (1,858 implemented).
+Symbolic Math Toolbox references and its status (1,862 implemented).
 
 - N-D arrays of every numeric type, `logical`, `char` and strings, with implicit expansion,
   saturating integer arithmetic and complex numbers; regular expressions and text patterns

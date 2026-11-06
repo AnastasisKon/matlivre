@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1858 |
+| Implemented | 1862 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **164** |
+| **To implement** | **160** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -263,20 +263,16 @@ Implemented: `cmap2gray`, `cmpermute`, `cmunique`, `dither`, `getrangefromclass`
 
 ## MATLAB > Graphics > Printing and Saving
 
-Implemented: 5. To implement: 8. In a branch: 0. Out of scope: 0.
+Implemented: 9. To implement: 4. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `copygraphics`
 - [ ] `exportapp`
 - [ ] `hgexport`
-- [ ] `hgload`
-- [ ] `hgsave`
-- [ ] `openfig`
 - [ ] `pagesetupdlg`
-- [ ] `savefig`
 
-Implemented: `exportgraphics`, `orient`, `print`, `printopt`, `saveas`
+Implemented: `exportgraphics`, `hgload`, `hgsave`, `openfig`, `orient`, `print`, `printopt`, `saveas`, `savefig`
 
 ## MATLAB > Language Fundamentals > Data Types
 
