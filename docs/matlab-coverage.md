@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1852 |
+| Implemented | 1855 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **170** |
+| **To implement** | **167** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -210,7 +210,7 @@ Implemented: `addpoints`, `animatedline`, `bar`, `bar3`, `bar3h`, `barh`, `binsc
 
 ## MATLAB > Graphics > Formatting and Annotation
 
-Implemented: 112. To implement: 12. In a branch: 0. Out of scope: 0.
+Implemented: 113. To implement: 11. In a branch: 0. Out of scope: 0.
 
 To implement:
 
@@ -218,7 +218,6 @@ To implement:
 - [ ] `colordef`
 - [ ] `Colormap Editor`
 - [ ] `contrast`
-- [ ] `datatip`
 - [ ] `ginput`
 - [ ] `graymon`
 - [ ] `gtext`
@@ -227,17 +226,16 @@ To implement:
 - [ ] `tightPosition`
 - [ ] `whitebg`
 
-Implemented: `abyss`, `alim`, `alpha`, `alphamap`, `annotation`, `autumn`, `axes`, `axis`, `bone`, `box`, `brighten`, `camdolly`, `camlight`, `camlookat`, `camorbit`, `campan`, `campos`, `camproj`, `camroll`, `camtarget`, `camup`, `camva`, `camzoom`, `cla`, `clf`, `clim`, `colorbar`, `colorcube`, `colormap`, `colororder`, `cool`, `copper`, `daspect`, `datetick`, `diffuse`, `figure`, `flag`, `fontname`, `fontsize`, `gray`, `grid`, `hold`, `hot`, `hsv`, `hsv2rgb`, `jet`, `legend`, `light`, `lightangle`, `lighting`, `line`, `lines`, `makehgtform`, `material`, `nexttile`, `num2ruler`, `orderedcolors`, `parula`, `pbaspect`, `pink`, `prism`, `rectangle`, `rgb2hsv`, `rgbplot`, `ruler2num`, `sgtitle`, `shading`, `sky`, `specular`, `spring`, `subplot`, `subtitle`, `summer`, `texlabel`, `text`, `tiledlayout`, `tilenum`, `tilerowcol`, `title`, `turbo`, `view`, `viewmtx`, `winter`, `xlabel`, `xlim`, `xline`, `xregion`, `xscale`, `xsecondarylabel`, `xtickangle`, `xtickformat`, `xticklabels`, `xticks`, `ylabel`, `ylim`, `yline`, `yregion`, `yscale`, `ysecondarylabel`, `ytickangle`, `ytickformat`, `yticklabels`, `yticks`, `yyaxis`, `zlabel`, `zlim`, `zscale`, `zsecondarylabel`, `ztickangle`, `ztickformat`, `zticklabels`, `zticks`
+Implemented: `abyss`, `alim`, `alpha`, `alphamap`, `annotation`, `autumn`, `axes`, `axis`, `bone`, `box`, `brighten`, `camdolly`, `camlight`, `camlookat`, `camorbit`, `campan`, `campos`, `camproj`, `camroll`, `camtarget`, `camup`, `camva`, `camzoom`, `cla`, `clf`, `clim`, `colorbar`, `colorcube`, `colormap`, `colororder`, `cool`, `copper`, `daspect`, `datatip`, `datetick`, `diffuse`, `figure`, `flag`, `fontname`, `fontsize`, `gray`, `grid`, `hold`, `hot`, `hsv`, `hsv2rgb`, `jet`, `legend`, `light`, `lightangle`, `lighting`, `line`, `lines`, `makehgtform`, `material`, `nexttile`, `num2ruler`, `orderedcolors`, `parula`, `pbaspect`, `pink`, `prism`, `rectangle`, `rgb2hsv`, `rgbplot`, `ruler2num`, `sgtitle`, `shading`, `sky`, `specular`, `spring`, `subplot`, `subtitle`, `summer`, `texlabel`, `text`, `tiledlayout`, `tilenum`, `tilerowcol`, `title`, `turbo`, `view`, `viewmtx`, `winter`, `xlabel`, `xlim`, `xline`, `xregion`, `xscale`, `xsecondarylabel`, `xtickangle`, `xtickformat`, `xticklabels`, `xticks`, `ylabel`, `ylim`, `yline`, `yregion`, `yscale`, `ysecondarylabel`, `ytickangle`, `ytickformat`, `yticklabels`, `yticks`, `yyaxis`, `zlabel`, `zlim`, `zscale`, `zsecondarylabel`, `ztickangle`, `ztickformat`, `zticklabels`, `zticks`
 
 ## MATLAB > Graphics > Graphics Objects
 
-Implemented: 19. To implement: 11. In a branch: 0. Out of scope: 0.
+Implemented: 20. To implement: 10. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `copyobj`
 - [ ] `dragrect`
-- [ ] `findfigs`
 - [ ] `hggroup`
 - [ ] `hgtransform`
 - [ ] `matlab.graphics.Graphics`
@@ -247,7 +245,7 @@ To implement:
 - [ ] `uicontextmenu`
 - [ ] `uimenu`
 
-Implemented: `allchild`, `ancestor`, `delete`, `findall`, `findobj`, `gca`, `gcbf`, `gcbo`, `gcf`, `gco`, `gobjects`, `groot`, `ishandle`, `ishghandle`, `ishold`, `newplot`, `refresh`, `reset`, `shg`
+Implemented: `allchild`, `ancestor`, `delete`, `findall`, `findfigs`, `findobj`, `gca`, `gcbf`, `gcbo`, `gcf`, `gco`, `gobjects`, `groot`, `ishandle`, `ishghandle`, `ishold`, `newplot`, `refresh`, `reset`, `shg`
 
 ## MATLAB > Graphics > Graphics Performance
 
@@ -642,13 +640,12 @@ Out of scope: `deployprefdir` (internal helper, not a user function), `matfinfo`
 
 ## Not in the function reference > matlab/lang
 
-Implemented: 2. To implement: 8. In a branch: 0. Out of scope: 2.
+Implemented: 3. To implement: 7. In a branch: 0. Out of scope: 2.
 
 To implement:
 
 - [ ] `doclink`
 - [ ] `dynamicprops`
-- [ ] `handle`
 - [ ] `lists`
 - [ ] `parallel_function`
 - [ ] `precedence`
@@ -657,7 +654,7 @@ To implement:
 
 Language keywords to check: `break`, `case`, `catch`, `continue`, `else`, `elseif`, `for`, `function`, `if`, `otherwise`, `parfor`, `return`, `switch`, `try`, `while`
 
-Implemented: `display`, `message`
+Implemented: `display`, `handle`, `message`
 
 Out of scope: `checkSyntacticWarnings` (internal helper, not a user function), `ParallelException` (internal helper, not a user function)
 
