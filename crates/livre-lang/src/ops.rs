@@ -221,6 +221,7 @@ pub fn num_binary(op: BinOp, x: &Matrix, y: &Matrix) -> R<Matrix> {
             Le => return logical(a <= b),
             Gt => return logical(a > b),
             Ge => return logical(a >= b),
+            And | AndAnd | Or | OrOr if a.is_nan() || b.is_nan() => return rt("NaN values cannot be converted to logicals."),
             And | AndAnd => return logical(a != 0.0 && b != 0.0),
             Or | OrOr => return logical(a != 0.0 || b != 0.0),
             _ => {}
@@ -245,7 +246,7 @@ pub fn num_binary(op: BinOp, x: &Matrix, y: &Matrix) -> R<Matrix> {
                 Matrix::from_dims(m.dims.clone(), (0..m.numel()).map(|i| b2f(m.data[i] != 0.0 || m.im_at(i) != 0.0)).collect())
             };
             if x.data.iter().any(|v| v.is_nan()) || y.data.iter().any(|v| v.is_nan()) {
-                return rt("NaN's cannot be converted to logicals.");
+                return rt("NaN values cannot be converted to logicals.");
             }
             let (p, q) = (nz(x), nz(y));
             let and = matches!(op, And | AndAnd);

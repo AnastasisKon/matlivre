@@ -213,21 +213,54 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
             one(Value::chars(&if m.kind.is_int() || m.kind == Kind::Single { format!("{}({s})", m.kind.name()) } else { s }))
         }
         "str2double" => {
-            let parse = |s: &str| -> f64 {
-                let t = s.trim().replace(',', "");
+            let real = |t: &str| -> Option<f64> {
                 if let Ok(v) = t.parse::<f64>() {
-                    return v;
+                    return Some(v);
                 }
                 match t.to_lowercase().as_str() {
-                    "inf" | "+inf" => f64::INFINITY,
-                    "-inf" => f64::NEG_INFINITY,
-                    _ => f64::NAN,
+                    "inf" | "+inf" => Some(f64::INFINITY),
+                    "-inf" => Some(f64::NEG_INFINITY),
+                    "nan" | "+nan" | "-nan" => Some(f64::NAN),
+                    _ => None,
+                }
+            };
+            // Real numbers, and complex ones written a+bi, a-bj, bi or i.
+            let parse = |s: &str| -> (f64, f64) {
+                let t: String = s.trim().replace(',', "").chars().filter(|c| !c.is_whitespace()).collect();
+                if let Some(v) = real(&t) {
+                    return (v, 0.0);
+                }
+                let Some(body) = t.strip_suffix(['i', 'j']) else { return (f64::NAN, 0.0) };
+                let b = body.as_bytes();
+                let split = (1..b.len()).rev().find(|&k| (b[k] == b'+' || b[k] == b'-') && !matches!(b[k - 1], b'e' | b'E'));
+                let (re_t, im_t) = match split {
+                    Some(k) => (&body[..k], &body[k..]),
+                    None => ("", body),
+                };
+                let re = if re_t.is_empty() { Some(0.0) } else { real(re_t) };
+                let im_t = im_t.strip_suffix('*').unwrap_or(im_t);
+                let im = match im_t {
+                    "" | "+" => Some(1.0),
+                    "-" => Some(-1.0),
+                    x => real(x),
+                };
+                match (re, im) {
+                    (Some(r), Some(m)) => (r, m),
+                    _ => (f64::NAN, 0.0),
+                }
+            };
+            let build = |dims: Vec<usize>, vals: Vec<(f64, f64)>| -> Value {
+                let re: Vec<f64> = vals.iter().map(|v| v.0).collect();
+                if vals.iter().any(|v| v.1 != 0.0) {
+                    Value::Num(Matrix::complex(dims, re, vals.iter().map(|v| v.1).collect()))
+                } else {
+                    Value::Num(Matrix::from_dims(dims, re))
                 }
             };
             match arg(a, 0, name)? {
-                Value::Cell(c) => one(Value::Num(Matrix::from_dims(c.dims.clone(), c.data.iter().map(|v| v.text().map(|s| parse(&s)).unwrap_or(f64::NAN)).collect()))),
-                Value::Str(s) => one(Value::Num(Matrix::from_dims(s.dims.clone(), s.data.iter().map(|x| x.as_deref().map(parse).unwrap_or(f64::NAN)).collect()))),
-                v if v.is_text() => one(Value::num(parse(&v.text()?))),
+                Value::Cell(c) => one(build(c.dims.clone(), c.data.iter().map(|v| v.text().map(|s| parse(&s)).unwrap_or((f64::NAN, 0.0))).collect())),
+                Value::Str(s) => one(build(s.dims.clone(), s.data.iter().map(|x| x.as_deref().map(parse).unwrap_or((f64::NAN, 0.0))).collect())),
+                v if v.is_text() => one(build(vec![1, 1], vec![parse(&v.text()?)])),
                 _ => one(Value::num(f64::NAN)),
             }
         }
@@ -276,6 +309,26 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
             one(Value::Str(StrArray::from_dims(d, vec![Some(String::new()); n])))
         }
         "missing" => one(Value::Str(StrArray::from_dims(vec![1, 1], vec![None]))),
+        // char(A, B, ...): the rows of every argument, padded with blanks to one width.
+        "char" if a.len() > 1 => {
+            let mut items: Vec<String> = Vec::new();
+            for v in a {
+                match v {
+                    Value::Num(m) => {
+                        let (r, c) = (m.rows(), m.cols());
+                        if m.numel() == 0 {
+                            items.push(String::new());
+                        }
+                        for i in 0..r {
+                            items.push((0..c).map(|j| char::from_u32(m.data[j * r + i] as u32).unwrap_or('\0')).collect());
+                        }
+                    }
+                    Value::Str(_) | Value::Cell(_) => items.extend(text_list(v)?),
+                    _ => return rt("Conversion to char is not possible."),
+                }
+            }
+            one(char_matrix(&items))
+        }
         "char" => match arg(a, 0, name)? {
             Value::Num(m) => one(Value::Num(Matrix::from_dims(m.dims.clone(), m.data.clone()).with_kind(Kind::Char))),
             Value::Str(s) if s.is_scalar() => one(Value::chars(s.data[0].as_deref().unwrap_or(""))),

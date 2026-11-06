@@ -507,6 +507,14 @@ fn to_base(mut n: u128, base: u32, min_len: usize) -> String {
 fn base_rows(vals: &[f64], base: u32, min_len: usize, fname: &str) -> Ret {
     let mut rows = Vec::new();
     for &x in vals {
+        // dec2bin and dec2hex write negative integers in two's complement, in the smallest of
+        // 8, 16, 32 and 64 bits that holds them.
+        if x < 0.0 && x.fract() == 0.0 && x.is_finite() && matches!(fname, "dec2bin" | "dec2hex") && x >= -(2f64.powi(63)) {
+            let bits = [8u32, 16, 32, 64].into_iter().find(|&b| x >= -(2f64.powi(b as i32 - 1))).unwrap_or(64);
+            let v = ((1u128 << bits) as i128 + x as i128) as u128;
+            rows.push(to_base(v, base, min_len));
+            continue;
+        }
         if x < 0.0 || x.fract() != 0.0 || !x.is_finite() {
             return rt(format!("D must be a nonnegative integer smaller than flintmax for {fname}."));
         }
@@ -658,8 +666,15 @@ pub fn call(_it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> R
         "bin2dec" => from_base(&rows_of(arg(a, 0, name)?)?, 2, name),
         "hex2dec" => from_base(&rows_of(arg(a, 0, name)?)?, 16, name),
         "base2dec" => {
-            let base = arg(a, 1, name)?.scalar()? as u32;
-            from_base(&rows_of(arg(a, 0, name)?)?, base, name)
+            let b = arg(a, 1, name)?;
+            if b.numel() != 1 {
+                return rt("Operands to the logical AND (&&) and OR (||) operators must be convertible to logical scalar values. Use the ANY or ALL functions to reduce operands to logical scalar values.");
+            }
+            let base = b.scalar()?;
+            if !(2.0..=36.0).contains(&base) || base.fract() != 0.0 {
+                return rt("The base must be an integer value between 2 and 36.");
+            }
+            from_base(&rows_of(arg(a, 0, name)?)?, base as u32, name)
         }
         "num2hex" => {
             let m = arg(a, 0, name)?.to_matrix()?;
@@ -762,6 +777,10 @@ fn sscanf(a: &[Value], nargout: usize) -> Ret {
             match conv {
                 'd' | 'i' | 'u' | 'f' | 'g' | 'e' | 'x' | 'o' => {
                     skip_ws(&mut pos);
+                    // %x reads an optional 0x or 0X prefix.
+                    if conv == 'x' && pos + 2 < chars.len() + 1 && chars.get(pos) == Some(&'0') && matches!(chars.get(pos + 1), Some('x' | 'X')) && chars.get(pos + 2).is_some_and(|c| c.is_ascii_hexdigit()) {
+                        pos += 2;
+                    }
                     let start = pos;
                     let ok = |c: char, k: usize, prev: char| -> bool {
                         match conv {

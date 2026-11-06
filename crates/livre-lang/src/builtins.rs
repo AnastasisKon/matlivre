@@ -364,7 +364,7 @@ pub(crate) fn unary_math(name: &str, m: &Matrix) -> Option<R<Matrix>> {
         "deg2rad" => Some(f64::to_radians),
         "rad2deg" => Some(f64::to_degrees),
         "gamma" => Some(gamma),
-        "factorial" => Some(|x: f64| gamma(x + 1.0).round()),
+        "factorial" => Some(|x: f64| if x.fract() == 0.0 && (0.0..=170.0).contains(&x) { (1..=x as u32).fold(1.0, |p, k| p * k as f64) } else { gamma(x + 1.0).round() }),
         "expm1" => Some(f64::exp_m1),
         "log1p" => Some(f64::ln_1p),
         _ => None,
@@ -384,6 +384,20 @@ pub(crate) fn unary_math(name: &str, m: &Matrix) -> Option<R<Matrix>> {
         if m.kind.is_int() || m.kind == Kind::Single { out.cast_to(m.kind) } else { out }
     };
     if let Some(f) = real {
+        // sign(z) = z/abs(z) for complex z.
+        if m.is_complex() && name == "sign" {
+            let im = m.im.as_ref().unwrap();
+            let mut out = m.clone();
+            let mut oi = vec![0.0; m.data.len()];
+            for (k, (&re, &iv)) in m.data.iter().zip(im).enumerate() {
+                let r = re.hypot(iv);
+                let (a, b) = if r == 0.0 { (0.0, 0.0) } else if r.is_nan() { (f64::NAN, f64::NAN) } else { (re / r, iv / r) };
+                out.data[k] = a;
+                oi[k] = b;
+            }
+            out.im = Some(oi);
+            return Some(Ok(keep(out)));
+        }
         if m.is_complex() && matches!(name, "floor" | "ceil" | "fix") {
             let mut out = m.map(f);
             out.im = m.im.as_ref().map(|im| im.iter().map(|&x| f(x)).collect());
@@ -509,6 +523,138 @@ impl Interpreter {
 }
 
 /// Element `k` of any array as its own 1×1 value (for arrayfun/cellfun).
+/// `accumarray(subs, val, sz, fun, fillval)`: values gathered by subscript and reduced by `fun`.
+fn accumarray(it: &mut Interpreter, a: &[Value]) -> R<Value> {
+    if a.len() < 2 {
+        return rt("Not enough input arguments.");
+    }
+    // Subscripts: an m-by-n matrix, or a cell array of m-element index vectors.
+    let (m, cols): (usize, Vec<Vec<f64>>) = match &a[0] {
+        Value::Cell(c) => {
+            let cols: Vec<Vec<f64>> = c.data.iter().map(|v| v.to_matrix().map(|m| m.data)).collect::<R<_>>()?;
+            (cols.first().map(|c| c.len()).unwrap_or(0), cols)
+        }
+        v => {
+            let s = v.to_matrix()?;
+            let (r, c) = (s.rows(), s.cols());
+            let (r, c) = if r == 1 && c > 1 { (c, 1) } else { (r, c) };
+            (r, (0..c).map(|j| s.data[j * r..(j + 1) * r].to_vec()).collect())
+        }
+    };
+    if cols.iter().any(|c| c.len() != m) || cols.iter().flatten().any(|&x| x < 1.0 || x.fract() != 0.0) {
+        return rt("First input SUBS must contain positive integer subscripts.");
+    }
+    let vals = a[1].to_matrix()?;
+    if vals.numel() != 1 && vals.numel() != m {
+        return rt("Second input VAL must be a vector with one element for each row in SUBS, or a scalar.");
+    }
+    let n = cols.len().max(1);
+    let maxes: Vec<usize> = cols.iter().map(|c| c.iter().fold(0.0, |x: f64, &y| x.max(y)) as usize).collect();
+    let mut dims: Vec<usize> = if n == 1 { vec![maxes.first().copied().unwrap_or(0), 1] } else { maxes.clone() };
+    if let Some(sz) = a.get(2).filter(|v| v.numel() > 0) {
+        let sz: Vec<usize> = sz.to_matrix()?.data.iter().map(|&x| x as usize).collect();
+        let ok = if n == 1 { sz.len() == 2 && (sz[1] == 1 || sz[0] == 1) } else { sz.len() >= n };
+        if !ok || sz.iter().zip(if n == 1 { vec![maxes[0]] } else { maxes.clone() }).any(|(&s, mx)| s < mx) && n > 1 {
+            return rt("Third input SZ must be a full row vector with one element for each column of SUBS.");
+        }
+        if n == 1 && sz.iter().product::<usize>() < maxes[0] {
+            return rt("Third input SZ must be a full row vector with one element for each column of SUBS.");
+        }
+        dims = sz;
+    }
+    let total: usize = dims.iter().product();
+    // Linear index of each row of subscripts.
+    let linear = |i: usize| -> usize {
+        if n == 1 {
+            return cols[0][i] as usize - 1;
+        }
+        let mut k = 0;
+        let mut stride = 1;
+        for (j, c) in cols.iter().enumerate() {
+            k += (c[i] as usize - 1) * stride;
+            stride *= dims[j];
+        }
+        k
+    };
+    let val = |i: usize| if vals.numel() == 1 { vals.data[0] } else { vals.data[i] };
+    let fun = a.get(3).filter(|v| v.numel() > 0 || matches!(v, Value::Func(_))).cloned();
+    let fill = match a.get(4).filter(|v| v.numel() > 0) {
+        Some(v) => Some(v.clone()),
+        None => None,
+    };
+    let Some(fun) = fun else {
+        let mut out = vec![0.0; total];
+        let mut hit = vec![false; total];
+        for i in 0..m {
+            let k = linear(i);
+            out[k] += val(i);
+            hit[k] = true;
+        }
+        if let Some(f) = &fill {
+            let fv = f.scalar()?;
+            for (o, h) in out.iter_mut().zip(&hit) {
+                if !h {
+                    *o = fv;
+                }
+            }
+        }
+        return Ok(Value::Num(Matrix::from_dims(dims, out)));
+    };
+    // Groups in subscript order, each with its values in the order they appear.
+    let mut groups: Vec<Vec<f64>> = vec![Vec::new(); total];
+    for i in 0..m {
+        groups[linear(i)].push(val(i));
+    }
+    let mut results: Vec<Option<Value>> = vec![None; total];
+    for (k, g) in groups.iter().enumerate() {
+        if !g.is_empty() {
+            let out = it.call_func_value(&fun, vec![Value::Num(Matrix::col(g.clone()))], 1)?;
+            results[k] = out.into_iter().next();
+        }
+    }
+    if results.iter().flatten().any(|v| matches!(v, Value::Cell(_))) {
+        let data: Vec<Value> = results
+            .into_iter()
+            .map(|r| match r {
+                Some(Value::Cell(c)) if c.data.len() == 1 => c.data[0].clone(),
+                Some(v) => v,
+                None => fill.clone().unwrap_or_else(Value::empty),
+            })
+            .collect();
+        return Ok(Value::Cell(CellArray::from_dims(dims, data)));
+    }
+    let fv = match &fill {
+        Some(f) => f.scalar()?,
+        None => 0.0,
+    };
+    let mut out = Vec::with_capacity(total);
+    for r in results {
+        out.push(match r {
+            Some(v) => {
+                let m = v.to_matrix()?;
+                if m.numel() != 1 {
+                    return rt("The function FUN must return a scalar.");
+                }
+                m.data[0]
+            }
+            None => fv,
+        });
+    }
+    Ok(Value::Num(Matrix::from_dims(dims, out)))
+}
+
+/// A column cell of names (0-by-1 when there are none, as fieldnames gives).
+fn name_col(items: Vec<Value>) -> Value {
+    let n = items.len();
+    Value::Cell(CellArray::from_dims(vec![n, 1], items))
+}
+
+/// The instant `t = tic` time stamps count from.
+fn tic_epoch() -> std::time::Instant {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    *START.get_or_init(std::time::Instant::now)
+}
+
 fn element(v: &Value, k: usize, unwrap_cells: bool) -> R<Value> {
     match v {
         Value::Cell(c) if unwrap_cells => Ok(c.data[k].clone()),
@@ -829,6 +975,7 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
 
     match name {
         // ---- constants ---------------------------------------------------------------
+        "pi" if !a.is_empty() => rt("Too many input arguments."),
         "pi" => num(std::f64::consts::PI),
         "eps" => match a.first() {
             Some(Value::Num(m)) if m.kind != Kind::Char => {
@@ -892,14 +1039,21 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 let ms = (0..n).map(|i| if n == 1 { x1 } else { x0 + (x1 - x0) * i as f64 / (n - 1) as f64 }).collect();
                 return one(Value::Time(t.with_ms(vec![1, n], ms)));
             }
-            let lo = arg(a, 0, name)?.scalar()?;
-            let hi = arg(a, 1, name)?.scalar()?;
             let n = match a.get(2) {
                 Some(v) => v.scalar()?.floor().max(0.0) as usize,
                 None => 100,
             };
-            let data = if n == 1 { vec![hi] } else { (0..n).map(|i| lo + (hi - lo) * i as f64 / (n - 1) as f64).collect() };
-            mat(Matrix::row(data))
+            let (lm, hm) = (m_arg(a, 0, name)?, m_arg(a, 1, name)?);
+            if lm.numel() != 1 || hm.numel() != 1 {
+                return rt("Inputs must be scalars.");
+            }
+            let part = |lo: f64, hi: f64| -> Vec<f64> { if n == 1 { vec![hi] } else { (0..n).map(|i| lo + (hi - lo) * i as f64 / (n - 1) as f64).collect() } };
+            let mut out = Matrix::row(part(lm.data[0], hm.data[0]));
+            if lm.is_complex() || hm.is_complex() {
+                let im = |m: &Matrix| m.im.as_ref().map(|v| v[0]).unwrap_or(0.0);
+                out.im = Some(part(im(&lm), im(&hm)));
+            }
+            mat(out)
         }
         "logspace" => {
             let lo = arg(a, 0, name)?.scalar()?;
@@ -952,7 +1106,8 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 }
             }
             if name == "ndgrid" {
-                return Ok(Some(vec![Value::Num(yy.transpose()), Value::Num(xx.transpose())]));
+                // X varies down the rows (along the first vector), Y across the columns.
+                return Ok(Some(vec![Value::Num(yy), Value::Num(xx)]));
             }
             Ok(Some(vec![Value::Num(xx), Value::Num(yy)]))
         }
@@ -1055,6 +1210,14 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             if a.is_empty() {
                 return one(Value::Struct(StructArray::scalar()));
             }
+            // struct([]): a 0-by-0 struct array with no fields; struct(s) is s.
+            if a.len() == 1 {
+                match &a[0] {
+                    Value::Num(m) if m.numel() == 0 && m.kind != Kind::Char => return one(Value::Struct(StructArray::empty_with(Vec::new()))),
+                    Value::Struct(_) => return one(a[0].clone()),
+                    _ => {}
+                }
+            }
             // Cell values create a struct array of the cells' size (MATLAB semantics).
             let mut fields = Vec::new();
             let mut values = Vec::new();
@@ -1099,20 +1262,33 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             if m.is_vector() {
                 let n = m.numel() + k.unsigned_abs() as usize;
                 let mut out = Matrix::zeros(n, n).with_kind(m.kind);
+                let mut im = m.im.as_ref().map(|_| vec![0.0; n * n]);
                 for i in 0..m.numel() {
                     let (r, c) = if k >= 0 { (i, i + k as usize) } else { (i + (-k) as usize, i) };
                     out.set(r, c, m.data[i]);
+                    if let (Some(o), Some(src)) = (im.as_mut(), m.im.as_ref()) {
+                        o[c * n + r] = src[i];
+                    }
                 }
+                out.im = im;
                 mat(out)
             } else {
                 let mut d = Vec::new();
+                let mut di = Vec::new();
                 for i in 0..m.rows() {
                     let c = i as i64 + k;
                     if c >= 0 && (c as usize) < m.cols() {
                         d.push(m.get(i, c as usize));
+                        if let Some(src) = m.im.as_ref() {
+                            di.push(src[c as usize * m.rows() + i]);
+                        }
                     }
                 }
-                mat(Matrix::col(d).with_kind(m.kind))
+                let mut out = Matrix::col(d).with_kind(m.kind);
+                if m.im.is_some() {
+                    out.im = Some(di);
+                }
+                mat(out)
             }
         }
         "triu" | "tril" => {
@@ -1285,6 +1461,8 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
         }
         "ndims" => num(arg(a, 0, name)?.dims().len() as f64),
         "isempty" => one(Value::bool(match arg(a, 0, name)? {
+            // An empty array of graphics objects (gobjects(0), gco with nothing selected).
+            v @ Value::Object(_) if crate::gfx::is_gfx(v) => crate::gfx::ids_of(v).is_some_and(|ids| ids.is_empty()),
             Value::Func(_) | Value::Object(_) => false,
             Value::Table(t) => t.nrows == 0 || t.vars.is_empty(),
             v => v.numel() == 0,
@@ -1352,13 +1530,13 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             num(found)
         }
         "fieldnames" | "properties" => match arg(a, 0, name)? {
-            Value::Struct(s) => one(Value::Cell(CellArray::col(s.fields.iter().map(|n| Value::chars(n)).collect()))),
-            Value::Object(o) => one(Value::Cell(CellArray::col(o.class.props.iter().filter(|p| !p.hidden).map(|p| Value::chars(&p.name)).collect()))),
-            Value::Table(t) => one(Value::Cell(CellArray::col(t.names.iter().map(|n| Value::chars(n)).collect()))),
+            Value::Struct(s) => one(name_col(s.fields.iter().map(|n| Value::chars(n)).collect())),
+            Value::Object(o) => one(name_col(o.class.props.iter().filter(|p| !p.hidden).map(|p| Value::chars(&p.name)).collect())),
+            Value::Table(t) => one(name_col(t.names.iter().map(|n| Value::chars(n)).collect())),
             v if v.is_text() => {
                 let cls = v.text()?;
                 match it.find_class(&cls) {
-                    Some(c) => one(Value::Cell(CellArray::col(c.props.iter().filter(|p| !p.hidden).map(|p| Value::chars(&p.name)).collect()))),
+                    Some(c) => one(name_col(c.props.iter().filter(|p| !p.hidden).map(|p| Value::chars(&p.name)).collect())),
                     None => rt(format!("No class '{cls}'.")),
                 }
             }
@@ -1424,6 +1602,46 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 });
                 return mat(out);
             }
+            // [M, F, C] = mode(...): the frequency of the mode and every value that ties with it.
+            if name == "mode" && nargout >= 2 {
+                let tally = |v: &[f64]| -> (f64, usize, Vec<f64>) {
+                    let mut s: Vec<f64> = v.iter().copied().filter(|x| !x.is_nan()).collect();
+                    if s.is_empty() {
+                        return (f64::NAN, 0, vec![f64::NAN]);
+                    }
+                    s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                    let mut runs: Vec<(f64, usize)> = Vec::new();
+                    for x in s {
+                        match runs.last_mut() {
+                            Some((y, n)) if *y == x => *n += 1,
+                            _ => runs.push((x, 1)),
+                        }
+                    }
+                    let best = runs.iter().map(|r| r.1).max().unwrap_or(0);
+                    let ties: Vec<f64> = runs.iter().filter(|r| r.1 == best).map(|r| r.0).collect();
+                    (ties[0], best, ties)
+                };
+                let (dims, sl) = slices(&m.dims, dim);
+                let mut mv = Vec::with_capacity(sl.len());
+                let mut fv = Vec::with_capacity(sl.len());
+                let mut cv = Vec::with_capacity(sl.len());
+                for sl1 in &sl {
+                    let vals: Vec<f64> = sl1.iter().map(|&p| m.data[p]).collect();
+                    let (mo, f, ties) = tally(&vals);
+                    mv.push(mo);
+                    fv.push(f as f64);
+                    let mut col = Matrix::col(ties);
+                    if m.kind.is_int() || m.kind == Kind::Single {
+                        col = col.cast_to(m.kind);
+                    }
+                    cv.push(Value::Num(col));
+                }
+                let mut mm = Matrix::from_dims(dims.clone(), mv);
+                if m.kind.is_int() || m.kind == Kind::Single {
+                    mm = mm.cast_to(m.kind);
+                }
+                return Ok(Some(vec![Value::Num(mm), Value::Num(Matrix::from_dims(dims.clone(), fv)), Value::Cell(CellArray::from_dims(dims, cv))]));
+            }
             let r = match name {
                 "sum" => reduce(&m, dim, |v| filt(v).iter().sum()),
                 "prod" => reduce(&m, dim, |v| filt(v).iter().product()),
@@ -1442,20 +1660,63 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             let r = match (name, m.kind) {
                 ("sum" | "prod", k @ (Kind::Int(_) | Kind::Single)) => r.cast_to(k),
                 ("mean" | "median" | "mode" | "std" | "var", Kind::Single) => r.cast_to(Kind::Single),
-                ("mode", k @ Kind::Int(_)) => r.cast_to(k),
+                ("mode" | "median", k @ Kind::Int(_)) => r.cast_to(k),
                 _ => r,
             };
             mat(r)
         }
         "cumsum" | "cumprod" | "cummax" | "cummin" => {
             let m = m_arg(a, 0, name)?;
-            let dim = dim_arg(a, 1, &m)?;
-            mat(match name {
-                "cumsum" => cumulate(&m, dim, |p, x| p + x),
-                "cumprod" => cumulate(&m, dim, |p, x| p * x),
-                "cummax" => cumulate(&m, dim, f64::max),
-                _ => cumulate(&m, dim, f64::min),
-            })
+            // Options after the data: a dimension, 'reverse'/'forward' and 'omitnan'/'includenan'.
+            let mut dim_given: Option<Value> = None;
+            let mut reverse = false;
+            let mut omit = matches!(name, "cummax" | "cummin");
+            for v in &a[1..] {
+                if v.is_text() || matches!(v, Value::Str(_)) {
+                    match v.text()?.to_lowercase().as_str() {
+                        "reverse" => reverse = true,
+                        "forward" => reverse = false,
+                        "omitnan" | "omitmissing" => omit = true,
+                        "includenan" | "includemissing" => omit = false,
+                        o => return rt(format!("Invalid option '{o}'.")),
+                    }
+                } else {
+                    dim_given = Some(v.clone());
+                }
+            }
+            let dim = match dim_given {
+                Some(v) => dim_arg(&[Value::empty(), v], 1, &m)?,
+                None => dim_arg(&a[..1], 1, &m)?,
+            };
+            let src = if omit && matches!(name, "cumsum" | "cumprod") {
+                let neutral = if name == "cumsum" { 0.0 } else { 1.0 };
+                m.map(|x| if x.is_nan() { neutral } else { x })
+            } else {
+                m.clone()
+            };
+            let run = |m: &Matrix| match name {
+                "cumsum" => cumulate(m, dim, |p, x| p + x),
+                "cumprod" => cumulate(m, dim, |p, x| p * x),
+                "cummax" if omit => cumulate(m, dim, f64::max),
+                "cummin" if omit => cumulate(m, dim, f64::min),
+                "cummax" => cumulate(m, dim, |p, x| if p.is_nan() || x.is_nan() { f64::NAN } else { p.max(x) }),
+                _ => cumulate(m, dim, |p, x| if p.is_nan() || x.is_nan() { f64::NAN } else { p.min(x) }),
+            };
+            if !reverse {
+                return mat(run(&src));
+            }
+            // 'reverse': accumulate from the end of each slice.
+            let flip = |m: &Matrix| {
+                let mut out = m.clone();
+                let (_, sl) = slices(&m.dims, dim);
+                for s in sl {
+                    for (j, &p) in s.iter().enumerate() {
+                        out.data[p] = m.data[s[s.len() - 1 - j]];
+                    }
+                }
+                out
+            };
+            mat(flip(&run(&flip(&src))))
         }
         "max" | "min" => {
             let is_max = name == "max";
@@ -1494,7 +1755,11 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 pos.push(s[bi]);
                 idx.push((bi + 1) as f64);
             }
-            let vals = m.gather(&pos, dims.clone());
+            let mut vals = m.gather(&pos, dims.clone());
+            // Characters compare as their codes and come back as double.
+            if vals.kind == Kind::Char {
+                vals = vals.with_kind(Kind::Double);
+            }
             Ok(Some(vec![Value::Num(vals), Value::Num(Matrix::from_dims(dims, idx))]))
         }
         "sort" => {
@@ -1580,24 +1845,67 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 return crate::builtins_text::unique_text(v);
             }
             let m = m_arg(a, 0, name)?;
-            let stable = a.iter().any(|v| v.text().map(|t| t == "stable").unwrap_or(false));
-            let mut seen: Vec<f64> = Vec::new();
-            let mut first_idx = Vec::new();
-            for (i, &x) in m.data.iter().enumerate() {
-                if !seen.iter().any(|&y| y == x || (x.is_nan() && false)) {
-                    seen.push(x);
-                    first_idx.push((i + 1) as f64);
+            let flag = |f: &str| a[1..].iter().any(|v| v.text().map(|t| t.eq_ignore_ascii_case(f)).unwrap_or(false));
+            let (stable, rows, last) = (flag("stable"), flag("rows"), flag("last"));
+            // Items: the elements, or the rows with 'rows'.
+            let (r, c) = (m.rows(), m.cols());
+            let items: Vec<Vec<f64>> = if rows { (0..r).map(|i| (0..c).map(|j| m.data[j * r + i]).collect()).collect() } else { m.data.iter().map(|&x| vec![x]).collect() };
+            // Sort the items (NaN last), then group equal neighbours; NaN is never equal to
+            // anything, so each NaN is its own item.
+            let cmp = |p: &[f64], q: &[f64]| {
+                for (x, y) in p.iter().zip(q) {
+                    let o = match (x.is_nan(), y.is_nan()) {
+                        (true, true) => std::cmp::Ordering::Equal,
+                        (true, false) => std::cmp::Ordering::Greater,
+                        (false, true) => std::cmp::Ordering::Less,
+                        _ => x.partial_cmp(y).unwrap(),
+                    };
+                    if o != std::cmp::Ordering::Equal {
+                        return o;
+                    }
+                }
+                std::cmp::Ordering::Equal
+            };
+            let same = |p: &[f64], q: &[f64]| p.iter().zip(q).all(|(x, y)| x == y);
+            let mut sorted: Vec<usize> = (0..items.len()).collect();
+            sorted.sort_by(|&i, &j| cmp(&items[i], &items[j]));
+            let mut groups: Vec<(usize, usize)> = Vec::new(); // (first, last) occurrence, in sorted order
+            let mut ic_raw = vec![0usize; items.len()];
+            for (k, &i) in sorted.iter().enumerate() {
+                if k > 0 && same(&items[sorted[k - 1]], &items[i]) {
+                    let g = groups.len() - 1;
+                    groups[g].0 = groups[g].0.min(i);
+                    groups[g].1 = groups[g].1.max(i);
+                    ic_raw[i] = g;
+                } else {
+                    ic_raw[i] = groups.len();
+                    groups.push((i, i));
                 }
             }
-            if !stable {
-                let mut pairs: Vec<(f64, f64)> = seen.into_iter().zip(first_idx).collect();
-                pairs.sort_by(|p, q| p.0.partial_cmp(&q.0).unwrap_or(std::cmp::Ordering::Equal));
-                seen = pairs.iter().map(|p| p.0).collect();
-                first_idx = pairs.iter().map(|p| p.1).collect();
+            let mut order: Vec<usize> = (0..groups.len()).collect();
+            if stable {
+                order.sort_by_key(|&g| groups[g].0);
             }
-            let ic: Vec<f64> = m.data.iter().map(|x| (seen.iter().position(|y| y == x).unwrap_or(0) + 1) as f64).collect();
-            let out = if m.dims.len() == 2 && m.dims[0] == 1 { Matrix::row(seen) } else { Matrix::col(seen) };
-            Ok(Some(vec![Value::Num(out.with_kind(m.kind)), Value::Num(Matrix::col(first_idx)), Value::Num(Matrix::col(ic))]))
+            let mut rank = vec![0usize; groups.len()];
+            for (k, &g) in order.iter().enumerate() {
+                rank[g] = k;
+            }
+            let ia: Vec<f64> = order.iter().map(|&g| (if last { groups[g].1 } else { groups[g].0 } + 1) as f64).collect();
+            let ic: Vec<f64> = ic_raw.iter().map(|&g| (rank[g] + 1) as f64).collect();
+            let k = order.len();
+            let out = if rows {
+                let mut d = vec![0.0; k * c];
+                for (ri, &g) in order.iter().enumerate() {
+                    for j in 0..c {
+                        d[j * k + ri] = items[groups[g].0][j];
+                    }
+                }
+                Matrix::new(k, c, d)
+            } else {
+                let vals: Vec<f64> = order.iter().map(|&g| items[groups[g].0][0]).collect();
+                if m.dims.len() == 2 && m.dims[0] == 1 { Matrix::row(vals) } else { Matrix::col(vals) }
+            };
+            Ok(Some(vec![Value::Num(out.with_kind(m.kind)), Value::Num(Matrix::col(ia)), Value::Num(Matrix::col(ic))]))
         }
         "ismember" => {
             let x = arg(a, 0, name)?;
@@ -1607,6 +1915,19 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             }
             let xm = x.to_matrix()?;
             let sm = set.to_matrix()?;
+            if a[2..].iter().any(|v| v.text().map(|t| t.eq_ignore_ascii_case("rows")).unwrap_or(false)) {
+                if xm.cols() != sm.cols() {
+                    return rt("Inputs A and S must have the same number of columns in the 'rows' case.");
+                }
+                let (xr, sr, c) = (xm.rows(), sm.rows(), xm.cols());
+                let loc: Vec<f64> = (0..xr)
+                    .map(|i| (0..sr).find(|&k| (0..c).all(|j| xm.data[j * xr + i] == sm.data[j * sr + k])).map(|k| (k + 1) as f64).unwrap_or(0.0))
+                    .collect();
+                return Ok(Some(vec![
+                    Value::Num(Matrix::col(loc.iter().map(|&l| (l > 0.0) as u8 as f64).collect()).with_kind(Kind::Logical)),
+                    Value::Num(Matrix::col(loc)),
+                ]));
+            }
             let loc: Vec<f64> = xm.data.iter().map(|v| sm.data.iter().position(|s| s == v).map(|p| (p + 1) as f64).unwrap_or(0.0)).collect();
             Ok(Some(vec![
                 Value::Num(Matrix::from_dims(xm.dims.clone(), loc.iter().map(|&l| (l > 0.0) as u8 as f64).collect()).with_kind(Kind::Logical)),
@@ -1674,21 +1995,63 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
         "dot" => {
             let x = m_arg(a, 0, name)?;
             let y = m_arg(a, 1, name)?;
-            if x.numel() != y.numel() {
+            if x.numel() != y.numel() || (!(x.is_vector() && y.is_vector()) && x.dims != y.dims) {
                 return rt("A and B must be the same size.");
             }
-            let s = (0..x.numel()).fold(C::new(0.0, 0.0), |acc, i| acc.add(C::new(x.data[i], -x.im_at(i)).mul(C::new(y.data[i], y.im_at(i)))));
-            mat(Matrix::complex(vec![1, 1], vec![s.re], vec![s.im]))
+            let term = |i: usize| C::new(x.data[i], -x.im_at(i)).mul(C::new(y.data[i], y.im_at(i)));
+            let dim = match a.get(2) {
+                Some(v) => Some(v.as_usize()?),
+                None if x.is_vector() && y.is_vector() => None,
+                None => Some(if x.rows() != 1 { 1 } else { 2 }),
+            };
+            let Some(dim) = dim else {
+                let s = (0..x.numel()).fold(C::new(0.0, 0.0), |acc, i| acc.add(term(i)));
+                return mat(Matrix::complex(vec![1, 1], vec![s.re], vec![s.im]));
+            };
+            // Matrices: one dot product per column (dim 1) or per row (dim 2).
+            let (r, c) = (x.rows(), x.cols());
+            let (n, len) = if dim == 1 { (c, r) } else { (r, c) };
+            let mut re = Vec::with_capacity(n);
+            let mut im = Vec::with_capacity(n);
+            for k in 0..n {
+                let s = (0..len).fold(C::new(0.0, 0.0), |acc, t| acc.add(term(if dim == 1 { k * r + t } else { t * r + k })));
+                re.push(s.re);
+                im.push(s.im);
+            }
+            let dims = if dim == 1 { vec![1, n] } else { vec![n, 1] };
+            mat(Matrix::complex(dims, re, im))
         }
         "cross" => {
             let x = m_arg(a, 0, name)?;
             let y = m_arg(a, 1, name)?;
-            if x.numel() != 3 || y.numel() != 3 {
-                return rt("A and B must be of length 3 for cross.");
+            let three = |p: &[f64], q: &[f64]| [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
+            if x.numel() == 3 && y.numel() == 3 && a.len() < 3 {
+                let d = three(&x.data, &y.data).to_vec();
+                return mat(if x.dims[0] == 1 { Matrix::row(d) } else { Matrix::col(d) });
             }
-            let (p, q) = (&x.data, &y.data);
-            let d = vec![p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
-            mat(if x.dims[0] == 1 { Matrix::row(d) } else { Matrix::col(d) })
+            if x.dims != y.dims {
+                return rt("A and B must be of length 3 in the dimension in which the cross product is taken.");
+            }
+            let (r, c) = (x.rows(), x.cols());
+            let dim = match a.get(2) {
+                Some(v) => v.as_usize()?,
+                None => if r == 3 { 1 } else if c == 3 { 2 } else { 0 },
+            };
+            if (dim == 1 && r != 3) || (dim == 2 && c != 3) || dim == 0 || dim > 2 {
+                return rt("A and B must be of length 3 in the dimension in which the cross product is taken.");
+            }
+            // One cross product per column (dim 1) or per row (dim 2).
+            let mut out = vec![0.0; r * c];
+            let n = if dim == 1 { c } else { r };
+            for k in 0..n {
+                let at = |t: usize| if dim == 1 { k * r + t } else { t * r + k };
+                let p: Vec<f64> = (0..3).map(|t| x.data[at(t)]).collect();
+                let q: Vec<f64> = (0..3).map(|t| y.data[at(t)]).collect();
+                for (t, v) in three(&p, &q).into_iter().enumerate() {
+                    out[at(t)] = v;
+                }
+            }
+            mat(Matrix::new(r, c, out))
         }
         "norm" => {
             let m = m_arg(a, 0, name)?;
@@ -1822,18 +2185,29 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
         }
         "circshift" => {
             let m = m_arg(a, 0, name)?;
-            let k = arg(a, 1, name)?.scalar()? as i64;
-            let dim = match a.get(2) {
-                Some(d) => d.as_usize()?,
-                None => default_dim(&m.dims),
+            let ks: Vec<i64> = m_arg(a, 1, name)?.data.iter().map(|&x| x as i64).collect();
+            // A vector of shifts moves dimension i by ks[i]; a scalar shifts one dimension.
+            let shifts: Vec<(usize, i64)> = match a.get(2) {
+                Some(d) => vec![(d.as_usize()?, ks.first().copied().unwrap_or(0))],
+                None if ks.len() == 1 => vec![(default_dim(&m.dims), ks[0])],
+                None => ks.iter().enumerate().map(|(i, &k)| (i + 1, k)).collect(),
             };
-            let (_, sl) = slices(&m.dims, dim);
             let mut out = m.clone();
-            for s in sl {
-                let n = s.len() as i64;
-                for (j, &p) in s.iter().enumerate() {
-                    let src = (((j as i64 - k) % n + n) % n) as usize;
-                    out.data[p] = m.data[s[src]];
+            for (dim, k) in shifts {
+                if k == 0 || dim > out.dims.len() {
+                    continue;
+                }
+                let src_m = out.clone();
+                let (_, sl) = slices(&src_m.dims, dim);
+                for s in sl {
+                    let n = s.len() as i64;
+                    for (j, &p) in s.iter().enumerate() {
+                        let src = (((j as i64 - k) % n + n) % n) as usize;
+                        out.data[p] = src_m.data[s[src]];
+                        if let (Some(o), Some(i)) = (out.im.as_mut(), src_m.im.as_ref()) {
+                            o[p] = i[s[src]];
+                        }
+                    }
                 }
             }
             mat(out)
@@ -1857,6 +2231,35 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             let y = m_arg(a, 1, name)?;
             if name == "power" {
                 return mat(ops::num_binary(crate::ast::BinOp::Pow, &x, &y)?);
+            }
+            // nchoosek(v, k) with a vector v: every combination of k of its elements, one per row.
+            if name == "nchoosek" && x.numel() > 1 {
+                let k = y.data.first().copied().unwrap_or(0.0) as usize;
+                let n = x.numel();
+                if k > n {
+                    return mat(Matrix::new(0, k, Vec::new()).with_kind(x.kind));
+                }
+                let mut rows: Vec<Vec<usize>> = Vec::new();
+                let mut idx: Vec<usize> = (0..k).collect();
+                loop {
+                    rows.push(idx.clone());
+                    let Some(i) = (0..k).rev().find(|&i| idx[i] != i + n - k) else { break };
+                    idx[i] += 1;
+                    for j in i + 1..k {
+                        idx[j] = idx[j - 1] + 1;
+                    }
+                    if k == 0 {
+                        break;
+                    }
+                }
+                let r = rows.len();
+                let mut data = vec![0.0; r * k];
+                for (ri, row) in rows.iter().enumerate() {
+                    for (ci, &e) in row.iter().enumerate() {
+                        data[ci * r + ri] = x.data[e];
+                    }
+                }
+                return mat(Matrix::new(r, k, data).with_kind(x.kind));
             }
             let kind = ops::arith_kind(x.kind, y.kind).unwrap_or(Kind::Double);
             let f: fn(f64, f64) -> f64 = match name {
@@ -1928,17 +2331,7 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             }))
         }
         "histcounts" => return crate::builtins_datafun::histcounts(a, nargout),
-        "accumarray" => {
-            let subs = m_arg(a, 0, name)?;
-            let vals = m_arg(a, 1, name)?;
-            let n = subs.data.iter().cloned().fold(0.0, f64::max) as usize;
-            let mut out = vec![0.0; n];
-            for (i, &s) in subs.data.iter().enumerate() {
-                let v = if vals.numel() == 1 { vals.data[0] } else { vals.data[i] };
-                out[s as usize - 1] += v;
-            }
-            mat(Matrix::col(out))
-        }
+        "accumarray" => return accumarray(it, a).map(|v| Some(vec![v])),
 
         // ---- functional ------------------------------------------------------------------
         "feval" => {
@@ -2059,11 +2452,25 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
 
         // ---- session & errors --------------------------------------------------------------
         "tic" => {
+            // t = tic: a time stamp in microseconds for toc(t); the toc timer is left alone.
+            if nargout >= 1 {
+                let us = tic_epoch().elapsed().as_micros() as f64 + 1.0;
+                return mat(Matrix::scalar(us).with_kind(Kind::Int(IntClass::U64)));
+            }
             it.tic = std::time::Instant::now();
             none()
         }
         "toc" => {
-            let t = it.tic.elapsed().as_secs_f64();
+            let t = match a.first() {
+                Some(v) => {
+                    let m = v.to_matrix()?;
+                    if m.kind != Kind::Int(IntClass::U64) || m.numel() != 1 {
+                        return rt("Input argument must be of type uint64.");
+                    }
+                    (tic_epoch().elapsed().as_micros() as f64 + 1.0 - m.data[0]).max(0.0) / 1e6
+                }
+                None => it.tic.elapsed().as_secs_f64(),
+            };
             if nargout >= 1 {
                 return num(t);
             }
@@ -2248,6 +2655,9 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 "and" => And,
                 _ => Or,
             };
+            if a.len() > 2 {
+                return rt("Too many input arguments.");
+            }
             one(it.binary(op, arg(a, 0, name)?.clone(), arg(a, 1, name)?.clone())?)
         }
         "xor" => {
@@ -2381,6 +2791,13 @@ fn gamma(x: f64) -> f64 {
     if x.fract() == 0.0 && x <= 0.0 {
         return f64::INFINITY;
     }
+    // Whole numbers: the exact factorial while it is finite.
+    if x.fract() == 0.0 && x <= 171.0 {
+        return (1..x as u32).fold(1.0, |p, k| p * k as f64);
+    }
+    if x > 171.62 {
+        return f64::INFINITY;
+    }
     if x < 0.5 {
         return std::f64::consts::PI / ((std::f64::consts::PI * x).sin() * gamma(1.0 - x));
     }
@@ -2401,5 +2818,7 @@ fn gamma(x: f64) -> f64 {
     for (i, &g) in G.iter().enumerate().skip(1) {
         a += g / (x + i as f64);
     }
-    (2.0 * std::f64::consts::PI).sqrt() * t.powf(x + 0.5) * (-t).exp() * a
+    // t^(x+1/2) e^-t in two halves, so that it does not overflow before the product does.
+    let half = t.powf((x + 0.5) / 2.0);
+    (2.0 * std::f64::consts::PI).sqrt() * half * (-t).exp() * half * a
 }

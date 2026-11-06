@@ -938,6 +938,9 @@ pub fn zeta_f64(s: f64) -> f64 {
     if s == 1.0 {
         return f64::INFINITY;
     }
+    if s == 0.0 {
+        return -0.5;
+    }
     if s < 0.5 {
         // Functional equation.
         let g = libm::tgamma(1.0 - s);
@@ -957,6 +960,42 @@ pub fn zeta_f64(s: f64) -> f64 {
         fact *= (2.0 * j + 1.0) * (2.0 * j + 2.0);
     }
     sum
+}
+
+/// The n-th derivative of zeta at real s: (-1)^n sum (ln k)^n / k^s for s > 1 (with the
+/// integral tail and the first Euler-Maclaurin corrections), differences of zeta elsewhere.
+pub fn zeta_deriv(n: u32, s: f64) -> f64 {
+    if n == 0 {
+        return zeta_f64(s);
+    }
+    if s == 1.0 {
+        return f64::NAN;
+    }
+    if s > 1.0 {
+        let big_n = 1000.0f64;
+        let f = |x: f64| x.ln().powi(n as i32) * x.powf(-s);
+        let mut sum: f64 = (2..1000).map(|k| f(k as f64)).sum();
+        // Integral of (ln x)^n x^-s from N: e^-a sum n!/j! a^j / (s-1)^(n+1), a = (s-1) ln N.
+        let a = (s - 1.0) * big_n.ln();
+        let mut term = 1.0;
+        let mut series = 1.0;
+        for j in 1..=n {
+            term *= a / j as f64;
+            series += term;
+        }
+        let fact: f64 = (1..=n).map(|k| k as f64).product();
+        sum += (-a).exp() * fact * series / (s - 1.0).powi(n as i32 + 1);
+        sum += 0.5 * f(big_n);
+        // - B2/2! f'(N), f'(x) = x^(-s-1) (ln x)^(n-1) (n - s ln x)
+        let l = big_n.ln();
+        let fp = big_n.powf(-s - 1.0) * l.powi(n as i32 - 1) * (n as f64 - s * l);
+        sum -= fp / 12.0;
+        return if n % 2 == 1 { -sum } else { sum };
+    }
+    // Elsewhere: Richardson-extrapolated central differences of the previous derivative.
+    let d = |h: f64| (zeta_deriv(n - 1, s + h) - zeta_deriv(n - 1, s - h)) / (2.0 * h);
+    let (h1, h2) = (1e-2, 5e-3);
+    (4.0 * d(h2) - d(h1)) / 3.0
 }
 
 /// Principal branch of the Lambert W function for real x >= -1/e.
@@ -1316,6 +1355,18 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> R<
             let input = arg0(a)?;
             if let Value::Sym(s) = input {
                 return one(Value::Sym(s.map(zeta_sym)));
+            }
+            // zeta(n, x): the n-th derivative of zeta at x.
+            if a.len() == 2 && !matches!(a[1], Value::Sym(_)) {
+                let n = a[0].to_matrix()?;
+                let x = a[1].to_matrix()?;
+                if n.data.iter().any(|&k| k < 0.0 || k.fract() != 0.0) {
+                    return crate::error::rt("First argument must be a nonnegative integer.");
+                }
+                let len = n.numel().max(x.numel());
+                let dims = if x.numel() >= n.numel() { x.dims.clone() } else { n.dims.clone() };
+                let vals = (0..len).map(|i| zeta_deriv(n.data[if n.numel() == 1 { 0 } else { i }] as u32, x.data[if x.numel() == 1 { 0 } else { i }])).collect();
+                return one(Value::Num(Matrix::from_dims(dims, vals)));
             }
             let m = input.to_matrix()?;
             one(Value::Num(Matrix::from_dims(m.dims.clone(), m.data.iter().map(|&s| zeta_f64(s)).collect())))

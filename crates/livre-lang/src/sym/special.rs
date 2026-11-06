@@ -641,6 +641,49 @@ fn poly_call(name: &str, args: &[Value]) -> R<Value> {
             })
         });
     }
+    // Complex points: the three-term recurrences in complex arithmetic.
+    if args.len() == 2 && matches!(name, "chebyshevT" | "chebyshevU" | "hermiteH" | "legendreP" | "laguerreL") {
+        let (nm, xm) = (args[0].to_matrix()?, args[1].to_matrix()?);
+        if xm.is_complex() && nm.numel() == 1 {
+            let n = nm.data[0];
+            if n < 0.0 || n.fract() != 0.0 {
+                return Err(bad_n());
+            }
+            let n = n as usize;
+            let (mut re, mut im) = (Vec::with_capacity(xm.numel()), Vec::with_capacity(xm.numel()));
+            for i in 0..xm.numel() {
+                let x = C::new(xm.data[i], xm.im_at(i));
+                let one = C::new(1.0, 0.0);
+                let k_c = |k: f64| C::new(k, 0.0);
+                let (p0, p1) = match name {
+                    "chebyshevT" | "legendreP" => (one, x),
+                    "chebyshevU" | "hermiteH" => (one, x.mul(k_c(2.0))),
+                    _ => (one, one.sub(x)),
+                };
+                let mut prev = p0;
+                let mut cur = p1;
+                let val = if n == 0 {
+                    p0
+                } else {
+                    for k in 1..n {
+                        let kf = k as f64;
+                        let next = match name {
+                            "chebyshevT" | "chebyshevU" => x.mul(k_c(2.0)).mul(cur).sub(prev),
+                            "hermiteH" => x.mul(k_c(2.0)).mul(cur).sub(prev.mul(k_c(2.0 * kf))),
+                            "legendreP" => x.mul(k_c(2.0 * kf + 1.0)).mul(cur).sub(prev.mul(k_c(kf))).div(k_c(kf + 1.0)),
+                            _ => k_c(2.0 * kf + 1.0).sub(x).mul(cur).sub(prev.mul(k_c(kf))).div(k_c(kf + 1.0)),
+                        };
+                        prev = cur;
+                        cur = next;
+                    }
+                    cur
+                };
+                re.push(val.re);
+                im.push(val.im);
+            }
+            return Ok(Value::Num(Matrix::complex(xm.dims.clone(), re, im)));
+        }
+    }
     numeric(args, &|v| {
         if v[0] < 0.0 || v[0].fract() != 0.0 {
             return Err(bad_n());

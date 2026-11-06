@@ -956,6 +956,30 @@ pub fn call(name: &str, args: &[Value], nargout: usize) -> R<Option<Vec<Value>>>
             if pos.is_empty() {
                 return one(Value::Time(TimeArray::durations(vec![1, 1], vec![0.0], &format)));
             }
+            // Text: hh:mm:ss or dd:hh:mm:ss (seconds may have a fraction), NaN when unreadable.
+            if pos.len() == 1 && (pos[0].is_text() || matches!(pos[0], Value::Str(_) | Value::Cell(_))) {
+                let (dims, items): (Vec<usize>, Vec<String>) = match &pos[0] {
+                    Value::Cell(c) => (c.dims.clone(), c.data.iter().map(|v| v.text()).collect::<R<_>>()?),
+                    Value::Str(sa) => (sa.dims.clone(), sa.data.iter().map(|x| x.clone().unwrap_or_default()).collect()),
+                    v => (vec![1, 1], vec![v.text()?]),
+                };
+                let parse = |t: &str| -> f64 {
+                    let t = t.trim();
+                    let (neg, t) = match t.strip_prefix('-') {
+                        Some(r) => (true, r),
+                        None => (false, t),
+                    };
+                    let nums: Option<Vec<f64>> = t.split(':').map(|p| p.parse::<f64>().ok()).collect();
+                    let ms = match nums.as_deref() {
+                        Some([h, m, s]) => h * MS_HOUR + m * MS_MIN + s * 1000.0,
+                        Some([d, h, m, s]) => d * MS_DAY + h * MS_HOUR + m * MS_MIN + s * 1000.0,
+                        _ => f64::NAN,
+                    };
+                    if neg { -ms } else { ms }
+                };
+                let ms = items.iter().map(|t| parse(t)).collect();
+                return one(Value::Time(TimeArray::durations(dims, ms, &format)));
+            }
             let comps: Vec<Matrix> = if pos.len() == 1 {
                 let m = pos[0].to_matrix()?;
                 (0..m.cols()).map(|j| Matrix::col((0..m.rows()).map(|i| m.get(i, j)).collect())).collect()

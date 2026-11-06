@@ -50,6 +50,7 @@ mod polyshape;
 mod polyshape_more;
 mod props_decomposition;
 mod random;
+mod reported_bugs;
 mod session_more;
 mod settings;
 mod sparse;

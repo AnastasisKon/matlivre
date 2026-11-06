@@ -413,7 +413,12 @@ pub(crate) fn color_arg(v: &Value) -> R<Option<([u8; 3], [f64; 3])>> {
             return Ok(None);
         }
         if let Some(hex) = t.strip_prefix('#') {
-            let n = u32::from_str_radix(hex, 16).map_err(|_| LangError::new("Invalid color value.", 0))?;
+            // '#RGB' is short for '#RRGGBB'.
+            let hex: String = if hex.len() == 3 { hex.chars().flat_map(|c| [c, c]).collect() } else { hex.to_string() };
+            if hex.len() != 6 {
+                return rt("Invalid color value.");
+            }
+            let n = u32::from_str_radix(&hex, 16).map_err(|_| LangError::new("Invalid color value.", 0))?;
             let rgb = [((n >> 16) & 255) as f64 / 255.0, ((n >> 8) & 255) as f64 / 255.0, (n & 255) as f64 / 255.0];
             return Ok(Some((to_u8(rgb), rgb)));
         }

@@ -92,9 +92,22 @@ fn orient(p: &[&[f64]]) -> f64 {
 /// Circumcenter and squared radius of a simplex (None when degenerate).
 pub(crate) fn circumsphere(p: &[&[f64]]) -> Option<(Vec<f64>, f64)> {
     let d = p[0].len();
-    let a: Vec<Vec<f64>> = p[1..].iter().map(|q| sub(q, p[0]).iter().map(|v| 2.0 * v).collect()).collect();
-    let b: Vec<f64> = p[1..].iter().map(|q| dist2(q, p[0])).collect();
-    let rel = solve(a, b)?;
+    if p.len() == d + 1 {
+        let a: Vec<Vec<f64>> = p[1..].iter().map(|q| sub(q, p[0]).iter().map(|v| 2.0 * v).collect()).collect();
+        let b: Vec<f64> = p[1..].iter().map(|q| dist2(q, p[0])).collect();
+        let rel = solve(a, b)?;
+        let c: Vec<f64> = (0..d).map(|k| p[0][k] + rel[k]).collect();
+        let r2 = rel.iter().map(|v| v * v).sum();
+        return Some((c, r2));
+    }
+    // A simplex of lower dimension (a triangle in 3-D), in its own span: c = p0 + E'λ with
+    // 2 E E' λ = |e|².
+    let e: Vec<Vec<f64>> = p[1..].iter().map(|q| sub(q, p[0])).collect();
+    let dot = |u: &[f64], v: &[f64]| u.iter().zip(v).map(|(a, b)| a * b).sum::<f64>();
+    let g: Vec<Vec<f64>> = e.iter().map(|u| e.iter().map(|v| 2.0 * dot(u, v)).collect()).collect();
+    let b: Vec<f64> = e.iter().map(|u| dot(u, u)).collect();
+    let lambda = solve(g, b)?;
+    let rel: Vec<f64> = (0..d).map(|k| e.iter().zip(&lambda).map(|(u, l)| u[k] * l).sum()).collect();
     let c: Vec<f64> = (0..d).map(|k| p[0][k] + rel[k]).collect();
     let r2 = rel.iter().map(|v| v * v).sum();
     Some((c, r2))
@@ -632,11 +645,19 @@ fn voronoi(it: &mut Interpreter, a: &[Value]) -> Ret {
 
 /// Barycentric coordinates of `q` in simplex `s`.
 pub(crate) fn barycentric(pts: &[Vec<f64>], s: &[usize], q: &[f64]) -> Option<Vec<f64>> {
-    let d = q.len();
     let p0 = &pts[s[0]];
-    let a: Vec<Vec<f64>> = (0..d).map(|r| (1..=d).map(|c| pts[s[c]][r] - p0[r]).collect()).collect();
     let b = sub(q, p0);
-    let l = solve(a, b)?;
+    let e: Vec<Vec<f64>> = s[1..].iter().map(|&i| sub(&pts[i], p0)).collect();
+    let l = if e.len() == q.len() {
+        let d = q.len();
+        let a: Vec<Vec<f64>> = (0..d).map(|r| e.iter().map(|v| v[r]).collect()).collect();
+        solve(a, b)?
+    } else {
+        // A simplex of lower dimension (a surface triangle): coordinates of the projected point.
+        let dot = |u: &[f64], v: &[f64]| u.iter().zip(v).map(|(a, b)| a * b).sum::<f64>();
+        let g: Vec<Vec<f64>> = e.iter().map(|u| e.iter().map(|v| dot(u, v)).collect()).collect();
+        solve(g, e.iter().map(|u| dot(u, &b)).collect())?
+    };
     let mut w = vec![1.0 - l.iter().sum::<f64>()];
     w.extend(l);
     Some(w)

@@ -1113,6 +1113,9 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         "unmesh" => {
             // unmesh(E): an edge list [x1 y1 x2 y2] to an adjacency matrix and node coordinates.
             let e = mat(arg(a, 0, name)?)?;
+            if e.cols() != 4 {
+                return rt("Mesh must have rows of the form [x1 y1 x2 y2].");
+            }
             let r = e.rows();
             let mut nodes: Vec<(f64, f64)> = Vec::new();
             let mut idx = |x: f64, y: f64| -> usize {
@@ -1130,11 +1133,25 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
                 let q = idx(e.data[2 * r + i], e.data[3 * r + i]);
                 pairs.push((p, q));
             }
+            // Nodes in sorted (x, y) order, as unique gives them.
+            let mut order: Vec<usize> = (0..nodes.len()).collect();
+            order.sort_by(|&i, &j| nodes[i].0.total_cmp(&nodes[j].0).then(nodes[i].1.total_cmp(&nodes[j].1)));
+            let mut rank = vec![0; nodes.len()];
+            for (r, &i) in order.iter().enumerate() {
+                rank[i] = r;
+            }
+            let pairs: Vec<(usize, usize)> = pairs.into_iter().map(|(p, q)| (rank[p], rank[q])).collect();
+            let nodes: Vec<(f64, f64)> = order.iter().map(|&i| nodes[i]).collect();
             let n = nodes.len();
+            // The Laplacian of the mesh: node degrees on the diagonal, -1 for each edge.
             let mut adj = Matrix::zeros(n, n);
             for (p, q) in pairs {
-                adj.data[q * n + p] = 1.0;
-                adj.data[p * n + q] = 1.0;
+                if p != q && adj.data[q * n + p] == 0.0 {
+                    adj.data[q * n + p] = -1.0;
+                    adj.data[p * n + q] = -1.0;
+                    adj.data[p * n + p] += 1.0;
+                    adj.data[q * n + q] += 1.0;
+                }
             }
             let mut xy = vec![0.0; 2 * n];
             for (k, &(x, y)) in nodes.iter().enumerate() {
