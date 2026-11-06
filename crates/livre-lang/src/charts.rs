@@ -1,7 +1,8 @@
 //! Charts: `heatmap`, `boxchart`, `swarmchart`, `swarmchart3`, bubble charts (`bubblechart`,
 //! `bubblechart3`, `polarbubblechart`, `bubblesize`, `bubblelim`, `bubblelegend`),
 //! `binscatter`, `piechart`, `donutchart`, `bubblecloud`, `parallelplot`, `stackedplot`,
-//! `scatterhistogram`, `wordcloud` and `geobubble`, plus `yyaxis` and `datetick`.
+//! `scatterhistogram`, `wordcloud` and `geobubble`, data tips (`datatip`), plus `yyaxis` and
+//! `datetick`.
 //!
 //! A chart is one graphics object that keeps its properties (in `gfx_store`) and is drawn
 //! with parts (patches, lines, text) placed in its axes. Setting a property rebuilds the parts.
@@ -19,7 +20,7 @@ type R<T> = Result<T, LangError>;
 pub const NAMES: &[&str] = &[
     "heatmap", "boxchart", "swarmchart", "swarmchart3", "bubblechart", "bubblechart3", "polarbubblechart", "bubblesize", "bubblelim", "bubblelegend",
     "binscatter", "piechart", "donutchart", "bubblecloud", "parallelplot", "stackedplot", "scatterhistogram", "wordcloud", "geobubble", "yyaxis", "datetick", "sortx", "sorty",
-    "highlight", "labelnode", "labeledge", "layout",
+    "highlight", "labelnode", "labeledge", "layout", "datatip",
 ];
 
 const HEATMAP: &str = "matlab.graphics.chart.HeatmapChart";
@@ -36,8 +37,9 @@ const WORDCLOUD: &str = "matlab.graphics.chart.WordCloudChart";
 const GEOBUBBLE: &str = "matlab.graphics.chart.GeographicBubbleChart";
 const BUBBLELEGEND: &str = "matlab.graphics.illustration.BubbleLegend";
 const GRAPHPLOT: &str = "matlab.graphics.chart.primitive.GraphPlot";
+const DATATIP: &str = "matlab.graphics.datatip.DataTip";
 
-const CHARTS: &[&str] = &[HEATMAP, BOX, BINSCATTER, PIE, DONUT, CLOUD, PARALLEL, STACKED, SCATTERHIST, WORDCLOUD, GEOBUBBLE, BUBBLELEGEND, GRAPHPLOT];
+const CHARTS: &[&str] = &[HEATMAP, BOX, BINSCATTER, PIE, DONUT, CLOUD, PARALLEL, STACKED, SCATTERHIST, WORDCLOUD, GEOBUBBLE, BUBBLELEGEND, GRAPHPLOT, DATATIP];
 
 /// Hidden store keys: the parts a chart is drawn with, and bookkeeping flags.
 const PARTS: &str = "\u{1}parts";
@@ -66,6 +68,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         "labelnode" => label_graph(it, a, true),
         "labeledge" => label_graph(it, a, false),
         "layout" => graph_layout(it, a),
+        "datatip" => datatip(it, a, nargout),
         "boxchart" => boxchart(it, a, nargout),
         "swarmchart" => swarmchart(it, a, nargout, false),
         "swarmchart3" => swarmchart(it, a, nargout, true),
@@ -345,6 +348,7 @@ fn redraw(it: &mut Interpreter, id: u64) -> R<()> {
         WORDCLOUD => wordcloud_parts(it, id, f, a)?,
         GEOBUBBLE => geobubble_parts(it, id, f, a)?,
         GRAPHPLOT => graph_parts(it, id, f, a)?,
+        DATATIP => datatip_parts(it, id, a)?,
         _ => Vec::new(),
     };
     let mut ids = Vec::with_capacity(parts.len());
@@ -408,6 +412,11 @@ pub fn set(it: &mut Interpreter, id: u64, name: &str, v: Value) -> R<()> {
             gfx::store(it, id, "NumBinsMode", Value::chars("manual"));
             binscatter_bins(it, id)?;
         }
+        (DATATIP, "DataIndex") => {
+            let k = v_scalar(it, id, "DataIndex");
+            place_tip(it, id, k)?;
+        }
+        (DATATIP, "Location") => gfx::store(it, id, "LocationMode", Value::chars("manual")),
         _ => {}
     }
     redraw(it, id)
@@ -420,6 +429,7 @@ pub fn short_props(class: &str, it: &Interpreter, id: u64) -> Vec<&'static str> 
         HEATMAP if table => vec!["SourceTable", "XVariable", "YVariable", "ColorVariable", "ColorMethod"],
         HEATMAP => vec!["XData", "YData", "ColorData"],
         BOX => vec!["XData", "YData"],
+        DATATIP => vec!["DataIndex", "Location", "Parent"],
         BINSCATTER => vec!["NumBins", "XBinEdges", "YBinEdges", "Values", "XLimits", "YLimits", "FaceAlpha"],
         PIE | DONUT => vec!["ColorOrder", "FaceAlpha", "EdgeColor", "Labels", "Data", "Names"],
         CLOUD if table => vec!["SourceTable", "SizeVariable", "LabelVariable", "GroupVariable"],
@@ -441,6 +451,7 @@ pub fn short_props(class: &str, it: &Interpreter, id: u64) -> Vec<&'static str> 
 /// The header of a chart's display: its class, with its title in parentheses.
 pub fn display_title(it: &mut Interpreter, id: u64, short: &str) -> String {
     let title = match class_at(it, id) {
+        Some(DATATIP) => tip_label(it, id),
         Some(BUBBLELEGEND) => gfx::stored(it, id, LEGEND_TITLE).map(|v| text(&v)).unwrap_or_default(),
         _ => gfx::stored(it, id, "Title").map(|v| texts(it, &v).map(|t| t.join(" ")).unwrap_or_default()).unwrap_or_default(),
     };
@@ -2518,4 +2529,208 @@ fn graph_parts(it: &mut Interpreter, id: u64, f: usize, a: usize) -> R<Vec<(usiz
         ax.ylim = Some((y0 - pad, y1 + pad));
     }
     Ok(parts)
+}
+
+// ---- data tips -------------------------------------------------------------------------------
+
+/// The plotted object a data tip belongs to.
+const DT_PARENT: &str = "\u{1}dtparent";
+
+/// Objects drawn for charts (their parts) and data tips: listed by the axes they are in only
+/// through their chart or plotted object.
+pub fn hidden_in_axes(it: &Interpreter, f: usize, a: usize) -> Vec<u64> {
+    let mut out = Vec::new();
+    for s in &it.figures[f].axes[a].series {
+        if s.class_hint == Some(DATATIP) {
+            out.push(s.id);
+        }
+        if s.class_hint.is_some_and(is_chart) {
+            if let Some(v) = gfx::stored(it, s.id, PARTS) {
+                out.extend(nums(&v).iter().map(|&x| x as u64));
+            }
+        }
+    }
+    out
+}
+
+/// The data tips of a plotted object, newest first.
+pub fn datatips_of(it: &Interpreter, id: u64) -> Vec<u64> {
+    let mut out = Vec::new();
+    for fig in &it.figures {
+        for ax in &fig.axes {
+            for s in ax.series.iter().rev() {
+                if s.class_hint == Some(DATATIP) && gfx::stored(it, s.id, DT_PARENT).and_then(|v| v.scalar().ok()) == Some(id as f64) {
+                    out.push(s.id);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Objects deleted with `id`: a chart's parts and an object's data tips.
+pub fn dependents(it: &Interpreter, id: u64) -> Vec<u64> {
+    let mut out: Vec<u64> = gfx::stored(it, id, PARTS).map(|v| nums(&v).iter().map(|&x| x as u64).collect()).unwrap_or_default();
+    out.extend(datatips_of(it, id));
+    out
+}
+
+/// The parent of a chart that is not its axes or figure (a data tip's plotted object).
+pub fn special_parent(it: &Interpreter, id: u64, class: &str) -> Option<u64> {
+    if class != DATATIP {
+        return None;
+    }
+    gfx::stored(it, id, DT_PARENT).and_then(|v| v.scalar().ok()).map(|x| x as u64)
+}
+
+fn tip_number(x: f64) -> String {
+    crate::display::fmt_g(x, 6)
+}
+
+/// "X 3, Y 3" (with Z for 3-D data).
+fn tip_label(it: &mut Interpreter, id: u64) -> String {
+    let x = get(it, id, "X").scalar().unwrap_or(f64::NAN);
+    let y = get(it, id, "Y").scalar().unwrap_or(f64::NAN);
+    let mut s = format!("X {}, Y {}", tip_number(x), tip_number(y));
+    if gfx::stored(it, id, "\u{1}dt3d").is_some() {
+        let z = get(it, id, "Z").scalar().unwrap_or(f64::NAN);
+        s += &format!(", Z {}", tip_number(z));
+    }
+    s
+}
+
+/// The points of a plotted object that data tips snap to: (x, y, z) per data index, and
+/// whether the data are 3-D.
+fn tip_points(s: &Series) -> Option<(Vec<[f64; 3]>, bool)> {
+    match s.kind {
+        SeriesKind::Surface => {
+            let n = s.z.len();
+            let pts = (0..n).map(|k| [s.x.get(k).copied().unwrap_or(f64::NAN), s.y.get(k).copied().unwrap_or(f64::NAN), s.z[k]]).collect();
+            Some((pts, true))
+        }
+        SeriesKind::Line | SeriesKind::Scatter | SeriesKind::Bar | SeriesKind::BarH | SeriesKind::Stem | SeriesKind::Stairs | SeriesKind::Area | SeriesKind::ErrorBar | SeriesKind::Patch => {
+            let three = !s.z.is_empty();
+            let pts = (0..s.x.len().min(s.y.len())).map(|k| [s.x[k], s.y[k], if three { s.z.get(k).copied().unwrap_or(0.0) } else { 0.0 }]).collect();
+            Some((pts, three))
+        }
+        _ => None,
+    }
+}
+
+/// Where the tip box goes: away from the top and right edges of the axes.
+fn tip_location(it: &mut Interpreter, f: usize, a: usize, p: [f64; 3], three: bool) -> &'static str {
+    if three {
+        return "northeast";
+    }
+    let ((x0, x1), (y0, y1)) = it.figures[f].axes[a].limits();
+    let nx = if x1 > x0 { (p[0] - x0) / (x1 - x0) } else { 0.5 };
+    let ny = if y1 > y0 { (p[1] - y0) / (y1 - y0) } else { 0.5 };
+    match (ny > 0.855, nx > 0.895) {
+        (false, false) => "northeast",
+        (false, true) => "northwest",
+        (true, false) => "southeast",
+        (true, true) => "southwest",
+    }
+}
+
+/// Moves a data tip to data index `k` (1-based, clamped) of its object.
+fn place_tip(it: &mut Interpreter, id: u64, k: f64) -> R<()> {
+    let Some(pid) = special_parent(it, id, DATATIP) else { return Ok(()) };
+    let Some(Target::Series(f, a, si)) = gfx::resolve(it, pid) else { return rt("Invalid argument. The object has been deleted or does not support data tips.") };
+    let Some((pts, three)) = tip_points(&it.figures[f].axes[a].series[si]) else { return Ok(()) };
+    if pts.is_empty() {
+        return Ok(());
+    }
+    let k = (k.round().max(1.0) as usize).min(pts.len());
+    let p = pts[k - 1];
+    let mut props = vec![("DataIndex", Value::num(k as f64)), ("X", Value::num(p[0])), ("Y", Value::num(p[1])), ("Z", Value::num(if three { p[2] } else { 0.0 }))];
+    if gfx::stored(it, id, "LocationMode").map(|v| text(&v) != "manual").unwrap_or(true) {
+        props.push(("Location", Value::chars(tip_location(it, f, a, p, three))));
+    }
+    put(it, id, props);
+    if three {
+        put(it, id, vec![("\u{1}dt3d", Value::num(1.0))]);
+    }
+    Ok(())
+}
+
+/// `datatip(target, x, y[, z])` or `datatip(target, 'DataIndex', k)`: a data tip on the data
+/// point of a plotted object nearest to (x, y), shown as "X x, Y y".
+fn datatip(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
+    let target = a.first().ok_or_else(|| LangError::new("Not enough input arguments.", 0))?;
+    let pid = gfx::ids_of(target).and_then(|v| v.first().copied());
+    let unsupported = "Invalid argument. The object has been deleted or does not support data tips.";
+    let Some(pid) = pid else { return rt("First argument must be a chart object that supports data tips.") };
+    let (f, ax, si) = match gfx::resolve(it, pid) {
+        Some(Target::Series(f, ax, si)) => (f, ax, si),
+        Some(_) => return rt("First argument must be a chart object that supports data tips."),
+        None => return rt(unsupported),
+    };
+    let s = &it.figures[f].axes[ax].series[si];
+    if s.class_hint.is_some_and(|c| is_chart(c) || c == DATATIP) {
+        return rt(unsupported);
+    }
+    let Some((pts, three)) = tip_points(s) else { return rt(unsupported) };
+    // Coordinates, then name-value options.
+    let mut i = 1;
+    let mut coords = Vec::new();
+    while i < a.len() && is_numeric(&a[i]) {
+        coords.push(a[i].scalar()?);
+        i += 1;
+    }
+    let mut props = name_values(&a[i..])?;
+    let index = match take(&mut props, "DataIndex") {
+        Some(v) => v.scalar()?,
+        None if coords.len() >= 2 => {
+            let ((x0, x1), (y0, y1)) = it.figures[f].axes[ax].limits();
+            // Distances in screen proportions of the default axes (434 by 342 pixels).
+            let (sx, sy) = (434.0 / (x1 - x0).abs().max(1e-300), 342.0 / (y1 - y0).abs().max(1e-300));
+            let (zmin, zmax) = pts.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[2]), hi.max(p[2])));
+            let sz = if coords.len() >= 3 && zmax > zmin { 342.0 / (zmax - zmin) } else { 0.0 };
+            let dist = |p: &[f64; 3]| {
+                let dz = if coords.len() >= 3 { (p[2] - coords[2]) * sz } else { 0.0 };
+                ((p[0] - coords[0]) * sx).powi(2) + ((p[1] - coords[1]) * sy).powi(2) + dz * dz
+            };
+            let mut best = 0;
+            for (k, p) in pts.iter().enumerate() {
+                if dist(p) < dist(&pts[best]) {
+                    best = k;
+                }
+            }
+            (best + 1) as f64
+        }
+        None => 1.0,
+    };
+    let _ = three;
+    let id = gfx::alloc(it);
+    let mut anchor = anchor(DATATIP);
+    anchor.id = id;
+    it.figures[f].axes[ax].series.push(anchor);
+    put(it, id, vec![(DT_PARENT, Value::num(pid as f64)), ("Tag", Value::chars("datatip"))]);
+    if let Some(loc) = take(&mut props, "Location") {
+        put(it, id, vec![("Location", Value::chars(&text(&loc))), ("LocationMode", Value::chars("manual"))]);
+    }
+    place_tip(it, id, index)?;
+    finish(it, &[id], &props, nargout)
+}
+
+/// The label part of a data tip.
+fn datatip_parts(it: &mut Interpreter, id: u64, a: usize) -> R<Vec<(usize, Series)>> {
+    let x = get(it, id, "X").scalar().unwrap_or(f64::NAN);
+    let y = get(it, id, "Y").scalar().unwrap_or(f64::NAN);
+    let size = get(it, id, "FontSize").scalar().ok().map(|v| v as f32);
+    let mut lines = vec![format!("X {}", tip_number(x)), format!("Y {}", tip_number(y))];
+    if gfx::stored(it, id, "\u{1}dt3d").is_some() {
+        lines.push(format!("Z {}", tip_number(get(it, id, "Z").scalar().unwrap_or(f64::NAN))));
+    }
+    let mut t = label(x, y, &lines.join("\n"), [0, 0, 0], size);
+    t.centered = false;
+    if gfx::stored(it, id, "\u{1}dt3d").is_some() {
+        t.z = vec![get(it, id, "Z").scalar().unwrap_or(0.0)];
+    }
+    Ok(vec![(a, t)])
+}
+
+fn v_scalar(it: &Interpreter, id: u64, name: &str) -> f64 {
+    gfx::stored(it, id, name).and_then(|v| v.scalar().ok()).unwrap_or(1.0)
 }

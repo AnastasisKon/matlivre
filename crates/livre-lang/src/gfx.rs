@@ -20,7 +20,7 @@ use crate::value::*;
 
 type R<T> = Result<T, LangError>;
 
-pub const NAMES: &[&str] = &["set", "get", "isgraphics", "ishandle", "ishghandle", "groot", "gobjects", "findobj", "findall", "allchild", "ancestor", "axes", "cla", "isvalid"];
+pub const NAMES: &[&str] = &["set", "get", "isgraphics", "ishandle", "ishghandle", "groot", "gobjects", "findobj", "findall", "allchild", "ancestor", "axes", "cla", "isvalid", "findfigs", "handle"];
 
 /// Handle numbers: 0 is the root, figure numbers are their own handles, and axes take a
 /// block of `SLOTS` numbers from `OBJ_BASE` up (their labels and rulers use the block).
@@ -527,11 +527,20 @@ pub(crate) fn get_prop(it: &mut Interpreter, id: u64, name: &str) -> R<Value> {
         if let Some(v) = stored(it, id, name) {
             return Ok(v);
         }
+        if name == "Parent" {
+            if let Some(p) = crate::charts::special_parent(it, id, class) {
+                return Ok(handle(it, p));
+            }
+        }
         if let (Target::Series(f, a, _), "Parent") = (t, name) {
             let parent = if crate::charts::in_axes(class) { axes_id(it, f, a) } else { it.figures[f].id as u64 };
             return Ok(handle(it, parent));
         }
         return Ok(default_value(it, class, name));
+    }
+    // Plotted objects hold their data tips.
+    if let (Target::Series(..), "Children") = (t, name) {
+        return Ok(handles(it, &crate::charts::datatips_of(it, id)));
     }
     if let Some(v) = computed(it, id, t, name)? {
         return Ok(v);
@@ -667,7 +676,9 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
                 "Children" => {
                     // yyaxis axes list the active side's objects.
                     let side = ax.yy.as_ref().map(|yy| yy.right_active);
-                    let ids: Vec<u64> = ax.series.iter().rev().filter(|s| side.map_or(true, |r| s.right == r)).map(|s| s.id).collect();
+                    // Chart parts and data tips are not children of the axes.
+                    let hidden = crate::charts::hidden_in_axes(it, f, a);
+                    let ids: Vec<u64> = ax.series.iter().rev().filter(|s| side.map_or(true, |r| s.right == r) && !hidden.contains(&s.id)).map(|s| s.id).collect();
                     handles(it, &ids)
                 }
                 "Parent" => handle(it, it.figures[f].id as u64),
@@ -1337,22 +1348,11 @@ fn short_props(class: &str, it: &Interpreter, id: u64) -> Vec<&'static str> {
 }
 
 /// The text `name = h` shows.
-pub fn display(it: &mut Interpreter, name: &str, v: &Value) -> R<String> {
-    let ids = ids_of(v).unwrap_or_default();
-    let class = match v {
-        Value::Object(o) => o.class.name.clone(),
-        _ => String::new(),
-    };
-    if ids.len() != 1 {
-        let shape = if ids.is_empty() { "0×0".to_string() } else { format!("{}×1", ids.len()) };
-        let names: String = ids.iter().map(|&id| format!("  {}\n", resolve(it, id).map(|t| short(class_of(it, t))).unwrap_or("GraphicsPlaceholder"))).collect();
-        return Ok(format!("{name} = \n  {shape} {} array:\n\n{names}", short(&class)).trim_end().to_string());
-    }
-    let id = ids[0];
-    let Some(t) = resolve(it, id) else {
-        return Ok(format!("{name} = \n  handle to deleted {}", short(&class)));
-    };
-    let title = match t {
+/// The heading MATLAB shows for one graphics object: `Line (data1)`, `Figure (1: Name)`,
+/// `DataTip (X 3, Y 3)`.
+fn object_title(it: &mut Interpreter, id: u64, t: Target) -> String {
+    let class = class_of(it, t);
+    match t {
         Target::Root => "Graphics Root".to_string(),
         Target::Figure(f) => {
             let n = it.figures[f].id;
@@ -1361,20 +1361,53 @@ pub fn display(it: &mut Interpreter, name: &str, v: &Value) -> R<String> {
                 None => format!("Figure ({n})"),
             }
         }
-        _ if crate::charts::is_chart(&class) => crate::charts::display_title(it, id, short(&class)),
+        _ if crate::charts::is_chart(class) => crate::charts::display_title(it, id, short(class)),
         _ if class.ends_with(".Text") => {
-            let s = get_prop(it, id, "String")?.text().unwrap_or_default();
+            let s = get_prop(it, id, "String").ok().and_then(|v| v.text().ok()).unwrap_or_default();
             if s.is_empty() { "Text".to_string() } else { format!("Text ({s})") }
         }
         // MATLAB names the object by its Tag, else its DisplayName: `Line (data1)`.
         _ => {
             let label = ["Tag", "DisplayName"].iter().find_map(|p| get_prop(it, id, p).ok().and_then(|v| v.text().ok()).filter(|s| !s.is_empty()));
             match label {
-                Some(l) => format!("{} ({l})", short(&class)),
-                None => short(&class).to_string(),
+                Some(l) => format!("{} ({l})", short(class)),
+                None => short(class).to_string(),
             }
         }
+    }
+}
+
+pub fn display(it: &mut Interpreter, name: &str, v: &Value) -> R<String> {
+    let ids = ids_of(v).unwrap_or_default();
+    let class = match v {
+        Value::Object(o) => o.class.name.clone(),
+        _ => String::new(),
     };
+    if ids.len() != 1 {
+        let shape = if ids.is_empty() { "0×0".to_string() } else { format!("{}×1", ids.len()) };
+        // Elements with a label line it up in a column after the widest class name.
+        let titles: Vec<(String, String)> = ids
+            .iter()
+            .map(|&id| match resolve(it, id) {
+                Some(t) => {
+                    let title = object_title(it, id, t);
+                    match title.split_once(" (") {
+                        Some((c, rest)) => (c.to_string(), format!("({rest}")),
+                        None => (title, String::new()),
+                    }
+                }
+                None => ("GraphicsPlaceholder".to_string(), String::new()),
+            })
+            .collect();
+        let width = titles.iter().map(|(c, _)| c.chars().count()).max().unwrap_or(0) + 4;
+        let names: String = titles.iter().map(|(c, l)| if l.is_empty() { format!("  {c}\n") } else { format!("  {c:<width$}{l}\n") }).collect();
+        return Ok(format!("{name} = \n  {shape} {} array:\n\n{names}", short(&class)).trim_end().to_string());
+    }
+    let id = ids[0];
+    let Some(t) = resolve(it, id) else {
+        return Ok(format!("{name} = \n  handle to deleted {}", short(&class)));
+    };
+    let title = object_title(it, id, t);
     let mut s = StructArray::scalar();
     for p in short_props(&class, it, id) {
         let v = get_prop(it, id, p)?;
@@ -1534,7 +1567,16 @@ fn findobj(it: &mut Interpreter, a: &[Value]) -> Ret {
 }
 
 fn delete_handles(it: &mut Interpreter, ids: &[u64]) -> R<()> {
-    for &id in ids {
+    // A chart's parts and an object's data tips go with it.
+    let mut all: Vec<u64> = Vec::new();
+    let mut todo: Vec<u64> = ids.to_vec();
+    while let Some(id) = todo.pop() {
+        if !all.contains(&id) {
+            all.push(id);
+            todo.extend(crate::charts::dependents(it, id));
+        }
+    }
+    for &id in &all {
         match resolve(it, id) {
             Some(Target::Series(f, a, s)) => {
                 it.figures[f].axes[a].series.remove(s);
@@ -1573,6 +1615,16 @@ pub fn delete(it: &mut Interpreter, a: &[Value]) -> Option<Ret> {
 pub fn call(it: &mut Interpreter, name: &str, a: &[Value], _nargout: usize) -> Ret {
     match name {
         "set" => set_builtin(it, a),
+        // Figures are never off screen here, so there is none to bring back.
+        "findfigs" => none(),
+        // handle(h) of graphics objects is the objects themselves.
+        "handle" => {
+            let v = arg(a, 0, name)?;
+            if ids_of(v).is_none() {
+                return rt(format!("Undefined function 'handle' for input arguments of type '{}'.", v.class_name()));
+            }
+            one(v.clone())
+        }
         "get" => get_builtin(it, a),
         "isgraphics" | "ishandle" | "ishghandle" => {
             let v = arg(a, 0, name)?;

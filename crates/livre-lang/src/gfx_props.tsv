@@ -2170,3 +2170,39 @@ matlab.graphics.chart.primitive.GraphPlot	Type	'graphplot'
 matlab.graphics.chart.primitive.GraphPlot	Tag	''
 matlab.graphics.chart.primitive.GraphPlot	UserData	[]
 matlab.graphics.chart.primitive.GraphPlot	SeriesIndex	1
+matlab.graphics.datatip.DataTip	BeingDeleted	'off'
+matlab.graphics.datatip.DataTip	BusyAction	'queue'
+matlab.graphics.datatip.DataTip	ButtonDownFcn	''
+matlab.graphics.datatip.DataTip	Children	<matlab.graphics.GraphicsPlaceholder [0 0]>
+matlab.graphics.datatip.DataTip	Content	{}
+matlab.graphics.datatip.DataTip	ContextMenu	<matlab.graphics.GraphicsPlaceholder [0 0]>
+matlab.graphics.datatip.DataTip	CreateFcn	''
+matlab.graphics.datatip.DataTip	DataIndex	1
+matlab.graphics.datatip.DataTip	DeleteFcn	''
+matlab.graphics.datatip.DataTip	FontAngle	'normal'
+matlab.graphics.datatip.DataTip	FontAngleMode	'auto'
+matlab.graphics.datatip.DataTip	FontName	'Helvetica'
+matlab.graphics.datatip.DataTip	FontNameMode	'auto'
+matlab.graphics.datatip.DataTip	FontSize	10
+matlab.graphics.datatip.DataTip	FontSizeMode	'auto'
+matlab.graphics.datatip.DataTip	HandleVisibility	'on'
+matlab.graphics.datatip.DataTip	HitTest	'on'
+matlab.graphics.datatip.DataTip	InterpolationFactor	0
+matlab.graphics.datatip.DataTip	Interpreter	'tex'
+matlab.graphics.datatip.DataTip	InterpreterMode	'auto'
+matlab.graphics.datatip.DataTip	Interruptible	'on'
+matlab.graphics.datatip.DataTip	Location	'northeast'
+matlab.graphics.datatip.DataTip	LocationMode	'auto'
+matlab.graphics.datatip.DataTip	Parent	<matlab.graphics.chart.primitive.Line [1 1]>
+matlab.graphics.datatip.DataTip	PickableParts	'visible'
+matlab.graphics.datatip.DataTip	Selected	'off'
+matlab.graphics.datatip.DataTip	SelectionHighlight	'on'
+matlab.graphics.datatip.DataTip	SnapToDataVertex	'on'
+matlab.graphics.datatip.DataTip	Tag	'datatip'
+matlab.graphics.datatip.DataTip	Type	'datatip'
+matlab.graphics.datatip.DataTip	UserData	[]
+matlab.graphics.datatip.DataTip	ValueChangedFcn	''
+matlab.graphics.datatip.DataTip	Visible	'on'
+matlab.graphics.datatip.DataTip	X	0
+matlab.graphics.datatip.DataTip	Y	0
+matlab.graphics.datatip.DataTip	Z	0

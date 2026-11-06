@@ -6,6 +6,7 @@ mod classes_more;
 mod containers;
 mod data_files;
 mod datafun;
+mod datatips;
 mod dates;
 mod dates_types;
 mod elfun;
