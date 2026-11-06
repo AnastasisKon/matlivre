@@ -22,6 +22,7 @@ pub const NAMES: &[&str] = &[
     "str2sym", "isolate", "equationsToMatrix", "vpasolve", "partfrac", "laplace", "ilaplace", "symsum", "symprod", "hessian", "horner", "polynomialDegree",
     "finverse", "charpoly", "adjoint", "has", "formula", "argnames", "series", "divisors", "nextprime", "prevprime", "nthprime", "fibonacci", "harmonic",
     "eulerPhi", "kroneckerDelta", "zeta", "lambertw", "sinc", "bernoulli", "simplifyFraction", "symtrue", "symfalse",
+    "frac",
 ];
 
 fn sym_val(e: Expr) -> Value {
@@ -1337,6 +1338,14 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> R<
                 let px = Expr::mul(vec![Expr::Const(Const::Pi), e.clone()]);
                 algebra::simplify(&Expr::div(Expr::func("sin", vec![px.clone()]), px))
             })))
+        }
+        // frac(x) = x - fix(x): the fractional part, with the sign of x.
+        "frac" => {
+            if let Some(v) = a.first().filter(|v| !matches!(v, Value::Sym(_))) {
+                return crate::error::rt(format!("Undefined function 'frac' for input arguments of type '{}'.", v.class_name()));
+            }
+            let s = sym_arg(a, 0)?;
+            one(Value::Sym(s.map(|e| Expr::sub(e.clone(), Expr::func("fix", vec![e.clone()])))))
         }
         _ => Ok(None),
     }

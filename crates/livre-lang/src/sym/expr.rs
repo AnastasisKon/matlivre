@@ -878,6 +878,18 @@ impl Expr {
                         _ => x.trunc(),
                     });
                 }
+                // Constant expressions (pi, sqrt(2), ...) round when they are clearly away
+                // from an integer.
+                let mut vars = Vec::new();
+                a.free_vars(&mut vars);
+                if let Some(x) = a.to_f64().filter(|x| vars.is_empty() && x.is_finite() && (x - x.round()).abs() > 1e-9 * x.abs().max(1.0)) {
+                    return Expr::from_f64(match name {
+                        "floor" => x.floor(),
+                        "ceil" => x.ceil(),
+                        "round" => x.round(),
+                        _ => x.trunc(),
+                    });
+                }
             }
             _ => {}
         }

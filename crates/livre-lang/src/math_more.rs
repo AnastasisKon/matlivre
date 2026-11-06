@@ -1,7 +1,7 @@
 //! Elementary and matrix extras (`sinpi`, `cospi`, `rms`, `residue`, `matchpairs`, `pageinv`,
 //! `pagenorm`, `expmv`, `combinations`, `interp1q`, `padecoef`), the state-space helpers
 //! `ss2tf` and `ltitr`, kernel density estimates (`kde`), `svdappend`, `superiorfloat`,
-//! `inner2outer`, small helpers (`getcolumn`, `setstr`, `vectorize`, `is2D`), and platform
+//! `inner2outer`, `svdsketch`, small helpers (`getcolumn`, `setstr`, `vectorize`, `is2D`), and platform
 //! queries (`ismac`, `ispc`, `isunix`, `isstudent`, `usejava`, `javachk`, `version`).
 
 use crate::builtins::{arg, m_arg, Ret};
@@ -16,7 +16,7 @@ type R<T> = Result<T, LangError>;
 pub const NAMES: &[&str] = &[
     "sinpi", "cospi", "rms", "residue", "matchpairs", "pageinv", "pagenorm", "expmv", "combinations", "interp1q", "padecoef", "ss2tf", "ltitr",
     "ismac", "ispc", "isunix", "isstudent", "usejava", "javachk", "version", "kde", "svdappend", "superiorfloat", "inner2outer", "getcolumn", "setstr",
-    "vectorize", "is2D",
+    "vectorize", "is2D", "svdsketch",
 ];
 
 const VERSION: &str = "23.2.0.2409890 (R2023b) Update 3";
@@ -899,6 +899,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         "version" => version(a, nargout)?,
         "kde" => kde(a, nargout)?,
         "svdappend" => svdappend(it, a, nargout)?,
+        "svdsketch" => svdsketch(it, a, nargout)?,
         "superiorfloat" => vec![superiorfloat(a)?],
         "inner2outer" => vec![inner2outer(a)?],
         "getcolumn" => {
@@ -923,4 +924,79 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         _ => return Ok(None),
     };
     Ok(Some(outs))
+}
+
+/// `[U, S, V, apxErr] = svdsketch(A, tol, Name, Value)`: a low-rank SVD grown a block of
+/// columns at a time until the relative Frobenius error ||A - U*S*V'||/||A|| is at most tol
+/// (default eps^(1/4)). MATLAB grows it from random sketches; this takes the blocks from the
+/// exact SVD, so each step's error is the optimal one for its rank. apxErr holds the error
+/// after each block, and singular values that are zero to working precision are dropped.
+fn svdsketch(it: &mut Interpreter, a: &[Value], nargout: usize) -> R<Vec<Value>> {
+    let am = m_arg(a, 0, "svdsketch")?;
+    let single = am.kind == Kind::Single;
+    let eps = if single { f32::EPSILON as f64 } else { f64::EPSILON };
+    let (m, n) = (am.rows(), am.cols());
+    let mut rest = &a[1..];
+    let mut tol = eps.powf(0.25);
+    if let Some(t) = rest.first().filter(|v| !v.is_text()) {
+        let t = t.to_matrix()?;
+        if t.numel() != 1 || t.is_complex() || !(t.data[0] >= eps.sqrt() && t.data[0] < 1.0) {
+            return rt("The tolerance must be a real numeric scalar in the range sqrt(eps(class(A))) <= tolerance < 1.");
+        }
+        tol = t.data[0];
+        rest = &rest[1..];
+    }
+    let small = m.min(n);
+    let mut block = (0.1 * m.max(n) as f64).floor().max(5.0) as usize;
+    let mut max_dim = small;
+    let mut max_iter: Option<usize> = None;
+    let positive = |v: &Value, what: &str| -> R<usize> {
+        let x = v.scalar()?;
+        if x < 1.0 || x.fract() != 0.0 {
+            return rt(format!("The {what} must be a positive integer."));
+        }
+        Ok(x as usize)
+    };
+    for (k, val) in options(rest, "svdsketch")? {
+        match k.to_lowercase().as_str() {
+            "blocksize" => block = positive(val, "block size")?,
+            "maxsubspacedimension" => max_dim = positive(val, "maximum subspace dimension")?.min(small),
+            "maxiterations" => max_iter = Some(positive(val, "maximum number of iterations")?),
+            "numpoweriterations" => {
+                let x = val.scalar()?;
+                if x < 0.0 || x.fract() != 0.0 {
+                    return rt("The number of power iterations must be a nonnegative integer.");
+                }
+            }
+            _ => return rt(format!("'{k}' is not a recognized parameter. For a list of valid name-value pair arguments, see the documentation for this function.")),
+        }
+    }
+    let block = block.min(max_dim.max(1));
+    let max_iter = max_iter.unwrap_or_else(|| max_dim.div_ceil(block.max(1)));
+    let mut r = it.call_function("svd", vec![Value::Num(am.clone()), Value::chars("econ")], 3)?;
+    let (u, s, v) = (r.remove(0).to_matrix()?, r.remove(0).to_matrix()?, r.remove(0).to_matrix()?);
+    let sv: Vec<f64> = (0..s.rows().min(s.cols())).map(|i| s.get(i, i)).collect();
+    let total: f64 = sv.iter().map(|x| x * x).sum::<f64>();
+    let rel_err = |k: usize| if total == 0.0 { 0.0 } else { (sv[k.min(sv.len())..].iter().map(|x| x * x).sum::<f64>() / total).sqrt() };
+    let mut k = 0;
+    let mut errs = Vec::new();
+    for _ in 0..max_iter {
+        k = (k + block).min(max_dim);
+        let e = rel_err(k);
+        errs.push(e);
+        if e <= tol || k >= max_dim {
+            break;
+        }
+    }
+    // Drop singular values that are zero to working precision.
+    let cut = m.max(n) as f64 * eps * sv.first().copied().unwrap_or(0.0);
+    let rank = sv.iter().take(k).take_while(|&&x| x > cut).count();
+    let cols = |x: &Matrix, c: usize| Matrix::new(x.rows(), c, x.data[..x.rows() * c].to_vec());
+    let mut sm = Matrix::new(rank, rank, vec![0.0; rank * rank]);
+    for i in 0..rank {
+        sm.data[i * rank + i] = sv[i];
+    }
+    let cast = |x: Matrix| -> R<Value> { Ok(Value::Num(if single { x.cast_to(Kind::Single) } else { x })) };
+    let outs = vec![cast(cols(&u, rank))?, cast(sm)?, cast(cols(&v, rank))?, cast(Matrix::col(errs))?];
+    Ok(outs.into_iter().take(nargout.max(1)).collect())
 }

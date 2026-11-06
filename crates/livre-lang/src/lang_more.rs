@@ -44,6 +44,9 @@ pub fn builtin_class(name: &str) -> Option<Rc<ClassDef>> {
     if name == crate::decomp::CLASS {
         return Some(crate::decomp::class_def());
     }
+    if name == crate::messages::CLASS {
+        return Some(crate::messages::class_def());
+    }
     if name == crate::tiff::CLASS {
         return Some(crate::tiff::class_def());
     }

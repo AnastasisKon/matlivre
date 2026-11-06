@@ -780,6 +780,12 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
             rt_id(&id, msg)
         }
         "MException" => {
+            if let Some(Value::Object(o)) = a.first() {
+                if let Some(p) = crate::messages::parts(o) {
+                    let (msg, id) = p?;
+                    return one(mexception(&msg, &id));
+                }
+            }
             let id = arg(a, 0, name)?.text()?;
             let fmt = arg(a, 1, name)?.text()?;
             let msg = crate::format::sprintf(&fmt, &a[2..])?;
