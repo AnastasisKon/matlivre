@@ -18,7 +18,7 @@ pub const NAMES: &[&str] = &[
     "tiledlayout", "nexttile", "tilenum", "tilerowcol", "annotation", "rectangle", "alpha", "alim", "alphamap", "light", "camlight", "lightangle", "lighting",
     "material", "camorbit", "campos", "camtarget", "camup", "camva", "camproj", "camzoom", "camroll", "camdolly", "campan", "camlookat", "colororder",
     "orderedcolors", "fill3", "pie", "bar3", "bar3h", "hist", "pareto", "feather", "waterfall", "ribbon", "comet", "comet3", "newplot", "shg", "refresh", "gco",
-    "gcbo", "gcbf", "brighten", "makehgtform", "viewmtx", "pbaspect", "texlabel", "rgbplot", "polarplot", "polarscatter", "polarhistogram",
+    "gcbo", "gcbf", "brighten", "contrast", "makehgtform", "viewmtx", "pbaspect", "texlabel", "rgbplot", "polarplot", "polarscatter", "polarhistogram",
     "polaraxes", "rlim", "thetalim", "rticks", "thetaticks", "rticklabels", "thetaticklabels", "rtickformat", "thetatickformat", "rtickangle",
     "compass", "rose", "polar", "ezpolar", "rotate",
 ];
@@ -1009,6 +1009,55 @@ fn brighten(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
     one(rgb_matrix(&out))
 }
 
+/// `contrast(X[, n])`: a gray colormap of n colors (the current colormap's length by default)
+/// that equalizes the histogram of X. Each value goes to one of n levels between the extremes;
+/// level k's gray is the share of values (plus one per level) at or below it. Values that
+/// cannot be placed (NaN, or every value when X is constant) add a level of their own.
+fn contrast(it: &mut Interpreter, a: &[Value]) -> Ret {
+    let x = mat(arg(a, 0, "contrast")?)?;
+    let n = match a.get(1) {
+        Some(v) => v.scalar()?.round().max(0.0),
+        None => match it.current_figure {
+            Some(f) => it.figures[f].colormap.as_ref().map_or(256, |m| m.len()) as f64,
+            None => 256.0,
+        },
+    };
+    let (lo, hi) = x.data.iter().filter(|v| !v.is_nan()).fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), &v| (l.min(v), h.max(v)));
+    let top = n.max(1.0);
+    let mut levels: Vec<f64> = x
+        .data
+        .iter()
+        .map(|&v| {
+            let k = ((v - lo) / (hi - lo) * (n - 1.0)).round() + 1.0;
+            if k.is_nan() { f64::NAN } else { k.clamp(1.0, top) }
+        })
+        .collect();
+    levels.extend((1..=n as usize).map(|k| k as f64));
+    // NaN levels (each its own) go last.
+    levels.sort_by(|p, q| p.is_nan().cmp(&q.is_nan()).then(p.total_cmp(q)));
+    let mut counts: Vec<f64> = Vec::new();
+    let mut prev: Option<f64> = None;
+    for &v in &levels {
+        if prev == Some(v) {
+            *counts.last_mut().unwrap() += 1.0;
+        } else {
+            counts.push(1.0);
+        }
+        prev = if v.is_nan() { None } else { Some(v) };
+    }
+    let total = levels.len() as f64;
+    let mut acc = 0.0;
+    let map: Vec<[f64; 3]> = counts
+        .iter()
+        .map(|c| {
+            acc += c;
+            let g = acc / total;
+            [g, g, g]
+        })
+        .collect();
+    one(rgb_matrix(&map))
+}
+
 fn mat4(m: [[f64; 4]; 4]) -> Value {
     let mut data = vec![0.0; 16];
     for i in 0..4 {
@@ -1617,7 +1666,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
             let ax = current_axes(it);
             if !ax.hold {
                 let (grid, id) = (ax.grid, ax.id);
-                *ax = Axes { grid, id, ..Axes::default() };
+                *ax = Axes { grid, id, overlay_of: ax.overlay_of, ..Axes::default() };
             }
             if nargout == 0 {
                 return none();
@@ -1627,6 +1676,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         "shg" | "refresh" => none(),
         "gco" | "gcbo" | "gcbf" => one(gfx::handles(it, &[])),
         "brighten" => brighten(it, a, nargout),
+        "contrast" => contrast(it, a),
         "makehgtform" => makehgtform(a),
         "viewmtx" => viewmtx(a),
         "pbaspect" => {

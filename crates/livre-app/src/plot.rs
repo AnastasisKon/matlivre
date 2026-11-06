@@ -852,9 +852,16 @@ fn draw_figure(c: &mut dyn Canvas, skin: &Skin, fig: &Figure, size: Vec2, hover:
     }
     let cell = vec2(size.x / gc as f32, (size.y - top) / gr as f32);
     for (i, ax) in fig.axes.iter().enumerate() {
+        // plotyy's right axes are drawn with the axes they overlay.
+        if ax.overlay_of != 0 {
+            continue;
+        }
         let (r, col) = (i / gc, i % gc);
         let rect = Rect::from_min_size(pos2(col as f32 * cell.x, top + r as f32 * cell.y), cell);
-        if ax.yy.is_some() && !ax.is_3d() && !ax.polar {
+        if let Some(over) = fig.axes.iter().find(|o| ax.id != 0 && o.overlay_of == ax.id) {
+            let merged = merge_overlay(ax, over);
+            draw_axes_yy(c, &t, &merged, fig.colormap.as_deref(), rect, gr * gc > 1, hover);
+        } else if ax.yy.is_some() && !ax.is_3d() && !ax.polar {
             draw_axes_yy(c, &t, ax, fig.colormap.as_deref(), rect, gr * gc > 1, hover);
         } else {
             draw_axes(c, &t, ax, fig.colormap.as_deref(), rect, gr * gc > 1, hover);
@@ -863,6 +870,27 @@ fn draw_figure(c: &mut dyn Canvas, skin: &Skin, fig: &Figure, size: Vec2, hover:
     for o in fig.objects.iter().filter(|o| o.visible) {
         draw_annotation(c, &t, o, size);
     }
+}
+
+/// plotyy axes as `yyaxis` axes: the overlay's objects and y axis become the right side, each
+/// side's axis in the color of its object when it has one only.
+fn merge_overlay(ax: &Axes, over: &Axes) -> Axes {
+    let mut m = ax.clone();
+    if m.title.is_empty() {
+        m.title = over.title.clone();
+    }
+    let first = |a: &Axes, k: usize| match a.series.as_slice() {
+        [s] => s.color.map(|c| c.map(|v| v as f64 / 255.0)).unwrap_or(livre_lang::gfx::COLOR_ORDER[k % 7]),
+        _ => [0.15, 0.15, 0.15],
+    };
+    let colors = [first(ax, 0), first(over, ax.series.len())];
+    let other = graphics::YySide { ylim: over.ylim, yticks: over.yticks.clone(), ylabel: over.ylabel.clone(), ylog: over.ylog };
+    m.yy = Some(Box::new(graphics::Yy { right_active: false, other, colors }));
+    m.series.extend(over.series.iter().cloned().map(|mut s| {
+        s.right = true;
+        s
+    }));
+    m
 }
 
 /// An annotation in normalized figure units (origin bottom left).

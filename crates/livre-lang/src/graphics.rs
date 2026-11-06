@@ -242,6 +242,9 @@ pub struct Axes {
     pub r_axis_angle: Option<f64>,
     /// Two y axes (`yyaxis`). `ylim`, `yticks`, `ylabel` and `ylog` belong to the active side.
     pub yy: Option<Box<Yy>>,
+    /// `plotyy`: the id of the axes these are drawn over (sharing its box, with the y axis
+    /// on the right); 0 for ordinary axes.
+    pub overlay_of: u64,
 }
 
 /// The y axis of one side of `yyaxis` axes.

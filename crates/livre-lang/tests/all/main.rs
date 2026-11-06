@@ -42,6 +42,7 @@ mod patterns;
 mod plot_extra;
 mod plot_helpers;
 mod plotmore;
+mod plotyy_contrast;
 mod polyfun;
 mod polyshape;
 mod polyshape_more;

@@ -60,7 +60,7 @@ impl Interpreter {
         } else if !ax.hold {
             let (grid, id) = (ax.grid, ax.id);
             removed = ax.series.iter().map(|s| s.id).collect();
-            *ax = Axes { grid, id, ..Axes::default() };
+            *ax = Axes { grid, id, overlay_of: ax.overlay_of, ..Axes::default() };
         }
         if ax.series.is_empty() {
             ax.x_kind = x_kind;

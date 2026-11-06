@@ -1384,7 +1384,14 @@ pub fn display(it: &mut Interpreter, name: &str, v: &Value) -> R<String> {
         _ => String::new(),
     };
     if ids.len() != 1 {
-        let shape = if ids.is_empty() { "0×0".to_string() } else { format!("{}×1", ids.len()) };
+        let dims = match v {
+            Value::Object(o) => match o.props.borrow().first() {
+                Some(Value::Num(m)) => (m.rows(), m.cols()),
+                _ => (ids.len(), 1),
+            },
+            _ => (ids.len(), 1),
+        };
+        let shape = if ids.is_empty() { "0×0".to_string() } else { format!("{}×{}", dims.0, dims.1) };
         // Elements with a label line it up in a column after the widest class name.
         let titles: Vec<(String, String)> = ids
             .iter()
@@ -1400,6 +1407,14 @@ pub fn display(it: &mut Interpreter, name: &str, v: &Value) -> R<String> {
             })
             .collect();
         let width = titles.iter().map(|(c, _)| c.chars().count()).max().unwrap_or(0) + 4;
+        // A row of unlabeled objects is shown on one line.
+        if dims.0 == 1 && dims.1 > 1 && titles.iter().all(|(_, l)| l.is_empty()) {
+            let line: Vec<&str> = titles.iter().map(|(c, _)| c.as_str()).collect();
+            return Ok(format!("{name} = 
+  {shape} {} array:
+
+    {}", short(&class), line.join("    ")));
+        }
         let names: String = titles.iter().map(|(c, l)| if l.is_empty() { format!("  {c}\n") } else { format!("  {c:<width$}{l}\n") }).collect();
         return Ok(format!("{name} = \n  {shape} {} array:\n\n{names}", short(&class)).trim_end().to_string());
     }
@@ -1737,7 +1752,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], _nargout: usize) -> R
             let axes = &mut it.figures[f].axes[ax];
             let removed: Vec<u64> = axes.series.iter().map(|s| s.id).collect();
             if reset {
-                *axes = Axes { id: axes.id, ..Axes::default() };
+                *axes = Axes { id: axes.id, overlay_of: axes.overlay_of, ..Axes::default() };
             } else {
                 axes.series.clear();
                 axes.legend = None;

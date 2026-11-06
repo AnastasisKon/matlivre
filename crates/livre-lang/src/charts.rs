@@ -20,7 +20,7 @@ type R<T> = Result<T, LangError>;
 pub const NAMES: &[&str] = &[
     "heatmap", "boxchart", "swarmchart", "swarmchart3", "bubblechart", "bubblechart3", "polarbubblechart", "bubblesize", "bubblelim", "bubblelegend",
     "binscatter", "piechart", "donutchart", "bubblecloud", "parallelplot", "stackedplot", "scatterhistogram", "wordcloud", "geobubble", "yyaxis", "datetick", "sortx", "sorty",
-    "highlight", "labelnode", "labeledge", "layout", "datatip",
+    "highlight", "labelnode", "labeledge", "layout", "datatip", "plotyy",
 ];
 
 const HEATMAP: &str = "matlab.graphics.chart.HeatmapChart";
@@ -88,6 +88,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         "wordcloud" => wordcloud(it, a, nargout),
         "geobubble" => geobubble(it, a, nargout),
         "yyaxis" => yyaxis(it, a),
+        "plotyy" => plotyy(it, a, nargout),
         "datetick" => datetick(it, a),
         _ => Ok(None),
     }
@@ -268,7 +269,7 @@ fn new_chart(it: &mut Interpreter, class: &'static str, own_figure: bool) -> u64
     let a = fig.current_axes;
     let ax = &mut fig.axes[a];
     old.extend(ax.series.iter().map(|s| s.id));
-    *ax = Axes { id: ax.id, ..Axes::default() };
+    *ax = Axes { id: ax.id, overlay_of: ax.overlay_of, ..Axes::default() };
     for id in old {
         it.gfx_store.remove(&id);
     }
@@ -1851,6 +1852,161 @@ fn yyaxis(it: &mut Interpreter, a: &[Value]) -> Ret {
     let fid = it.figures[f].id;
     it.mark_figure_dirty(fid);
     none()
+}
+
+// ---- plotyy ----------------------------------------------------------------------------------
+
+/// A 1-2-5 step m * 10^e, rounded as the decimal it is.
+fn yy_value((m, e): (f64, i32)) -> f64 {
+    if e < 0 { m / 10f64.powi(-e) } else { m * 10f64.powi(e) }
+}
+
+/// MATLAB's tick spacing for default-size axes: the finest 1-2-5 step giving at most 11
+/// intervals.
+fn yy_step(range: f64) -> (f64, i32) {
+    let mut e = (range / 11.0).log10().floor() as i32;
+    loop {
+        for m in [1.0, 2.0, 5.0] {
+            if range / yy_value((m, e)) <= 11.0 + 1e-9 {
+                return (m, e);
+            }
+        }
+        e += 1;
+    }
+}
+
+/// The next coarser 1-2-5 step.
+fn yy_coarser((m, e): (f64, i32)) -> (f64, i32) {
+    match m as i32 {
+        1 => (2.0, e),
+        2 => (5.0, e),
+        _ => (1.0, e + 1),
+    }
+}
+
+/// Limits rounded out to multiples of `s`, and their number of intervals.
+fn yy_fit((lo, hi): (f64, f64), s: f64) -> (f64, f64, usize) {
+    let (a, b) = ((lo / s).floor(), (hi / s).ceil());
+    (a * s, b * s, (b - a).round().max(1.0) as usize)
+}
+
+/// The data range of plotyy axes for its y ticks (a constant spans one either side).
+fn yy_range(ax: &Axes) -> (f64, f64) {
+    let ys = ax.series.iter().flat_map(|s| s.y.iter().copied()).filter(|v| v.is_finite());
+    let (lo, hi) = ys.fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), v| (l.min(v), h.max(v)));
+    if lo == hi {
+        return (lo - 1.0, hi + 1.0);
+    }
+    ax.bounds().1
+}
+
+/// `[ax, h1, h2] = plotyy(x1, y1, x2, y2[, fun1[, fun2]])`: y1 against x1 on the left y axis and
+/// y2 against x2 on a right y axis over the same box. The two axes get as many ticks (at most
+/// eight), both starting from MATLAB's default ticks and coarsening the axis with more
+/// intervals until they agree.
+fn plotyy(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
+    if a.len() < 4 {
+        return rt("Not enough input arguments.");
+    }
+    let fun1 = a.get(4).cloned().unwrap_or_else(|| Value::chars("plot"));
+    let fun2 = a.get(5).cloned().unwrap_or_else(|| fun1.clone());
+    let call = |it: &mut Interpreter, f: &Value, x: &Value, y: &Value| -> R<Value> {
+        let out = match f {
+            Value::Func(fv) => it.call_value(fv, vec![x.clone(), y.clone()], 1)?,
+            v => it.call_function(&v.text()?, vec![x.clone(), y.clone()], 1)?,
+        };
+        Ok(out.into_iter().next().unwrap_or_else(Value::empty))
+    };
+    let f = it.current_figure_index();
+    let base = it.figures[f].current_axes;
+    let base_id = gfx::axes_id(it, f, base);
+    // A new plotyy replaces the right axes of an earlier one.
+    if let Some(k) = it.figures[f].axes.iter().position(|x| x.overlay_of == base_id) {
+        let old = it.figures[f].axes.remove(k);
+        it.gfx_store.remove(&old.id);
+        for s in &old.series {
+            it.gfx_store.remove(&s.id);
+        }
+    }
+    let h1 = call(it, &fun1, &a[0], &a[1])?;
+    let n1 = it.figures[f].axes[base].series.len();
+    it.figures[f].axes.push(Axes { overlay_of: base_id, ..Axes::default() });
+    let over = it.figures[f].axes.len() - 1;
+    let over_id = gfx::axes_id(it, f, over);
+    it.figures[f].current_axes = over;
+    let h2 = call(it, &fun2, &a[2], &a[3]);
+    it.figures[f].current_axes = base;
+    let h2 = h2?;
+    // The right axes continue the color order.
+    let ids: Vec<u64> = it.figures[f].axes[over].series.iter().map(|s| s.id).collect();
+    for (j, id) in ids.iter().enumerate() {
+        let c = COLOR_ORDER[(n1 + j) % COLOR_ORDER.len()];
+        if let Some(Target::Series(f, x, s)) = gfx::resolve(it, *id) {
+            it.figures[f].axes[x].series[s].color = Some(c.map(|v| (v * 255.0).round() as u8));
+        }
+        put(it, *id, vec![("Color", Value::Num(Matrix::row(c.to_vec())))]);
+    }
+    // Shared x limits; y ticks aligned for linear axes.
+    let (l, r) = (&it.figures[f].axes[base], &it.figures[f].axes[over]);
+    let (lx, rx) = (l.limits().0, r.limits().0);
+    let xlim = (lx.0.min(rx.0), lx.1.max(rx.1));
+    let aligned = (!l.ylog && !r.ylog).then(|| {
+        let (d1, d2) = (yy_range(l), yy_range(r));
+        let (mut s1, mut s2) = (yy_step(d1.1 - d1.0), yy_step(d2.1 - d2.0));
+        loop {
+            let (n1, n2) = (yy_fit(d1, yy_value(s1)).2, yy_fit(d2, yy_value(s2)).2);
+            if n1 == n2 && n1 <= 7 {
+                break;
+            }
+            if n1 >= n2 {
+                s1 = yy_coarser(s1);
+            }
+            if n2 >= n1 {
+                s2 = yy_coarser(s2);
+            }
+        }
+        (yy_fit(d1, yy_value(s1)), yy_value(s1), yy_fit(d2, yy_value(s2)), yy_value(s2))
+    });
+    for (k, ax) in [base, over].into_iter().enumerate() {
+        let axes = &mut it.figures[f].axes[ax];
+        axes.xlim = Some(xlim);
+        if let Some((f1, s1, f2, s2)) = aligned {
+            let ((lo, hi, n), s) = if k == 0 { (f1, s1) } else { (f2, s2) };
+            axes.ylim = Some((lo, hi));
+            axes.yticks.values = Some((0..=n).map(|i| {
+                let v = lo + i as f64 * s;
+                if v.abs() < s * 1e-9 { 0.0 } else { v }
+            }).collect());
+        }
+    }
+    // A y axis takes the color of its object when it has one only.
+    let color = |it: &Interpreter, ax: usize, k: usize| match it.figures[f].axes[ax].series.as_slice() {
+        [s] => gfx::stored(it, s.id, "Color").and_then(|v| v.to_matrix().ok()).filter(|m| m.numel() == 3).map(|m| [m.data[0], m.data[1], m.data[2]])
+            .or(s.color.map(|c| c.map(|v| v as f64 / 255.0)))
+            .unwrap_or(COLOR_ORDER[k % COLOR_ORDER.len()]),
+        _ => [0.15, 0.15, 0.15],
+    };
+    let (c1, c2) = (color(it, base, 0), color(it, over, n1));
+    put(it, base_id, vec![("YColor", Value::Num(Matrix::row(c1.to_vec()))), ("Box", Value::chars("on"))]);
+    put(it, over_id, vec![
+        ("YColor", Value::Num(Matrix::row(c2.to_vec()))),
+        ("Color", Value::chars("none")),
+        ("YAxisLocation", Value::chars("right")),
+        ("Box", Value::chars("off")),
+        ("HitTest", Value::chars("off")),
+    ]);
+    let fid = it.figures[f].id;
+    it.mark_figure_dirty(fid);
+    if nargout == 0 {
+        return none();
+    }
+    let axes = gfx::handles(it, &[base_id, over_id]);
+    if let Value::Object(o) = &axes {
+        if let Value::Num(m) = &mut o.props.borrow_mut()[0] {
+            *m = Matrix::row(m.data.clone());
+        }
+    }
+    Ok(Some(vec![axes, h1, h2]))
 }
 
 // ---- datetick --------------------------------------------------------------------------------
