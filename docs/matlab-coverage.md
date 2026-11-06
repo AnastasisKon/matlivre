@@ -3,14 +3,14 @@
 Every function in the MATLAB R2023b and Symbolic Math Toolbox function references (the
 installation's `help/*/helpfuncbycat.xml`), plus key classes and undocumented public functions
 found in the toolbox folders, checked against MatLivre. Regenerate with
-`tools/coverage/update.sh` after merging work (2026-11-05).
+`tools/coverage/update.sh` after merging work (2026-11-06).
 
 | Status | Count |
 |---|---:|
-| Implemented | 1842 |
+| Implemented | 1846 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **180** |
+| **To implement** | **176** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -351,16 +351,9 @@ Implemented: `conv2`, `convn`, `fft`, `fft2`, `fftn`, `fftshift`, `fftw`, `filte
 
 ## MATLAB > Mathematics > Graph and Network Algorithms
 
-Implemented: 50. To implement: 4. In a branch: 0. Out of scope: 0.
+Implemented: 54. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `highlight`
-- [ ] `labeledge`
-- [ ] `labelnode`
-- [ ] `layout`
-
-Implemented: `addedge`, `addnode`, `adjacency`, `allcycles`, `allpaths`, `bctree`, `bfsearch`, `biconncomp`, `centrality`, `condensation`, `conncomp`, `cyclebasis`, `degree`, `dfsearch`, `digraph`, `distances`, `edgecount`, `findedge`, `findnode`, `flipedge`, `graph`, `hascycles`, `incidence`, `indegree`, `inedges`, `isdag`, `isisomorphic`, `ismultigraph`, `isomorphism`, `laplacian`, `maxflow`, `minspantree`, `nearest`, `neighbors`, `numedges`, `numnodes`, `outdegree`, `outedges`, `predecessors`, `reordernodes`, `rmedge`, `rmnode`, `shortestpath`, `shortestpathtree`, `simplify`, `subgraph`, `successors`, `toposort`, `transclosure`, `transreduction`
+Implemented: `addedge`, `addnode`, `adjacency`, `allcycles`, `allpaths`, `bctree`, `bfsearch`, `biconncomp`, `centrality`, `condensation`, `conncomp`, `cyclebasis`, `degree`, `dfsearch`, `digraph`, `distances`, `edgecount`, `findedge`, `findnode`, `flipedge`, `graph`, `hascycles`, `highlight`, `incidence`, `indegree`, `inedges`, `isdag`, `isisomorphic`, `ismultigraph`, `isomorphism`, `labeledge`, `labelnode`, `laplacian`, `layout`, `maxflow`, `minspantree`, `nearest`, `neighbors`, `numedges`, `numnodes`, `outdegree`, `outedges`, `predecessors`, `reordernodes`, `rmedge`, `rmnode`, `shortestpath`, `shortestpathtree`, `simplify`, `subgraph`, `successors`, `toposort`, `transclosure`, `transreduction`
 
 ## MATLAB > Mathematics > Interpolation
 
