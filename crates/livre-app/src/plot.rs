@@ -856,6 +856,8 @@ fn draw_figure(c: &mut dyn Canvas, skin: &Skin, fig: &Figure, size: Vec2, hover:
         if ax.overlay_of != 0 {
             continue;
         }
+        // Axes beyond the grid (copyobj into a figure) are drawn over the cell at their position.
+        let i = i % (gr * gc);
         let (r, col) = (i / gc, i % gc);
         let rect = Rect::from_min_size(pos2(col as f32 * cell.x, top + r as f32 * cell.y), cell);
         if let Some(over) = fig.axes.iter().find(|o| ax.id != 0 && o.overlay_of == ax.id) {

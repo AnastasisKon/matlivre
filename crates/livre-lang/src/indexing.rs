@@ -294,6 +294,9 @@ pub fn concat(items: Vec<Value>, dim: usize) -> R<Value> {
         let (d, elems) = nd::concat(parts, dim)?;
         return Ok(Value::Struct(StructArray { dims: d, fields: first.fields, elems }));
     }
+    if items.iter().all(crate::gfx::is_gfx) {
+        return crate::gfx::concat(items, dim);
+    }
     if items.iter().any(|v| matches!(v, Value::Object(_) | Value::Func(_))) {
         return rt("Arrays of objects or function handles are not supported in this version; use a cell array.");
     }

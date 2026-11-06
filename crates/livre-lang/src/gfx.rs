@@ -14,13 +14,13 @@ use std::rc::Rc;
 use crate::builtins::{arg, none, one, Ret};
 use crate::class::{ClassDef, Object};
 use crate::error::{rt, LangError};
-use crate::graphics::{self, Axes, LineStyle, Marker, Series, SeriesKind};
+use crate::graphics::{self, Axes, Figure, LineStyle, Marker, Series, SeriesKind};
 use crate::interp::Interpreter;
 use crate::value::*;
 
 type R<T> = Result<T, LangError>;
 
-pub const NAMES: &[&str] = &["set", "get", "isgraphics", "ishandle", "ishghandle", "groot", "gobjects", "findobj", "findall", "allchild", "ancestor", "axes", "cla", "isvalid", "findfigs", "handle"];
+pub const NAMES: &[&str] = &["set", "get", "isgraphics", "ishandle", "ishghandle", "groot", "gobjects", "findobj", "findall", "allchild", "ancestor", "axes", "cla", "isvalid", "findfigs", "handle", "copyobj"];
 
 /// Handle numbers: 0 is the root, figure numbers are their own handles, and axes take a
 /// block of `SLOTS` numbers from `OBJ_BASE` up (their labels and rulers use the block).
@@ -204,6 +204,46 @@ pub fn handles(it: &Interpreter, ids: &[u64]) -> Value {
     let data: Vec<f64> = ids.iter().map(|&i| i as f64).collect();
     let m = if ids.is_empty() { Matrix::new(0, 0, Vec::new()) } else { Matrix::new(data.len(), 1, data) };
     Value::Object(Object { class: class_def(class), props: Rc::new(RefCell::new(vec![Value::Num(m)])) })
+}
+
+fn is_data_class(c: &str) -> bool {
+    c.starts_with("matlab.graphics.primitive.") || c.starts_with("matlab.graphics.chart.primitive.")
+}
+
+/// `[h1 h2 ...]` of graphics handles: an array of their objects, of their common class.
+pub fn concat(items: Vec<Value>, dim: usize) -> R<Value> {
+    let mut classes: Vec<String> = Vec::new();
+    let mut parts = Vec::new();
+    for v in &items {
+        let Value::Object(o) = v else { unreachable!() };
+        let ids = match o.props.borrow().first() {
+            Some(Value::Num(m)) => m.clone(),
+            _ => Matrix::new(0, 0, Vec::new()),
+        };
+        if ids.data.is_empty() {
+            continue;
+        }
+        classes.push(o.class.name.clone());
+        parts.push((vec![ids.rows(), ids.cols()], ids.data));
+    }
+    let class = match classes.first() {
+        None => "matlab.graphics.GraphicsPlaceholder".to_string(),
+        Some(c) if classes.iter().all(|x| x == c) => c.clone(),
+        // The nearest common base class of plotted objects and axes.
+        _ if classes.iter().all(|c| is_data_class(c)) => "matlab.graphics.primitive.Data".to_string(),
+        _ if classes.iter().all(|c| is_data_class(c) || c.starts_with("matlab.graphics.axis.")) => "matlab.graphics.primitive.world.Group".to_string(),
+        _ => "matlab.graphics.Graphics".to_string(),
+    };
+    let m = if parts.is_empty() {
+        Matrix::new(0, 0, Vec::new())
+    } else {
+        let (d, data) = crate::nd::concat(parts, dim)?;
+        if d.len() > 2 {
+            return rt("Arrays of graphics objects with more than two dimensions are not supported.");
+        }
+        Matrix::new(d[0], d[1], data)
+    };
+    Ok(Value::Object(Object { class: class_def(&class), props: Rc::new(RefCell::new(vec![Value::Num(m)])) }))
 }
 
 pub fn handle(it: &Interpreter, id: u64) -> Value {
@@ -1621,6 +1661,146 @@ fn delete_handles(it: &mut Interpreter, ids: &[u64]) -> R<()> {
     Ok(())
 }
 
+/// Copies the stored properties of object `from` (and of its parts, for axes) to `to`.
+fn copy_store(it: &mut Interpreter, from: u64, to: u64, slots: u64) {
+    for k in 0..slots {
+        if let Some(v) = it.gfx_store.get(&(from + k)).cloned() {
+            it.gfx_store.insert(to + k, v);
+        }
+    }
+}
+
+/// A copy of a plotted object with a new handle, its color fixed to the one it shows now.
+fn series_copy(it: &mut Interpreter, f: usize, a: usize, s: usize) -> Series {
+    let mut c = it.figures[f].axes[a].series[s].clone();
+    let mut color = None;
+    if c.color.is_none() {
+        if let Ok(Value::Num(m)) = get_prop(it, c.id, "Color") {
+            if m.data.len() == 3 {
+                c.color = Some(to_u8([m.data[0], m.data[1], m.data[2]]));
+                color = Some(Value::Num(m));
+            }
+        }
+    }
+    let id = alloc(it);
+    copy_store(it, c.id, id, 1);
+    if let Some(v) = color {
+        if stored(it, id, "Color").is_none() {
+            store(it, id, "Color", v);
+        }
+    }
+    c.id = id;
+    c
+}
+
+/// A copy of axes `a` of figure `f` with new handles for it and its objects.
+fn axes_copy(it: &mut Interpreter, f: usize, a: usize) -> Axes {
+    let old = axes_id(it, f, a);
+    let series: Vec<Series> = (0..it.figures[f].axes[a].series.len()).map(|s| series_copy(it, f, a, s)).collect();
+    let mut c = it.figures[f].axes[a].clone();
+    let id = alloc(it);
+    copy_store(it, old, id, SLOTS);
+    c.id = id;
+    c.overlay_of = 0;
+    c.series = series;
+    c
+}
+
+/// `copyobj(h, parent)`: copies of objects into new parents, one per child-parent pair.
+fn copyobj(it: &mut Interpreter, a: &[Value]) -> Ret {
+    if a.len() < 2 {
+        return rt("Not enough input arguments.");
+    }
+    let kids = target_ids(it, &a[0])?;
+    let parents = target_ids(it, &a[1])?;
+    if kids.len() > 1 && parents.len() > 1 && kids.len() != parents.len() {
+        return rt("Parent and child input vectors must be equal length.");
+    }
+    let n = kids.len().max(parents.len());
+    let pair = |i: usize| (kids[if kids.len() == 1 { 0 } else { i }], parents[if parents.len() == 1 { 0 } else { i }]);
+    let mut seen: Vec<(u64, u64)> = Vec::new();
+    let mut plan: Vec<(Target, Target)> = Vec::new();
+    for i in 0..n {
+        let (k, p) = pair(i);
+        let (Some(kt), Some(pt)) = (resolve(it, k), resolve(it, p)) else {
+            return rt("Invalid or deleted object.");
+        };
+        let (kc, pc) = (short(class_of(it, kt)), short(class_of(it, pt)));
+        let ok = matches!((kt, pt), (Target::Series(..), Target::Axes(..)) | (Target::Axes(..), Target::Figure(_)) | (Target::Figure(_), Target::Root));
+        if !ok {
+            if let (Target::Figure(_), Target::Axes(..)) = (kt, pt) {
+                return rt(format!("{pc} cannot be a parent."));
+            }
+            return rt(format!("{kc} cannot be a child of {pc}."));
+        }
+        if seen.contains(&(k, p)) {
+            return rt("Cannot copy the same object more than once to the same parent. Try calling COPYOBJ twice instead.");
+        }
+        seen.push((k, p));
+        plan.push((kt, pt));
+    }
+    // Copy everything first, so that an object copied into its own parent is copied once.
+    let mut made: Vec<Option<u64>> = vec![None; n];
+    let mut add_series: Vec<(usize, u64, Series)> = Vec::new();
+    let mut add_axes: Vec<(usize, u64, Axes)> = Vec::new();
+    let mut add_figs: Vec<(usize, Figure)> = Vec::new();
+    for (i, &(kt, pt)) in plan.iter().enumerate() {
+        match (kt, pt) {
+            (Target::Series(f, ax, s), Target::Axes(..)) => {
+                let c = series_copy(it, f, ax, s);
+                made[i] = Some(c.id);
+                add_series.push((i, pair(i).1, c));
+            }
+            (Target::Axes(f, ax), Target::Figure(_)) => {
+                let c = axes_copy(it, f, ax);
+                made[i] = Some(c.id);
+                add_axes.push((i, pair(i).1, c));
+            }
+            (Target::Figure(f), _) => {
+                let mut fig = it.figures[f].clone();
+                let axes: Vec<Axes> = (0..fig.axes.len()).map(|ax| axes_copy(it, f, ax)).collect();
+                fig.axes = axes;
+                for o in &mut fig.objects {
+                    let id = alloc(it);
+                    copy_store(it, o.id, id, 1);
+                    o.id = id;
+                }
+                let mut num = 1;
+                while it.figures.iter().any(|g| g.id == num) {
+                    num += 1;
+                }
+                copy_store(it, fig.id as u64, num as u64, 1);
+                fig.id = num;
+                it.next_figure_id = it.next_figure_id.max(num + 1);
+                made[i] = Some(num as u64);
+                add_figs.push((i, fig));
+            }
+            _ => {}
+        }
+    }
+    // Objects copied together keep their stacking: the first is on top.
+    for (_, p, c) in add_series.into_iter().rev() {
+        if let Some(Target::Axes(f, ax)) = resolve(it, p) {
+            it.figures[f].axes[ax].series.push(c);
+            mark(it, f);
+        }
+    }
+    for (_, p, c) in add_axes.into_iter().rev() {
+        if let Some(Target::Figure(f)) = resolve(it, p) {
+            it.figures[f].axes.push(c);
+            mark(it, f);
+        }
+    }
+    for (_, fig) in add_figs {
+        let id = fig.id;
+        it.figures.push(fig);
+        it.current_figure = Some(it.figures.len() - 1);
+        it.mark_figure_dirty(id);
+    }
+    let ids: Vec<u64> = made.into_iter().flatten().collect();
+    one(handles(it, &ids))
+}
+
 /// `delete(h)` for graphics handles; `None` when the argument is not one.
 pub fn delete(it: &mut Interpreter, a: &[Value]) -> Option<Ret> {
     let ids = ids_of(a.first()?)?;
@@ -1632,6 +1812,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], _nargout: usize) -> R
         "set" => set_builtin(it, a),
         // Figures are never off screen here, so there is none to bring back.
         "findfigs" => none(),
+        "copyobj" => copyobj(it, a),
         // handle(h) of graphics objects is the objects themselves.
         "handle" => {
             let v = arg(a, 0, name)?;

@@ -4,6 +4,7 @@ mod archive;
 mod charts;
 mod classes_more;
 mod containers;
+mod copyobj;
 mod data_files;
 mod datafun;
 mod datatips;
