@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1849 |
+| Implemented | 1852 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **173** |
+| **To implement** | **170** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -363,13 +363,9 @@ Implemented: `griddata`, `griddatan`, `griddedInterpolant`, `interp1`, `interp1q
 
 ## MATLAB > Mathematics > Linear Algebra
 
-Implemented: 72. To implement: 1. In a branch: 0. Out of scope: 0.
+Implemented: 73. To implement: 0. In a branch: 0. Out of scope: 0.
 
-To implement:
-
-- [ ] `svdsketch`
-
-Implemented: `balance`, `bandwidth`, `cdf2rdf`, `chol`, `cholupdate`, `cond`, `condeig`, `condest`, `cross`, `decomposition`, `det`, `dot`, `eig`, `eigs`, `expm`, `expmv`, `funm`, `gsvd`, `hess`, `inv`, `isbanded`, `isdiag`, `ishermitian`, `isIllConditioned`, `issymmetric`, `istril`, `istriu`, `kron`, `ldl`, `linsolve`, `logm`, `lscov`, `lsqminnorm`, `lsqnonneg`, `lu`, `mldivide`, `mpower`, `mrdivide`, `mtimes`, `norm`, `normest`, `null`, `ordeig`, `ordqz`, `ordschur`, `orth`, `pageeig`, `pageinv`, `pagenorm`, `pagesvd`, `pinv`, `planerot`, `qr`, `qrdelete`, `qrinsert`, `qrupdate`, `qz`, `rank`, `rcond`, `rref`, `rsf2csf`, `schur`, `sqrtm`, `subspace`, `svd`, `svdappend`, `svds`, `sylvester`, `trace`, `tril`, `triu`, `vecnorm`
+Implemented: `balance`, `bandwidth`, `cdf2rdf`, `chol`, `cholupdate`, `cond`, `condeig`, `condest`, `cross`, `decomposition`, `det`, `dot`, `eig`, `eigs`, `expm`, `expmv`, `funm`, `gsvd`, `hess`, `inv`, `isbanded`, `isdiag`, `ishermitian`, `isIllConditioned`, `issymmetric`, `istril`, `istriu`, `kron`, `ldl`, `linsolve`, `logm`, `lscov`, `lsqminnorm`, `lsqnonneg`, `lu`, `mldivide`, `mpower`, `mrdivide`, `mtimes`, `norm`, `normest`, `null`, `ordeig`, `ordqz`, `ordschur`, `orth`, `pageeig`, `pageinv`, `pagenorm`, `pagesvd`, `pinv`, `planerot`, `qr`, `qrdelete`, `qrinsert`, `qrupdate`, `qz`, `rank`, `rcond`, `rref`, `rsf2csf`, `schur`, `sqrtm`, `subspace`, `svd`, `svdappend`, `svds`, `svdsketch`, `sylvester`, `trace`, `tril`, `triu`, `vecnorm`
 
 ## MATLAB > Mathematics > Numerical Integration and Differential Equations
 
@@ -646,7 +642,7 @@ Out of scope: `deployprefdir` (internal helper, not a user function), `matfinfo`
 
 ## Not in the function reference > matlab/lang
 
-Implemented: 1. To implement: 9. In a branch: 0. Out of scope: 2.
+Implemented: 2. To implement: 8. In a branch: 0. Out of scope: 2.
 
 To implement:
 
@@ -654,7 +650,6 @@ To implement:
 - [ ] `dynamicprops`
 - [ ] `handle`
 - [ ] `lists`
-- [ ] `message`
 - [ ] `parallel_function`
 - [ ] `precedence`
 - [ ] `script`
@@ -662,7 +657,7 @@ To implement:
 
 Language keywords to check: `break`, `case`, `catch`, `continue`, `else`, `elseif`, `for`, `function`, `if`, `otherwise`, `parfor`, `return`, `switch`, `try`, `while`
 
-Implemented: `display`
+Implemented: `display`, `message`
 
 Out of scope: `checkSyntacticWarnings` (internal helper, not a user function), `ParallelException` (internal helper, not a user function)
 
@@ -742,17 +737,18 @@ Out of scope: `abstracttimemetadata` (internal helper, not a user function), `Ba
 
 ## Not in the function reference > symbolic/symbolic
 
-Implemented: 0. To implement: 7. In a branch: 0. Out of scope: 7.
+Implemented: 1. To implement: 6. In a branch: 0. Out of scope: 7.
 
 To implement:
 
 - [ ] `charToFunction`
-- [ ] `frac`
 - [ ] `getEqnsVars`
 - [ ] `isCondition`
 - [ ] `isDistinctVariable`
 - [ ] `isVariable`
 - [ ] `symbolicUnitsCollection`
+
+Implemented: `frac`
 
 Out of scope: `allMuPADNotebooks` (desktop, IDE, GUI, printing or interactive tool), `checkIgnoreAnalyticConstraintsValue` (internal helper, not a user function), `mupadengine` (desktop, IDE, GUI, printing or interactive tool), `mupadwelcome` (desktop, IDE, GUI, printing or interactive tool), `openmn` (desktop, IDE, GUI, printing or interactive tool), `openxvc` (desktop, IDE, GUI, printing or interactive tool), `openxvz` (desktop, IDE, GUI, printing or interactive tool)
 
