@@ -797,7 +797,24 @@ pub fn call(it_arg_names: &[Option<String>], name: &str, args: &[Value], _nargou
         "readtable" => {
             let path = args.first().ok_or_else(|| LangError::new("Not enough input arguments.", 0))?.text()?;
             let text = std::fs::read_to_string(&path).map_err(|e| LangError::new(format!("Unable to find or open '{path}': {e}"), 0))?;
-            one(Value::Table(Box::new(read_csv(&text)?)))
+            // 'Delimiter' names the separator; otherwise it is detected from the first line.
+            let mut delim = None;
+            for pair in args[1..].chunks(2) {
+                if pair.len() == 2 && pair[0].text().is_ok_and(|k| k.eq_ignore_ascii_case("Delimiter")) {
+                    delim = Some(match pair[1].text()?.as_str() {
+                        "\\t" | "\t" | "tab" => '\t',
+                        ";" | "semi" | "semicolon" => ';',
+                        " " | "space" => ' ',
+                        "|" | "bar" => '|',
+                        _ => ',',
+                    });
+                }
+            }
+            let delim = delim.unwrap_or_else(|| {
+                let first = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
+                [',', '\t', ';', '|'].into_iter().find(|&d| first.contains(d)).unwrap_or(',')
+            });
+            one(Value::Table(Box::new(read_delimited(&text, delim)?)))
         }
         "writetable" => {
             let t = table_arg(args, name)?;
@@ -837,7 +854,7 @@ fn sort_keys(v: &Value, n: usize) -> R<Vec<SortKey>> {
     })
 }
 
-fn split_csv_line(line: &str) -> Vec<String> {
+fn split_line_by(line: &str, delim: char) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
     let mut in_q = false;
@@ -849,7 +866,7 @@ fn split_csv_line(line: &str) -> Vec<String> {
                 chars.next();
             }
             '"' => in_q = !in_q,
-            ',' if !in_q => out.push(std::mem::take(&mut cur)),
+            c if c == delim && !in_q => out.push(std::mem::take(&mut cur)),
             _ => cur.push(c),
         }
     }
@@ -866,10 +883,15 @@ fn valid_name(s: &str, i: usize) -> String {
 }
 
 pub fn read_csv(text: &str) -> R<Table> {
+    read_delimited(text, ',')
+}
+
+/// A table from delimited text whose first line holds the variable names.
+pub fn read_delimited(text: &str, delim: char) -> R<Table> {
     let mut lines = text.lines().filter(|l| !l.trim().is_empty());
     let header = lines.next().ok_or_else(|| LangError::new("The file is empty.", 0))?;
-    let names: Vec<String> = split_csv_line(header).iter().enumerate().map(|(i, s)| valid_name(s, i)).collect();
-    let rows: Vec<Vec<String>> = lines.map(split_csv_line).collect();
+    let names: Vec<String> = split_line_by(header, delim).iter().enumerate().map(|(i, s)| valid_name(s, i)).collect();
+    let rows: Vec<Vec<String>> = lines.map(|l| split_line_by(l, delim)).collect();
     let mut vars = Vec::new();
     for k in 0..names.len() {
         let cells: Vec<String> = rows.iter().map(|r| r.get(k).cloned().unwrap_or_default().trim().to_string()).collect();

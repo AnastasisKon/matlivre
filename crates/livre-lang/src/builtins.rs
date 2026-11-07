@@ -1636,6 +1636,27 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             };
             num(found)
         }
+        // properties with no output prints the list, as MATLAB does.
+        "properties" if nargout == 0 && matches!(arg(a, 0, name)?, Value::Object(_)) || nargout == 0 && arg(a, 0, name)?.is_text() => {
+            let (cls, names): (String, Vec<String>) = match arg(a, 0, name)? {
+                Value::Object(o) => (o.class.name.clone(), o.class.props.iter().filter(|p| !p.hidden).map(|p| p.name.clone()).collect()),
+                v => {
+                    let cls = v.text()?;
+                    match it.find_class(&cls) {
+                        Some(c) => (cls, c.props.iter().filter(|p| !p.hidden).map(|p| p.name.clone()).collect()),
+                        None if crate::lang_more::BUILTIN_CLASSES.contains(&cls.as_str()) => (cls, Vec::new()),
+                        None => return rt(format!("No class '{cls}'.")),
+                    }
+                }
+            };
+            let text = if names.is_empty() {
+                format!("\nNo properties for class {cls}.\n\n")
+            } else {
+                format!("\nProperties for class {cls}:\n\n{}\n", names.iter().map(|n| format!("    {n}\n")).collect::<String>())
+            };
+            it.emit(OutputKind::Text(text));
+            none()
+        }
         "fieldnames" | "properties" => match arg(a, 0, name)? {
             Value::Struct(s) => one(name_col(s.fields.iter().map(|n| Value::chars(n)).collect())),
             Value::Object(o) => one(name_col(o.class.props.iter().filter(|p| !p.hidden).map(|p| Value::chars(&p.name)).collect())),
@@ -2917,11 +2938,20 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
         }
         "assert" => {
             if !arg(a, 0, name)?.is_true()? {
-                let msg = match a.get(1) {
-                    Some(f) => sprintf(&f.text()?, &a[2..])?,
-                    None => "Assertion failed.".into(),
+                // assert(cond, id, msg, ...): a second argument shaped like an identifier.
+                let is_id = |t: &str| t.contains(':') && !t.contains(char::is_whitespace) && t.split(':').all(|p| !p.is_empty() && p.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-'));
+                let (id, msg) = match a.get(1).map(|v| v.text()).transpose()? {
+                    Some(t) if is_id(&t) => match a.get(2) {
+                        Some(f) => (t, sprintf(&f.text()?, &a[3..])?),
+                        None => {
+                            return Err(LangError::new("If you specify a message identifier argument, you must specify the message text argument.", 0)
+                                .with_id("MATLAB:error:missingMessageArgument"))
+                        }
+                    },
+                    Some(f) => (String::new(), sprintf(&f, &a[2..])?),
+                    None => (String::new(), "Assertion failed.".into()),
                 };
-                return rt(msg);
+                return Err(LangError::new(msg, 0).with_id(id).raised());
             }
             none()
         }

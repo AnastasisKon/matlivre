@@ -230,7 +230,7 @@ impl<'a> Lexer<'a> {
                     // syms y(t) and syms f(x, y) declare symbolic functions.
                     let syms = word == "syms";
                     self.push(Tok::Ident(word.to_string()), space);
-                    if stmt_start && (self.looks_like_command() || (syms && self.looks_like_syms())) {
+                    if stmt_start && (self.looks_like_command(word) || (syms && self.looks_like_syms())) {
                         self.command_args();
                     }
                 }
@@ -421,7 +421,7 @@ impl<'a> Lexer<'a> {
 
     /// `name word ...` at the start of a statement is command syntax when the word is not
     /// an operator or assignment (`hold on`, `format long`, `close all`).
-    fn looks_like_command(&self) -> bool {
+    fn looks_like_command(&self, word: &str) -> bool {
         let c0 = self.peek(0);
         if c0 != b' ' && c0 != b'\t' {
             return false;
@@ -431,8 +431,10 @@ impl<'a> Lexer<'a> {
             k += 1;
         }
         let c = self.peek(k);
-        // `cd ..` and `cd ../x`: a relative path is a word.
-        if c == b'.' && matches!(self.peek(k + 1), b'.' | b'/' | b'\\') {
+        // `cd ..` and `cd ../x`: a relative path is a word, after the commands that take
+        // paths (`a ./ b` is an expression, `a ...` a continuation).
+        const PATH_COMMANDS: &[&str] = &["cd", "ls", "dir", "mkdir", "rmdir", "addpath", "rmpath", "run", "type", "what", "which", "edit", "open", "load", "save", "delete", "copyfile", "movefile"];
+        if c == b'.' && PATH_COMMANDS.contains(&word) && matches!(self.peek(k + 1), b'.' | b'/' | b'\\') && !(self.peek(k + 1) == b'.' && self.peek(k + 2) == b'.') {
             return true;
         }
         // `format +`: a lone operator character ending the statement.

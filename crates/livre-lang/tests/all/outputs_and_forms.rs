@@ -653,3 +653,44 @@ fn files_and_classes() {
         ],
     );
 }
+
+#[test]
+fn wiki_regressions() {
+    check(
+        concat!(
+            "a = [2 4 6]; b = [1 2 3];\n",
+            "a ./ b\n",
+            "x = 4;\n",
+            "x ./ 2\n",
+            "a ...\n",
+            "    + 1\n",
+            "d = tempname; mkdir(d); f = fullfile(d, 'semi.txt');\n",
+            "fid = fopen(f, 'w'); fprintf(fid, 'a;b\\n1;2\\n3;4\\n'); fclose(fid);\n",
+            "T = readtable(f); size(T), T.b'\n",
+            "g = fullfile(d, 'tab.txt'); fid = fopen(g, 'w'); fprintf(fid, 'a\\tb\\n1\\t2\\n'); fclose(fid);\n",
+            "T = readtable(g); size(T)\n",
+            "T = readtable(f, 'Delimiter', ';'); size(T)\n",
+            "rmdir(d, 's');\n",
+            "properties('double')\n",
+            "try, assert(false, 'my:id', 'msg %d', 3), catch e, disp(e.identifier), disp(e.message), end\n",
+            "try, assert(false, 'plain'), catch e, disp(['[' e.identifier ']']), disp(e.message), end\n",
+            "try, assert(false, 'a:b'), catch e, disp(['[' e.identifier ']']), disp(e.message), end\n",
+        ),
+        &[
+            "ans = 1×3\n\n     2     2     2",
+            "ans = 2",
+            "ans = 1×3\n\n     3     5     7",
+            "ans = 1×2\n\n     2     2",
+            "ans = 1×2\n\n     2     4",
+            "ans = 1×2\n\n     1     2",
+            "ans = 1×2\n\n     2     2",
+            "\nNo properties for class double.\n\n",
+            "my:id\n",
+            "msg 3\n",
+            "[]\n",
+            "plain\n",
+            "[MATLAB:error:missingMessageArgument]\n",
+            "If you specify a message identifier argument, you must specify the message text argument.\n",
+        ],
+    );
+}
