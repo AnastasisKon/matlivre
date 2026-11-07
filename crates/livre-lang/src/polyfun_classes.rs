@@ -1486,7 +1486,7 @@ fn tri_plot(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
 /// `stlread(file)`: a triangulation of an ASCII or binary STL file (shared vertices merged).
 fn stlread(a: &[Value]) -> Ret {
     let path = crate::builtins::arg(a, 0, "stlread")?.text()?;
-    let bytes = std::fs::read(&path).map_err(|e| LangError::new(format!("Unable to open file '{path}': {e}"), 0))?;
+    let bytes = std::fs::read(&path).map_err(|_| LangError::new(format!("Unable to open file '{path}'."), 0))?;
     let mut tris: Vec<[[f64; 3]; 3]> = Vec::new();
     let text = String::from_utf8_lossy(&bytes);
     let is_ascii = text.trim_start().starts_with("solid") && text.contains("facet");
@@ -1539,7 +1539,7 @@ fn stlread(a: &[Value]) -> Ret {
 
 /// `stlwrite(TR, file)` and `stlwrite(TR, file, 'text')`: binary by default.
 fn stlwrite(a: &[Value]) -> Ret {
-    let Some(Value::Object(o)) = a.first() else { return rt("The first input must be a triangulation object.") };
+    let Some(Value::Object(o)) = a.first() else { return rt("Input argument must be a triangulation object.") };
     let tri = Tri::of(o)?;
     let path = crate::builtins::arg(a, 1, "stlwrite")?.text()?;
     let text_mode = a.get(2).map(|v| v.text()).transpose()?.is_some_and(|t| t.eq_ignore_ascii_case("text"));

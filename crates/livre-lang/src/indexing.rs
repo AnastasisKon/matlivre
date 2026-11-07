@@ -163,6 +163,7 @@ pub fn assign(base: Option<Value>, idx: &[IndexArg], rhs: Value) -> R<Value> {
             nd::assign(&mut s.dims, &mut s.data, idx, &r.dims.clone(), r.data, zero)?;
             Ok(Value::Sym(s))
         }
+        b @ Value::Object(_) if crate::gfx::is_gfx(&b) && crate::gfx::is_gfx(&rhs) => crate::gfx::assign_handles(&b, idx, &rhs),
         b @ (Value::Func(_) | Value::Object(_)) => {
             let (pos, _) = nd::assign_plan(&[1, 1], idx, &rd)?;
             if pos.iter().all(|&p| p == 0) && nd::numel(&rd) == 1 {

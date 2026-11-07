@@ -1306,8 +1306,14 @@ fn draw_axes(c: &mut dyn Canvas, t: &Tokens, ax: &Axes, fig_map: Option<&[[f64; 
             }
             SeriesKind::Bar => {
                 let w = s.bar_width.unwrap_or(graphics::bar_spacing(&s.x) * 0.8) as f32 * plot.width() / (x1 - x0) as f32;
-                for pt in pts.iter().flatten() {
-                    c.rect(Rect::from_min_max(pos2(pt.x - w / 2.0, pt.y.min(base)), pos2(pt.x + w / 2.0, pt.y.max(base))), 2.0, color, Stroke::NONE);
+                for (i, pt) in pts.iter().enumerate() {
+                    let Some(pt) = pt else { continue };
+                    // A stacked bar starts where the one below it ends (its dy).
+                    let bottom = match s.dy.get(i) {
+                        Some(&d) => at(s.x[i], d).map(|p| p.y).unwrap_or(base),
+                        None => base,
+                    };
+                    c.rect(Rect::from_min_max(pos2(pt.x - w / 2.0, pt.y.min(bottom)), pos2(pt.x + w / 2.0, pt.y.max(bottom))), 2.0, color, Stroke::NONE);
                 }
             }
             SeriesKind::BarH => {

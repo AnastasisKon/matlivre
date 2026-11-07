@@ -902,9 +902,13 @@ fn jitter(x: &[f64], y: &[f64], z: &[f64], width: f64) -> (Vec<f64>, Vec<f64>) {
 fn bubblechart(it: &mut Interpreter, a: &[Value], nargout: usize, kind: usize) -> Ret {
     let a = select_axes(it, a)?;
     let ncoord = if kind == 1 { 3 } else { 2 };
-    let npos = a.iter().position(is_name).unwrap_or(a.len());
+    let mut npos = a.iter().position(is_name).unwrap_or(a.len());
     if npos < ncoord + 1 {
         return rt("Not enough input arguments.");
+    }
+    // A color name or spec right after the sizes, followed by Name,Value pairs ('r', 'MarkerFaceAlpha', 0.5).
+    if npos == ncoord + 1 && a.len() > npos && (a.len() - npos - 1) % 2 == 0 {
+        npos += 1;
     }
     let sz = a[ncoord].to_matrix()?;
     // Drawn as filled circles sized from SizeData; a color, when given, goes to scatter.

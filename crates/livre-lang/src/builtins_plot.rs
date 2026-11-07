@@ -653,13 +653,56 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
                 }
                 args2.retain(|v| v.text().map(|t| t != "filled").unwrap_or(true));
             }
+            // bar(..., 'grouped' | 'stacked'): how the columns of a matrix share each x.
+            let mut layout = "grouped".to_string();
+            if kind == SeriesKind::Bar {
+                if let Some(k) = args2.iter().position(|v| v.text().is_ok_and(|t| matches!(t.to_lowercase().as_str(), "grouped" | "stacked" | "hist" | "histc"))) {
+                    layout = args2.remove(k).text()?.to_lowercase();
+                }
+            }
             let (mut series, x_kind, props) = plot_series(&args2, kind)?;
+            if kind == SeriesKind::Bar && series.len() > 1 {
+                let m = series.len();
+                if layout == "stacked" {
+                    // Each bar starts where the ones before it at the same x end.
+                    let mut acc = vec![0.0; series[0].y.len()];
+                    for s in series.iter_mut() {
+                        s.dy = acc.clone();
+                        for (a, y) in acc.iter_mut().zip(&s.y) {
+                            *a += y;
+                        }
+                    }
+                } else {
+                    // Bars of a group are 2/(2m+3) of the x spacing apart, centred on x.
+                    let spacing = graphics::bar_spacing(&series[0].x);
+                    let d = 2.0 / (2.0 * m as f64 + 3.0) * spacing;
+                    for (k, s) in series.iter_mut().enumerate() {
+                        let off = (k as f64 - (m as f64 - 1.0) / 2.0) * d;
+                        s.dx = vec![off; s.x.len()];
+                        s.bar_width = Some(d * 0.8);
+                    }
+                }
+            }
             if let Some(sz) = size {
                 for s in series.iter_mut() {
                     s.marker_size = (sz.sqrt() as f32).max(2.0);
                 }
             }
+            let ends: Vec<(Vec<f64>, Vec<f64>)> = series
+                .iter()
+                .map(|s| {
+                    let at = |v: &Vec<f64>, i: usize| v.get(i).copied().unwrap_or(0.0);
+                    ((0..s.x.len()).map(|i| s.x[i] + at(&s.dx, i)).collect(), (0..s.y.len()).map(|i| s.y[i] + at(&s.dy, i)).collect())
+                })
+                .collect();
             let ids = it.add_series(series, x_kind);
+            if kind == SeriesKind::Bar {
+                for (id, (xe, ye)) in ids.iter().zip(ends) {
+                    crate::gfx::store(it, *id, "BarLayout", Value::chars(&layout));
+                    crate::gfx::store(it, *id, "XEndPoints", Value::Num(Matrix::row(xe)));
+                    crate::gfx::store(it, *id, "YEndPoints", Value::Num(Matrix::row(ye)));
+                }
+            }
             if filled {
                 apply_props(it, &ids, &[("MarkerFaceColor".to_string(), Value::chars("flat")), ("MarkerEdgeColor".to_string(), Value::chars("none"))])?;
             }

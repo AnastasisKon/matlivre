@@ -996,6 +996,16 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
             };
             one(Value::Num(Matrix::from_dims(m.dims.clone(), data)))
         }
+        // fsurf(xf, yf, zf, [umin umax vmin vmax]): a parametric surface over (u, v).
+        "fsurf" | "fmesh" if a.len() >= 3 && a[..3].iter().all(|v| matches!(v, Value::Func(_) | Value::Sym(_))) => {
+            let lims = a.get(3).filter(|v| !is_textlike(v));
+            let (m, n, _, _, x) = fn_grid(it, &a[0].clone(), lims, 35)?;
+            let (_, _, _, _, y) = fn_grid(it, &a[1].clone(), lims, 35)?;
+            let (_, _, _, _, z) = fn_grid(it, &a[2].clone(), lims, 35)?;
+            let mk = |d: Vec<f64>| Value::Num(Matrix::new(m, n, d));
+            let s = surface_series(&[mk(x), mk(y), mk(z)], name == "fmesh", false)?;
+            add_3d(it, vec![s], &[], nargout)
+        }
         "fsurf" | "fmesh" => {
             let f = arg(a, 0, name)?.clone();
             let (m, n, x, y, z) = fn_grid(it, &f, a.get(1).filter(|v| !is_textlike(v)), 35)?;

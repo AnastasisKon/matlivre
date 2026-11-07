@@ -257,6 +257,29 @@ pub fn concat(items: Vec<Value>, dim: usize) -> R<Value> {
     Ok(Value::Object(Object { class: class_def(&class), props: Rc::new(RefCell::new(vec![Value::Num(m)])) }))
 }
 
+/// `h(k) = obj` into an array of graphics objects; new places hold placeholders, and an
+/// array that mixes classes is of class matlab.graphics.Graphics.
+pub fn assign_handles(base: &Value, idx: &[crate::nd::IndexArg], rhs: &Value) -> R<Value> {
+    let ids = |v: &Value| -> (Matrix, String) {
+        let Value::Object(o) = v else { unreachable!() };
+        let m = match o.props.borrow().first() {
+            Some(Value::Num(m)) => m.clone(),
+            _ => Matrix::new(0, 0, Vec::new()),
+        };
+        (m, o.class.name.clone())
+    };
+    let (mut b, bc) = ids(base);
+    let (r, rc) = ids(rhs);
+    let mut dims = b.dims.clone();
+    crate::nd::assign(&mut dims, &mut b.data, idx, &r.dims, r.data.clone(), PLACEHOLDER as f64)?;
+    if dims.len() > 2 {
+        return rt("Arrays of graphics objects with more than two dimensions are not supported.");
+    }
+    let class = if bc == rc { bc } else { "matlab.graphics.Graphics".to_string() };
+    let m = Matrix::from_dims(dims, b.data);
+    Ok(Value::Object(Object { class: class_def(&class), props: Rc::new(RefCell::new(vec![Value::Num(m)])) }))
+}
+
 pub fn handle(it: &Interpreter, id: u64) -> Value {
     handles(it, &[id])
 }
@@ -1865,8 +1888,15 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], _nargout: usize) -> R
                     if ok { 1.0 } else { 0.0 }
                 })
                 .collect();
-            let dims = v.dims();
-            one(Value::Num(Matrix::from_dims(if ids_of(v).is_some() { vec![data.len(), 1] } else { dims }, data).cast_to(Kind::Logical)))
+            // An array of graphics objects keeps its shape.
+            let dims = match v {
+                Value::Object(o) if ids_of(v).is_some() => match o.props.borrow().first() {
+                    Some(Value::Num(m)) if m.numel() == data.len() => m.dims.clone(),
+                    _ => vec![data.len(), 1],
+                },
+                _ => v.dims(),
+            };
+            one(Value::Num(Matrix::from_dims(dims, data).cast_to(Kind::Logical)))
         }
         "isvalid" => {
             let v = arg(a, 0, name)?;
@@ -1880,13 +1910,19 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], _nargout: usize) -> R
             }
         }
         "groot" => one(handle(it, ROOT)),
+        // gobjects(n) is n-by-n, gobjects(m, n, ...) m-by-n, gobjects() 0-by-0.
         "gobjects" => {
-            let n = match a.first() {
-                Some(v) => v.scalar()? as usize,
-                None => 0,
+            let (r, c) = match a.len() {
+                0 => (0, 0),
+                1 => match a[0].to_matrix()?.data.as_slice() {
+                    [n] => (*n as usize, *n as usize),
+                    [m, n, ..] => (*m as usize, *n as usize),
+                    _ => (0, 0),
+                },
+                _ => (a[0].scalar()? as usize, a[1].scalar()? as usize),
             };
-            let ids = vec![PLACEHOLDER; n];
-            one(handles(it, &ids))
+            let m = Matrix::new(r, c, vec![PLACEHOLDER as f64; r * c]);
+            one(Value::Object(Object { class: class_def("matlab.graphics.GraphicsPlaceholder"), props: Rc::new(RefCell::new(vec![Value::Num(m)])) }))
         }
         "findobj" | "findall" => findobj(it, a),
         "allchild" => {

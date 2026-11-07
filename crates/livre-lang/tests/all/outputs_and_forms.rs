@@ -540,3 +540,38 @@ fn missing_functions() {
         ],
     );
 }
+
+#[test]
+fn graphics_forms() {
+    check(
+        concat!(
+            "set(0, 'DefaultFigureVisible', 'off');\n",
+            "figure; h = bar([1 2; 3 4], 'stacked'); h(1).BarLayout, h(2).YEndPoints\n",
+            "figure; h = bar([1 2 3; 4 5 6]); h(1).BarLayout, round([h(1).XEndPoints; h(2).XEndPoints; h(3).XEndPoints], 4)\n",
+            "figure; h = bar([1 2 3]); h.BarLayout, h.XEndPoints\n",
+            "figure; h = bubblechart([1 2], [3 4], [5 6], 'r', 'MarkerFaceAlpha', 0.5); h.MarkerFaceAlpha\n",
+            "figure; h = fsurf(@(u, v) cos(u), @(u, v) sin(u), @(u, v) v); isgraphics(h)\n",
+            "h = gobjects(1, 3); size(h)\n",
+            "h(2) = plot(1:3); class(h), isgraphics(h)\n",
+            "g = gobjects(2); size(g)\n",
+            "try, stlread('no_such_file.stl'), catch e, disp(e.message), end\n",
+            "try, stlwrite('w.stl', [1 2 3], [0 0 0; 1 0 0; 0 1 0]), catch e, disp(e.message), end\n",
+        ),
+        &[
+            "ans = 'stacked'",
+            "ans = 1×2\n\n     3     7",
+            "ans = 'grouped'",
+            "ans = 3×2\n\n    0.7778    1.7778\n    1.0000    2.0000\n    1.2222    2.2222",
+            "ans = 'grouped'",
+            "ans = 1×3\n\n     1     2     3",
+            "ans = 0.5000",
+            "ans = logical\n   1",
+            "ans = 1×2\n\n     1     3",
+            "ans = 'matlab.graphics.Graphics'",
+            "ans = 1×3 logical array\n\n   0   1   0",
+            "ans = 1×2\n\n     2     2",
+            "Unable to open file 'no_such_file.stl'.\n",
+            "Input argument must be a triangulation object.\n",
+        ],
+    );
+}

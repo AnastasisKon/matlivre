@@ -394,6 +394,10 @@ impl Axes {
             }
             xs.extend(&s.x);
             ys.extend(&s.y);
+            // Stacked bars reach y + dy.
+            if s.kind == SeriesKind::Bar && !s.dy.is_empty() {
+                ys.extend(s.y.iter().zip(&s.dy).map(|(y, d)| y + d));
+            }
             if let Some((lo, hi)) = &s.err {
                 ys.extend(s.y.iter().zip(lo).map(|(y, e)| y - e));
                 ys.extend(s.y.iter().zip(hi).map(|(y, e)| y + e));
