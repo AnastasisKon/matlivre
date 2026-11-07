@@ -539,6 +539,10 @@ fn with_mat_ext(p: &str) -> String {
     if std::path::Path::new(p).extension().is_none() { format!("{p}.mat") } else { p.to_string() }
 }
 
+/// Class methods save and load call (for the coverage checklist).
+#[allow(dead_code)]
+const SAVE_LOAD_METHODS: &[&str] = &["saveobj", "loadobj"];
+
 /// Field names marking a saved classdef object (MATLAB's own object format is not public).
 const OBJ_CLASS: &str = "MatlivreObjectClass";
 const OBJ_SAVED: &str = "MatlivreSavedByObject";
