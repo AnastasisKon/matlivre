@@ -1644,6 +1644,8 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 let cls = v.text()?;
                 match it.find_class(&cls) {
                     Some(c) => one(name_col(c.props.iter().filter(|p| !p.hidden).map(|p| Value::chars(&p.name)).collect())),
+                    // Built-in classes have no public properties to list.
+                    None if crate::lang_more::BUILTIN_CLASSES.contains(&cls.as_str()) => one(name_col(Vec::new())),
                     None => rt(format!("No class '{cls}'.")),
                 }
             }
@@ -1662,6 +1664,12 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             ms.sort();
             ms.dedup();
             one(Value::Cell(CellArray::col(ms.iter().map(|m| Value::chars(m)).collect())))
+        }
+        // ismethod('ClassName', name) looks the class up by name.
+        "ismethod" if arg(a, 0, name)?.is_text() => {
+            let cls = arg(a, 0, name)?.text()?;
+            let n = arg(a, 1, name)?.text()?;
+            one(Value::bool(it.find_class(&cls).is_some_and(|c| c.method(&n).is_some())))
         }
         "isprop" | "ismethod" => {
             let Value::Object(o) = arg(a, 0, name)? else { return one(Value::bool(false)) };

@@ -612,3 +612,44 @@ fn former_stubs() {
         ],
     );
 }
+
+#[test]
+fn files_and_classes() {
+    check(
+        concat!(
+            "d = tempname; mkdir(d);\n",
+            "w = fullfile(d, 'a8.wav'); y = [0 0.5 -0.5 0.99]'; audiowrite(w, y, 8000, 'BitsPerSample', 8);\n",
+            "[z, fs] = audioread(w); z', fs\n",
+            "zn = audioread(w, 'native'); class(zn), zn'\n",
+            "p = fullfile(d, 'ix.png'); imwrite(uint8([0 1; 2 3]), [0 0 0; 1 0 0; 0 1 0; 0 0 1], p);\n",
+            "[X, map] = imread(p); X, map\n",
+            "g = fullfile(d, 'g.gif'); imwrite(uint8([0 128; 200 255]), g);\n",
+            "[X, map] = imread(g); X, size(map), map(201, :)\n",
+            "x = fullfile(d, 'x.xlsx'); writematrix([1 2], x); [st, sh, fmt] = xlsfinfo(x)\n",
+            "m = fullfile(d, 'm.mat'); v = 5; save(m, 'v');\n",
+            "mf = matfile(m); try, mf.v = 7; catch e, disp(e.message), end\n",
+            "mf = matfile(m, 'Writable', true); mf.v = 7; mf.u = 3; clear v u; load(m); [v u]\n",
+            "events('containers.Map')\n",
+            "p = properties('double')\n",
+            "rmdir(d, 's');\n",
+        ),
+        &[
+            "ans = 1×4\n\n         0    0.5000   -0.5000    0.9844",
+            "fs = 8000",
+            "ans = 'uint8'",
+            "ans = 1×4 uint8 row vector\n\n   128   192    64   254",
+            "X = 2×2 uint8 matrix\n\n   0   1\n   2   3",
+            "map = 4×3\n\n     0     0     0\n     1     0     0\n     0     1     0\n     0     0     1",
+            "X = 2×2 uint8 matrix\n\n     0   128\n   200   255",
+            "ans = 1×2\n\n   256     3",
+            "ans = 1×3\n\n    0.7843    0.7843    0.7843",
+            "st = 'Microsoft Excel Spreadsheet'",
+            "sh = 1×1 cell\n\n    {'Sheet1'}",
+            "fmt = 'xlOpenXMLWorkbook'",
+            "Cannot change 'v' because Properties.Writable is false.  To modify 'v', set Properties.Writable to true.\n",
+            "ans = 1×2\n\n     7     3",
+            "Events for class containers.Map:\n\n    ObjectBeingDestroyed\n\n",
+            "p =\n\n  0×1 empty cell array",
+        ],
+    );
+}

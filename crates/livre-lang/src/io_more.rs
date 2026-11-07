@@ -539,6 +539,30 @@ fn matfile(a: &[Value]) -> Ret {
     one(object("matlab.io.MatFile", &names, values))
 }
 
+/// `m.var = value` on a MatFile object: writes the variable to the file when the object is
+/// writable, and returns the object with the file's variables.
+pub(crate) fn matfile_assign(o: &Object, var: &str, value: Value) -> R<Value> {
+    let props = o.get("Properties").unwrap_or_else(Value::empty);
+    let Value::Struct(p) = &props else { return rt("Invalid MatFile object.") };
+    let writable = p.get("Writable").map(|v| v.is_true()).transpose()?.unwrap_or(false);
+    if !writable {
+        return rt(format!("Cannot change '{var}' because Properties.Writable is false.  To modify '{var}', set Properties.Writable to true."));
+    }
+    let path = p.get("Source").map(|v| v.text()).transpose()?.unwrap_or_default();
+    let mut vars: Vec<(String, Value)> = if std::path::Path::new(&path).exists() {
+        crate::builtins_data::read_mat(&path)?.into_iter().filter_map(|(n, v)| v.map(|v| (n, v))).collect()
+    } else {
+        Vec::new()
+    };
+    match vars.iter_mut().find(|(n, _)| n == var) {
+        Some(slot) => slot.1 = value,
+        None => vars.push((var.to_string(), value)),
+    }
+    crate::builtins_data::write_mat(&path, &vars, false)?;
+    let r = matfile(&[Value::chars(&path), Value::chars("Writable"), Value::bool(true)])?;
+    Ok(r.and_then(|v| v.into_iter().next()).unwrap_or_else(Value::empty))
+}
+
 // ---- import options ------------------------------------------------------------------------
 
 fn opt_get(o: &Object, name: &str) -> Value {

@@ -243,6 +243,19 @@ fn superclasses(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
 }
 
 fn events(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
+    // containers.Map is a built-in handle class: its one event is ObjectBeingDestroyed.
+    let is_map = match arg(a, 0, "events")? {
+        Value::Object(o) => o.class.name == "containers.Map",
+        v => v.text().is_ok_and(|t| t == "containers.Map"),
+    };
+    if is_map {
+        let names = vec!["ObjectBeingDestroyed".to_string()];
+        if nargout == 0 {
+            it.emit(OutputKind::Text("Events for class containers.Map:\n\n    ObjectBeingDestroyed\n\n".into()));
+            return none();
+        }
+        return one(cell_col(&names));
+    }
     let c = class_arg(it, arg(a, 0, "events")?, "events")?;
     let names = event_names(&c);
     if nargout == 0 {
@@ -253,16 +266,18 @@ fn events(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
     one(cell_col(&names))
 }
 
+/// Classes built into MatLivre (not classdef files).
+pub(crate) const BUILTIN_CLASSES: &[&str] = &[
+    "double", "single", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "logical", "char", "string", "cell", "struct",
+    "function_handle", "table", "timetable", "datetime", "duration", "calendarDuration", "categorical", "containers.Map", "dictionary", "sym",
+];
+
 fn meta_class(it: &mut Interpreter, a: &[Value]) -> Ret {
     let name = arg(a, 0, "meta.class.fromName")?.text()?;
     // Built-in classes have a meta.class too, without properties of their own.
-    const BUILTIN: &[&str] = &[
-        "double", "single", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "logical", "char", "string", "cell", "struct",
-        "function_handle", "table", "timetable", "datetime", "duration", "calendarDuration", "categorical", "containers.Map", "dictionary", "sym",
-    ];
     match it.find_class(&name) {
         Some(c) => one(crate::builtins_ops::metaclass_for(it, Some(c), &name)),
-        None if BUILTIN.contains(&name.as_str()) => one(crate::builtins_ops::metaclass_for(it, None, &name)),
+        None if BUILTIN_CLASSES.contains(&name.as_str()) => one(crate::builtins_ops::metaclass_for(it, None, &name)),
         None => one(Value::empty()),
     }
 }

@@ -448,14 +448,28 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         "xlswrite" => xlswrite(it, a),
         "xlsfinfo" | "sheetnames" => {
             let path = arg(a, 0, name)?.text()?;
+            if name == "xlsfinfo" && !std::path::Path::new(&path).exists() {
+                let full = std::env::current_dir().map(|d| d.join(&path).display().to_string()).unwrap_or_else(|_| path.clone());
+                return Err(err(format!("File '{full}' not found.")));
+            }
             let wb = open_workbook_auto(&path).map_err(|e| err(format!("Unable to open file '{path}': {e}")))?;
             let names = wb.sheet_names();
             if name == "sheetnames" {
                 return one(Value::Str(StrArray::col(names)));
             }
+            // [status, sheets, xlFormat]: Excel's name of the file format.
+            let ext = std::path::Path::new(&path).extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+            let format = match ext.as_str() {
+                "xlsx" => "xlOpenXMLWorkbook",
+                "xlsm" => "xlOpenXMLWorkbookMacroEnabled",
+                "xlsb" => "xlExcel12",
+                "xls" => "xlWorkbookNormal",
+                _ => "",
+            };
             Ok(Some(vec![
                 Value::chars("Microsoft Excel Spreadsheet"),
                 Value::Cell(CellArray::row(names.iter().map(|n| Value::chars(n)).collect())),
+                Value::chars(format),
             ]))
         }
         _ => Ok(None),

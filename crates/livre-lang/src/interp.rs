@@ -1158,6 +1158,11 @@ impl Interpreter {
                     Ok(h)
                 }
                 Some(Value::Object(o)) => {
+                    // A MatFile takes new variables as well as its existing ones.
+                    if o.class.name == "matlab.io.MatFile" && f != "Properties" && o.class.prop_index(f).is_none() {
+                        let new = self.apply_assign(None, rest, rhs)?;
+                        return crate::io_more::matfile_assign(&o, f, new);
+                    }
                     if o.class.prop_index(f).is_none() {
                         return rt(format!("Unrecognized property '{f}' for class '{}'.", o.class.name));
                     }
@@ -1175,6 +1180,9 @@ impl Interpreter {
                             let out = r?;
                             return Ok(if class.is_handle { Value::Object(o) } else { out.into_iter().next().unwrap_or(Value::Object(o)) });
                         }
+                    }
+                    if o.class.name == "matlab.io.MatFile" && f != "Properties" {
+                        return crate::io_more::matfile_assign(&o, f, new);
                     }
                     Ok(Value::Object(o.set(f, new)?))
                 }

@@ -143,7 +143,11 @@ fn read_other(path: &str) -> R<Image> {
 }
 
 fn read_image(path: &str) -> R<Image> {
-    if ext_of(path) == "png" { read_png(path) } else { read_other(path) }
+    match ext_of(path).as_str() {
+        "png" => read_png(path),
+        "gif" => read_gif(path),
+        _ => read_other(path),
+    }
 }
 
 /// Row-major interleaved samples to a column-major h×w(×c) array.
@@ -252,8 +256,50 @@ fn write_png(path: &str, h: usize, w: usize, c: usize, s: &[u16], bits: u32) -> 
     writer.write_image_data(&data).map_err(err)
 }
 
+/// An indexed image as a palette PNG: X holds 0-based (integer) or 1-based (double) indices.
+fn write_indexed_png(path: &str, x: &Matrix, map: &Matrix) -> R<()> {
+    let n = map.rows();
+    if n == 0 || n > 256 || map.cols() != 3 {
+        return rt("The colormap must have between 1 and 256 rows and 3 columns.");
+    }
+    let (h, w) = (x.dims[0], x.dims.get(1).copied().unwrap_or(1));
+    let offset = if matches!(x.kind, Kind::Double | Kind::Single) { 1.0 } else { 0.0 };
+    let file = std::fs::File::create(path).map_err(err)?;
+    let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
+    enc.set_color(png::ColorType::Indexed);
+    enc.set_depth(png::BitDepth::Eight);
+    let pal: Vec<u8> = (0..n).flat_map(|i| (0..3).map(move |k| (map.data[k * n + i].clamp(0.0, 1.0) * 255.0).round() as u8)).collect();
+    enc.set_palette(pal);
+    let mut writer = enc.write_header().map_err(err)?;
+    let mut data = vec![0u8; w * h];
+    for yy in 0..h {
+        for xx in 0..w {
+            data[yy * w + xx] = ((x.data[xx * h + yy] - offset).max(0.0) as usize).min(n - 1) as u8;
+        }
+    }
+    writer.write_image_data(&data).map_err(err)
+}
+
 fn imwrite(a: &[Value]) -> Ret {
     let m = arg(a, 0, "imwrite")?.to_matrix()?;
+    // imwrite(X, map, 'file.png'): a palette PNG.
+    if let (Some(map), Some(p)) = (a.get(1).filter(|v| !v.is_text() && !matches!(v, Value::Str(_))), a.get(2)) {
+        let path = p.text()?;
+        if ext_of(&path) == "png" {
+            write_indexed_png(&path, &m, &map.to_matrix()?)?;
+            return none();
+        }
+        if ext_of(&path) == "gif" {
+            let map = map.to_matrix()?;
+            let n = map.rows();
+            let pal: Vec<[u8; 3]> = (0..n).map(|i| [0, 1, 2].map(|k| (map.data[k * n + i].clamp(0.0, 1.0) * 255.0).round() as u8)).collect();
+            let (h, w) = (m.dims[0], m.dims.get(1).copied().unwrap_or(1));
+            let offset = if matches!(m.kind, Kind::Double | Kind::Single) { 1.0 } else { 0.0 };
+            let idx: Vec<u8> = (0..h * w).map(|k| ((m.data[(k % w) * h + k / w] - offset).max(0.0) as usize).min(n.saturating_sub(1)) as u8).collect();
+            write_gif(&path, w, h, &idx, &pal)?;
+            return none();
+        }
+    }
     // imwrite(A, file), imwrite(A, map, file) (indexed: written as RGB), imwrite(A, file, fmt).
     let (m, path_at) = match a.get(1) {
         Some(v) if !v.is_text() && !matches!(v, Value::Str(_)) => {
@@ -283,6 +329,12 @@ fn imwrite(a: &[Value]) -> Ret {
         return none();
     }
     let bytes: Vec<u8> = s.iter().map(|&v| if bits == 1 { (v * 255) as u8 } else if bits == 16 { (v >> 8) as u8 } else { v as u8 }).collect();
+    // A grayscale GIF is indexed into a 256-level gray palette.
+    if c == 1 && fmt == "gif" {
+        let pal: Vec<[u8; 3]> = (0..=255u8).map(|g| [g, g, g]).collect();
+        write_gif(&path, w, h, &bytes, &pal)?;
+        return none();
+    }
     let img: image::DynamicImage = match c {
         1 => image::GrayImage::from_raw(w as u32, h as u32, bytes).map(image::DynamicImage::ImageLuma8),
         3 => image::RgbImage::from_raw(w as u32, h as u32, bytes).map(image::DynamicImage::ImageRgb8),
@@ -377,7 +429,9 @@ fn audioread(a: &[Value], nargout: usize) -> Ret {
     for f in 0..n {
         for c in 0..ch {
             let v = vals[(first + f) * ch + c];
-            data[c * n + f] = if native { v } else if spec.bits_per_sample == 8 && spec.sample_format == hound::SampleFormat::Int { (v - 128.0) / scale } else { v / scale };
+            // hound gives 8-bit samples signed (-128..127); MATLAB's native uint8 is offset by 128.
+            let eight = spec.bits_per_sample == 8 && spec.sample_format == hound::SampleFormat::Int;
+            data[c * n + f] = if native { if eight { v + 128.0 } else { v } } else { v / scale };
         }
     }
     let m = Matrix::new(n, ch, data);
@@ -423,7 +477,9 @@ fn audiowrite(a: &[Value]) -> Ret {
                 // Doubles in -1..1 scale to the integer range (rounding down, as MATLAB does), clipped.
                 let s = if matches!(y.kind, Kind::Double | Kind::Single) { (v * full).floor().clamp(-full, full - 1.0) } else { v };
                 if bits == 8 {
-                    w.write_sample((s + 128.0) as i8 as i32 - 128).map_err(err)?;
+                    // A uint8 array holds the stored (offset) form; hound takes signed samples.
+                    let s = if y.kind == Kind::Int(IntClass::U8) { s - 128.0 } else { s };
+                    w.write_sample(s as i8).map_err(err)?;
                 } else {
                     w.write_sample(s as i32).map_err(err)?;
                 }
@@ -472,4 +528,205 @@ pub fn call(_it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> R
         }
         _ => Ok(None),
     }
+}
+
+// ---- GIF (indexed, one frame) ------------------------------------------------------------------
+
+/// The first frame of a GIF as an indexed image (indices and palette), as MATLAB reads it.
+fn read_gif(path: &str) -> R<Image> {
+    let b = std::fs::read(path).map_err(|_| LangError::new(format!("File \"{path}\" does not exist."), 0))?;
+    let bad = || LangError::new("The file is not a valid GIF file.", 0);
+    if b.len() < 13 || !b.starts_with(b"GIF8") {
+        return Err(bad());
+    }
+    let table = |at: usize, packed: u8| -> Vec<[u8; 3]> {
+        let n = 2usize << (packed & 7);
+        (0..n).filter_map(|i| b.get(at + 3 * i..at + 3 * i + 3).map(|c| [c[0], c[1], c[2]])).collect()
+    };
+    let mut pos = 13;
+    let mut palette = Vec::new();
+    if b[10] & 0x80 != 0 {
+        palette = table(13, b[10]);
+        pos += 3 * (2usize << (b[10] & 7));
+    }
+    loop {
+        match b.get(pos).copied().ok_or_else(bad)? {
+            // An extension: skip its sub-blocks.
+            0x21 => {
+                pos += 2;
+                while let Some(&n) = b.get(pos) {
+                    pos += 1 + n as usize;
+                    if n == 0 {
+                        break;
+                    }
+                }
+            }
+            0x2C => break,
+            _ => return Err(bad()),
+        }
+    }
+    let rd16 = |p: usize| b.get(p..p + 2).map(|s| u16::from_le_bytes([s[0], s[1]]) as usize).ok_or_else(bad);
+    let (w, h) = (rd16(pos + 5)?, rd16(pos + 7)?);
+    let packed = *b.get(pos + 9).ok_or_else(bad)?;
+    pos += 10;
+    if packed & 0x80 != 0 {
+        palette = table(pos, packed);
+        pos += 3 * (2usize << (packed & 7));
+    }
+    let interlaced = packed & 0x40 != 0;
+    let min = *b.get(pos).ok_or_else(bad)? as u32;
+    pos += 1;
+    let mut data = Vec::new();
+    while let Some(&n) = b.get(pos) {
+        pos += 1;
+        if n == 0 {
+            break;
+        }
+        data.extend_from_slice(b.get(pos..pos + n as usize).ok_or_else(bad)?);
+        pos += n as usize;
+    }
+    let idx = lzw_decode(&data, min, w * h);
+    // Interlaced rows come in four passes.
+    let mut order: Vec<usize> = (0..h).collect();
+    if interlaced {
+        order = (0..h).step_by(8).chain((4..h).step_by(8)).chain((2..h).step_by(4)).chain((1..h).step_by(2)).collect();
+    }
+    let mut samples = vec![0.0; w * h];
+    for (k, &row) in order.iter().enumerate() {
+        for x in 0..w {
+            samples[row * w + x] = *idx.get(k * w + x).unwrap_or(&0) as f64;
+        }
+    }
+    Ok(Image { w, h, channels: 1, samples, kind: Kind::Int(IntClass::U8), alpha: None, palette: Some(palette), bit_depth: 8, color_type: "indexed" })
+}
+
+fn lzw_decode(data: &[u8], min: u32, limit: usize) -> Vec<u8> {
+    let clear = 1usize << min;
+    let mut size = min + 1;
+    let mut dict: Vec<Vec<u8>> = (0..clear).map(|i| vec![i as u8]).collect();
+    dict.push(Vec::new());
+    dict.push(Vec::new());
+    let mut out = Vec::with_capacity(limit);
+    let (mut bits, mut nbits, mut i) = (0u32, 0u32, 0usize);
+    let mut prev: Option<usize> = None;
+    loop {
+        while nbits < size {
+            let Some(&byte) = data.get(i) else { return out };
+            bits |= (byte as u32) << nbits;
+            nbits += 8;
+            i += 1;
+        }
+        let code = (bits & ((1 << size) - 1)) as usize;
+        bits >>= size;
+        nbits -= size;
+        if code == clear {
+            dict.truncate(clear + 2);
+            size = min + 1;
+            prev = None;
+            continue;
+        }
+        if code == clear + 1 || out.len() >= limit {
+            return out;
+        }
+        let entry = if code < dict.len() {
+            dict[code].clone()
+        } else if let Some(p) = prev {
+            let mut e = dict[p].clone();
+            e.push(dict[p][0]);
+            e
+        } else {
+            return out;
+        };
+        out.extend_from_slice(&entry);
+        if let Some(p) = prev {
+            if dict.len() < 4096 {
+                let mut e = dict[p].clone();
+                e.push(entry[0]);
+                dict.push(e);
+                if dict.len() == 1 << size && size < 12 {
+                    size += 1;
+                }
+            }
+        }
+        prev = Some(code);
+    }
+}
+
+/// A one-frame GIF of row-major palette indices.
+fn write_gif(path: &str, w: usize, h: usize, idx: &[u8], palette: &[[u8; 3]]) -> R<()> {
+    let bits = (1..=8).find(|&b| (1usize << b) >= palette.len().max(2)).unwrap_or(8);
+    let n = 1usize << bits;
+    let mut out: Vec<u8> = b"GIF89a".to_vec();
+    out.extend_from_slice(&(w as u16).to_le_bytes());
+    out.extend_from_slice(&(h as u16).to_le_bytes());
+    out.extend_from_slice(&[0x80 | 0x70 | (bits as u8 - 1), 0, 0]);
+    for k in 0..n {
+        out.extend_from_slice(&palette.get(k).copied().unwrap_or([0, 0, 0]));
+    }
+    out.push(0x2C);
+    out.extend_from_slice(&[0, 0, 0, 0]);
+    out.extend_from_slice(&(w as u16).to_le_bytes());
+    out.extend_from_slice(&(h as u16).to_le_bytes());
+    out.push(0);
+    let min = bits.max(2) as u32;
+    out.push(min as u8);
+    let data = lzw_encode(idx, min);
+    for chunk in data.chunks(255) {
+        out.push(chunk.len() as u8);
+        out.extend_from_slice(chunk);
+    }
+    out.extend_from_slice(&[0, 0x3B]);
+    std::fs::write(path, out).map_err(err)
+}
+
+fn lzw_encode(idx: &[u8], min: u32) -> Vec<u8> {
+    let clear = 1u32 << min;
+    let mut size = min + 1;
+    let mut next = clear + 2;
+    let mut dict: std::collections::HashMap<(u32, u8), u32> = std::collections::HashMap::new();
+    let mut out = Vec::new();
+    let (mut bits, mut nbits) = (0u64, 0u32);
+    let mut emit = |code: u32, size: u32, out: &mut Vec<u8>| {
+        bits |= (code as u64) << nbits;
+        nbits += size;
+        while nbits >= 8 {
+            out.push(bits as u8);
+            bits >>= 8;
+            nbits -= 8;
+        }
+    };
+    emit(clear, size, &mut out);
+    let mut cur: Option<u32> = None;
+    for &k in idx {
+        let Some(c) = cur else {
+            cur = Some(k as u32);
+            continue;
+        };
+        if let Some(&code) = dict.get(&(c, k)) {
+            cur = Some(code);
+            continue;
+        }
+        emit(c, size, &mut out);
+        if next < 4096 {
+            dict.insert((c, k), next);
+            next += 1;
+            if next > (1 << size) && size < 12 {
+                size += 1;
+            }
+        } else {
+            emit(clear, size, &mut out);
+            dict.clear();
+            next = clear + 2;
+            size = min + 1;
+        }
+        cur = Some(k as u32);
+    }
+    if let Some(c) = cur {
+        emit(c, size, &mut out);
+    }
+    emit(clear + 1, size, &mut out);
+    if nbits > 0 {
+        out.push(bits as u8);
+    }
+    out
 }
