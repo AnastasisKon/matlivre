@@ -214,6 +214,19 @@ without installing anything.
 
 `matlivre-cli script.m` runs a script headless and prints its output.
 
+### Linux
+
+Install the build dependencies (Ubuntu/Debian) and Rust (via rustup), then build:
+
+```bash
+sudo apt install build-essential pkg-config libgtk-3-dev libxkbcommon-dev libwayland-dev
+cargo run -p livre-app --release
+```
+
+`tools/linux/package.sh` builds and packs `dist/matlivre-linux-<arch>.tar.gz`; its
+`install.sh` installs `matlivre` and `matlivre-cli` into `~/.local/bin` and adds MatLivre to
+the application menu.
+
 ## Project layout
 
 | Crate | Purpose |
@@ -294,7 +307,8 @@ installation when one is present. Benchmarks: [`benchmarks/run_bench.bat`](bench
   order they were added rather than in MATLAB's order.
 - Sparse matrices are stored densely: they behave and display as in MATLAB, but matrices
   with more than 2e8 elements are refused.
-- Windows is the only tested platform.
+- Windows is the main platform. Linux builds and runs (tested on Ubuntu 24.04, GNOME/Wayland),
+  but the benchmarks and most testing are on Windows.
 
 ## License
 

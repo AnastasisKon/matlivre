@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=MatLivre
+Comment=Live script editor and runtime for MATLAB code
+Exec=matlivre %f
+Icon=matlivre
+Terminal=false
+Categories=Education;Science;Math;Development;
+MimeType=application/vnd.mathworks.matlab.mlx;text/x-matlab;
