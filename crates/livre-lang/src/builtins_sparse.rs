@@ -466,25 +466,17 @@ impl Op {
     /// The operator of a matrix: compressed sparse columns when fewer than a fifth of the
     /// elements are nonzero (every product then costs the nonzeros, not rows x columns).
     fn from_matrix(m: Matrix) -> Op {
+        Op::from_ref(&m)
+    }
+
+    /// As `from_matrix`, without copying the matrix when it becomes compressed columns.
+    fn from_ref(m: &Matrix) -> Op {
         let (rows, cols) = (m.rows(), m.cols());
         if rows * cols < 4096 || m.is_complex() || m.dims.len() != 2 {
-            return Op::M(m);
+            return Op::M(m.clone());
         }
         let limit = rows * cols / 5;
-        let (mut ptr, mut idx, mut val) = (Vec::with_capacity(cols + 1), Vec::new(), Vec::new());
-        ptr.push(0);
-        for col in m.data.chunks_exact(rows) {
-            for (i, &v) in col.iter().enumerate() {
-                if v != 0.0 {
-                    idx.push(i as u32);
-                    val.push(v);
-                }
-            }
-            if val.len() > limit {
-                return Op::M(m);
-            }
-            ptr.push(val.len());
-        }
+        let Some((ptr, idx, val)) = crate::ops::csc_from_dense(&m.data, rows, cols, limit, false) else { return Op::M(m.clone()) };
         Op::S { rows, cols, ptr, idx, val }
     }
 
@@ -592,6 +584,7 @@ fn report(it: &mut Interpreter, name: &str, s: &Solve, tol: f64, maxit: usize, n
 fn solver(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Ret {
     let op = match arg(a, 0, name)? {
         f @ Value::Func(_) => Op::F(f.clone()),
+        Value::Num(m) => Op::from_ref(m),
         v => Op::from_matrix(mat(v)?),
     };
     let b = mat(arg(a, 1, name)?)?.data;

@@ -46,3 +46,22 @@ fn linear_algebra_and_lookups_match_matlab() {
     }
     assert_eq!(got.trim_end().lines().count(), want.trim_end().lines().count());
 }
+
+/// Chains of elementwise operators on large arrays are evaluated fused; the result must equal
+/// the same computation one operator at a time, as in MATLAB (`data/fusion.m`), including the
+/// cases that turn complex or hold NaN, where fusion gives way to the ordinary evaluator.
+#[test]
+fn fused_expressions_equal_stepwise_evaluation() {
+    let mut it = Interpreter::new();
+    let _ = it.run_source(include_str!("data/fusion.m"));
+    let got: String = it
+        .take_outputs()
+        .into_iter()
+        .filter_map(|o| match o.kind {
+            OutputKind::Text(t) => Some(t),
+            OutputKind::Error(e) => Some(format!("Error: {e}\n")),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(got.trim_end(), include_str!("data/fusion_matlab.txt").trim_end());
+}

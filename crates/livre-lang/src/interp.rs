@@ -439,6 +439,11 @@ impl Interpreter {
         }
     }
 
+    /// True when a user function (not a builtin) with this name is defined.
+    pub(crate) fn user_function_defined(&self, name: &str) -> bool {
+        self.functions.contains_key(name)
+    }
+
     pub fn get_var(&self, name: &str) -> Option<&Value> {
         let f = self.frame();
         if f.globals.contains(name) {
@@ -1424,6 +1429,12 @@ impl Interpreter {
     // ---- expressions -------------------------------------------------------------------
 
     pub fn eval(&mut self, e: &Expr) -> R<Value> {
+        // Chains of elementwise operators on large arrays are evaluated in cache-sized blocks.
+        if matches!(e, Expr::Binary(..) | Expr::Unary(..) | Expr::Index(..)) {
+            if let Some(v) = crate::fuse::try_eval(self, e) {
+                return Ok(v);
+            }
+        }
         match e {
             Expr::Num(n) => Ok(Value::num(*n)),
             Expr::Imag(n) => Ok(Value::Num(Matrix::complex_scalar(0.0, *n))),

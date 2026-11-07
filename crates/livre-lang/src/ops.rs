@@ -529,6 +529,53 @@ thread_local! {
 const SPARSE_MIN_ORDER: usize = 100;
 const SPARSE_MAX_DENSITY: f64 = 0.1;
 
+/// Compressed sparse columns of a column-major dense array: column pointers, row indices
+/// (ascending in each column) and values. Columns are scanned in parallel blocks. `None` when
+/// more than `max_nnz` entries are nonzero, or, with `finite_only`, when a nonzero is not finite.
+pub fn csc_from_dense(data: &[f64], rows: usize, cols: usize, max_nnz: usize, finite_only: bool) -> Option<(Vec<usize>, Vec<u32>, Vec<f64>)> {
+    use rayon::prelude::*;
+    const BLOCK: usize = 32;
+    let scan = |c0: usize| -> Option<(Vec<usize>, Vec<u32>, Vec<f64>)> {
+        let c1 = (c0 + BLOCK).min(cols);
+        let (mut counts, mut idx, mut val) = (Vec::with_capacity(c1 - c0), Vec::new(), Vec::new());
+        for col in data[c0 * rows..c1 * rows].chunks_exact(rows) {
+            let before = val.len();
+            for (i, &v) in col.iter().enumerate() {
+                if v != 0.0 {
+                    if finite_only && !v.is_finite() {
+                        return None;
+                    }
+                    idx.push(i as u32);
+                    val.push(v);
+                }
+            }
+            counts.push(val.len() - before);
+        }
+        Some((counts, idx, val))
+    };
+    let starts: Vec<usize> = (0..cols).step_by(BLOCK).collect();
+    let parts: Vec<Option<(Vec<usize>, Vec<u32>, Vec<f64>)>> = if rows * cols >= PAR_MIN { starts.par_iter().map(|&c| scan(c)).collect() } else { starts.iter().map(|&c| scan(c)).collect() };
+    let mut ptr = Vec::with_capacity(cols + 1);
+    ptr.push(0usize);
+    let mut total = 0usize;
+    for p in &parts {
+        total += p.as_ref()?.2.len();
+    }
+    if total > max_nnz {
+        return None;
+    }
+    let (mut idx, mut val) = (Vec::with_capacity(total), Vec::with_capacity(total));
+    for p in parts {
+        let (counts, i, v) = p?;
+        for c in counts {
+            ptr.push(ptr.last().unwrap() + c);
+        }
+        idx.extend(i);
+        val.extend(v);
+    }
+    Some((ptr, idx, val))
+}
+
 /// `a \ b` for a square matrix flagged sparse, through a sparse LU with Markowitz pivoting
 /// (`sparse_lu`). Returns `None` when the matrix is not sparse enough, holds non-finite values,
 /// is (numerically) singular, or the result fails a residual check; the caller then takes the
@@ -537,23 +584,7 @@ fn sparse_solve(a: &Matrix, b: &Matrix) -> Option<Matrix> {
     use crate::sparse_lu::LuFactor;
     let (n, k) = (a.rows(), b.cols());
     let max_nnz = (SPARSE_MAX_DENSITY * (n * n) as f64) as usize;
-    let (mut ptr, mut idx, mut val) = (Vec::with_capacity(n + 1), Vec::new(), Vec::new());
-    ptr.push(0usize);
-    for col in a.data.chunks_exact(n) {
-        for (i, &v) in col.iter().enumerate() {
-            if v != 0.0 {
-                if !v.is_finite() {
-                    return None;
-                }
-                idx.push(i as u32);
-                val.push(v);
-            }
-        }
-        if val.len() > max_nnz {
-            return None;
-        }
-        ptr.push(val.len());
-    }
+    let (ptr, idx, val) = csc_from_dense(&a.data, n, n, max_nnz, true)?;
     if b.data.iter().any(|v| !v.is_finite()) {
         return None;
     }
