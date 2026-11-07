@@ -275,3 +275,99 @@ fn arguments_blocks() {
         ],
     );
 }
+
+#[test]
+fn graph_outputs() {
+    check(
+        concat!(
+            "G = graph([1 1 2 3 4], [2 3 4 4 5], [1 2 3 1 5]);\n",
+            "D = digraph([1 1 2 3 4], [2 3 4 4 5], [1 2 3 1 5]);\n",
+            "[p, d, e] = shortestpath(G, 1, 5)\n",
+            "[TR, dist] = shortestpathtree(G, 1); dist\n",
+            "[mf, GF, cs, ct] = maxflow(D, 1, 5); mf, GF.Edges.EndNodes', cs', ct'\n",
+            "[P, E] = allpaths(D, 1, 5)\n",
+            "[c, ec] = allcycles(digraph([1 2 3], [2 3 1]))\n",
+            "[cy, ecy] = cyclebasis(G)\n",
+            "[T, pred] = minspantree(G); pred\n",
+            "[T, pred] = minspantree(G, 'Root', 3); pred\n",
+            "[H, idx] = reordernodes(G, [5 4 3 2 1]); idx'\n",
+            "[H, idx] = reordernodes(G, [2 1 3 5 4]); idx', H.Edges.EndNodes'\n",
+            "[n, H] = toposort(digraph([3 1 2], [1 2 4])); n, H.Edges.EndNodes'\n",
+        ),
+        &[
+            "p = 1×4\n\n     1     3     4     5",
+            "d = 8",
+            "e = 1×3\n\n     2     4     5",
+            "dist = 1×5\n\n     0     1     2     3     8",
+            "mf = 2",
+            "ans = 2×5\n\n     1     1     2     3     4\n     2     3     4     4     5",
+            "ans = 1×2\n\n     1     3",
+            "ans = 1×3\n\n     2     4     5",
+            "P = 2×1 cell\n\n    {[1 2 4 5]}\n    {[1 3 4 5]}",
+            "E = 2×1 cell\n\n    {[1 3 5]}\n    {[2 4 5]}",
+            "c = 1×1 cell\n\n    {[1 2 3]}",
+            "ec = 1×1 cell\n\n    {[1 2 3]}",
+            "cy = 1×1 cell\n\n    {[1 2 4 3]}",
+            "ecy = 1×1 cell\n\n    {[1 3 4 2]}",
+            "pred = 1×5\n\n     0     1     1     3     4",
+            "pred = 1×5\n\n     3     1     0     3     4",
+            "ans = 1×5\n\n     5     4     3     2     1",
+            "ans = 1×5\n\n     1     3     2     4     5",
+            "ans = 2×5\n\n     1     1     2     3     4\n     2     5     3     5     5",
+            "n = 1×4\n\n     3     1     2     4",
+            "ans = 2×3\n\n     1     2     3\n     2     3     4",
+        ],
+    );
+}
+
+#[test]
+fn sparse_and_shapes() {
+    check(
+        concat!(
+            "A = sparse([4 1 0; 1 4 1; 0 1 4]);\n",
+            "[pe, q] = etree(A)\n",
+            "[pe, q] = etree(sparse([4 0 1 0; 0 4 0 1; 1 0 4 0; 0 1 0 4]))\n",
+            "[cnt, h, parent, post, R] = symbfact(A); cnt', h, parent, post, full(R)\n",
+            "[L, U, P] = ilu(A); full(P)\n",
+            "[x, y] = gplot([0 1; 1 0], [0 0; 1 1])\n",
+            "ps = polyshape([0 2 2 0], [0 0 2 2]);\n",
+            "[in, on] = isinterior(ps, [1 2 3 0], [1 1 1 2])\n",
+        ),
+        &[
+            "pe = 1×3\n\n     2     3     0",
+            "q = 1×3\n\n     1     2     3",
+            "pe = 1×4\n\n     3     4     0     0",
+            "q = 1×4\n\n     1     3     2     4",
+            "ans = 3×1\n\n     2\n     2\n     1",
+            "h = 3",
+            "parent = 1×3\n\n     2     3     0",
+            "post = 1×3\n\n     1     2     3",
+            "ans = 3×3\n\n     1     1     0\n     0     1     1\n     0     0     1",
+            "ans = 3×3\n\n     1     0     0\n     0     1     0\n     0     0     1",
+            "x = 6×1\n\n     1\n     0\n   NaN\n     0\n     1\n   NaN",
+            "y = 6×1\n\n     1\n     0\n   NaN\n     0\n     1\n   NaN",
+            "in = 4×1 logical array\n\n   1\n   1\n   0\n   1",
+            "on = 4×1 logical array\n\n   0\n   1\n   0\n   1",
+        ],
+    );
+}
+
+#[test]
+fn plot_outputs() {
+    check(
+        concat!(
+            "set(0, 'DefaultFigureVisible', 'off');\n",
+            "[h, ax] = pareto([3 1 2]); numel(h), class(ax)\n",
+            "h = fplot(@sin); isgraphics(h)\n",
+            "h = fplot(@cos, @sin, [0 2*pi]); x = h.XData; [x(1) x(end)]\n",
+            "y = h.YData; round([y(1) y(end)], 4)\n",
+        ),
+        &[
+            "ans = 2",
+            "ans = 'matlab.graphics.axis.Axes'",
+            "ans = logical\n   1",
+            "ans = 1×2\n\n     1     1",
+            "ans = 1×2\n\n     0     0",
+        ],
+    );
+}

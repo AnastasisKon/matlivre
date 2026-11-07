@@ -235,6 +235,18 @@ fn inside(rings: &[Ring], (x, y): (f64, f64)) -> bool {
     c
 }
 
+fn on_boundary(rings: &[Ring], (x, y): (f64, f64)) -> bool {
+    rings.iter().any(|r| {
+        let n = r.len();
+        (0..n).any(|i| {
+            let (p, q) = (r[i], r[(i + 1) % n]);
+            let len = (q.0 - p.0).hypot(q.1 - p.1);
+            let tol = 1e-12 * (1.0 + len);
+            cross(p, q, (x, y)).abs() <= tol * len.max(1.0) && x >= p.0.min(q.0) - tol && x <= p.0.max(q.0) + tol && y >= p.1.min(q.1) - tol && y <= p.1.max(q.1) + tol
+        })
+    })
+}
+
 fn strictly_inside(r: &Ring, (x, y): (f64, f64)) -> bool {
     let n = r.len();
     let mut c = false;
@@ -891,7 +903,12 @@ fn method(it: &mut Interpreter, name: &str, o: &Object, a: &[Value], nargout: us
                 (cx + c * u - s * v, cy + s * u + c * v)
             })]
         }
-        "isinterior" => vec![logical_col(points_arg(a)?.into_iter().map(|p| inside(&rings, p)).collect())],
+        "isinterior" => {
+            let pts = points_arg(a)?;
+            // [in, on]: inside or on the boundary, and on the boundary.
+            let on: Vec<bool> = pts.iter().map(|&p| on_boundary(&rings, p)).collect();
+            vec![logical_col(pts.iter().map(|&p| inside(&rings, p)).collect()), logical_col(on)]
+        }
         "boundingbox" => {
             let pts: Vec<&(f64, f64)> = rings.iter().flatten().collect();
             let lim = |f: fn(&(f64, f64)) -> f64| {

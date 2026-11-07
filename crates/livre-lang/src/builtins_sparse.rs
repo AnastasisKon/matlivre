@@ -823,8 +823,33 @@ fn etree(a: &Matrix) -> Vec<usize> {
     parent
 }
 
-/// Column counts of the Cholesky factor, by symbolic elimination.
-fn symbfact(a: &Matrix) -> Vec<f64> {
+/// Postorder of an elimination tree (`parent` 1-based, 0 at roots): children in increasing
+/// order, roots in increasing order.
+fn postorder(parent: &[usize]) -> Vec<usize> {
+    let n = parent.len();
+    let mut kids: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for (j, &p) in parent.iter().enumerate() {
+        if p != 0 {
+            kids[p - 1].push(j);
+        }
+    }
+    let mut out = Vec::with_capacity(n);
+    fn go(u: usize, kids: &[Vec<usize>], out: &mut Vec<usize>) {
+        for &c in &kids[u] {
+            go(c, kids, out);
+        }
+        out.push(u);
+    }
+    for j in 0..n {
+        if parent[j] == 0 {
+            go(j, &kids, &mut out);
+        }
+    }
+    out
+}
+
+/// Column counts and row patterns of the Cholesky factor's columns.
+fn symbfact_pattern(a: &Matrix) -> (Vec<f64>, Vec<std::collections::BTreeSet<usize>>) {
     let n = a.cols();
     let r = a.rows();
     let mut pattern: Vec<std::collections::BTreeSet<usize>> = (0..n).map(|j| (j..n).filter(|&i| i == j || a.data[j * r + i] != 0.0 || a.data[i * r + j] != 0.0).collect()).collect();
@@ -836,7 +861,7 @@ fn symbfact(a: &Matrix) -> Vec<f64> {
             }
         }
     }
-    pattern.iter().map(|s| s.len() as f64).collect()
+    (pattern.iter().map(|s| s.len() as f64).collect(), pattern)
 }
 
 /// Reverse Cuthill-McKee ordering from a pseudo-peripheral node of each component.
@@ -1061,6 +1086,10 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
                     }
                 }
             }
+            // [X,Y] = gplot(...) returns the segments (NaN-separated) without drawing.
+            if nargout >= 1 {
+                return Ok(Some(vec![Value::Num(Matrix::col(lx)), Value::Num(Matrix::col(ly))]));
+            }
             let mut args = vec![Value::Num(Matrix::row(lx)), Value::Num(Matrix::row(ly))];
             if let Some(s) = a.get(2) {
                 args.push(s.clone());
@@ -1085,10 +1114,49 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
                 }
                 return one(sp(w));
             }
-            Ok(Some(vec![sp(l), sp(u)]))
+            // No pivoting (nofill), so P is the identity.
+            let n = l.rows();
+            let mut p = Matrix::zeros(n, n);
+            for i in 0..n {
+                p.set(i, i, 1.0);
+            }
+            Ok(Some(vec![sp(l), sp(u), sp(p)]))
         }
-        "etree" => one(Value::Num(Matrix::row(etree(&mat(arg(a, 0, name)?)?).iter().map(|&p| p as f64).collect()))),
-        "symbfact" => one(Value::Num(Matrix::col(symbfact(&mat(arg(a, 0, name)?)?)))),
+        "etree" => {
+            let parent = etree(&mat(arg(a, 0, name)?)?);
+            let post = postorder(&parent);
+            Ok(Some(vec![Value::Num(Matrix::row(parent.iter().map(|&p| p as f64).collect())), Value::Num(Matrix::row(post.iter().map(|&k| (k + 1) as f64).collect()))]))
+        }
+        "symbfact" => {
+            let m = mat(arg(a, 0, name)?)?;
+            let n = m.cols();
+            let (counts, pattern) = symbfact_pattern(&m);
+            if nargout <= 1 {
+                return one(Value::Num(Matrix::row(counts)));
+            }
+            let parent = etree(&m);
+            let post = postorder(&parent);
+            // Height: the most nodes on a path from a leaf to a root.
+            let mut depth = vec![0usize; n];
+            let mut h = 0;
+            for j in (0..n).rev() {
+                depth[j] = if parent[j] == 0 { 1 } else { depth[parent[j] - 1] + 1 };
+                h = h.max(depth[j]);
+            }
+            let mut r = Matrix::zeros(n, n);
+            for (j, rows) in pattern.iter().enumerate() {
+                for &i in rows {
+                    r.set(j, i, 1.0);
+                }
+            }
+            Ok(Some(vec![
+                Value::Num(Matrix::row(counts)),
+                Value::num(h as f64),
+                Value::Num(Matrix::row(parent.iter().map(|&p| p as f64).collect())),
+                Value::Num(Matrix::row(post.iter().map(|&k| (k + 1) as f64).collect())),
+                sp(r),
+            ]))
+        }
         "colperm" => {
             let m = mat(arg(a, 0, name)?)?;
             let r = m.rows();

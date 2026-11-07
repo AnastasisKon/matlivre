@@ -635,6 +635,37 @@ fn cells_of_rows(rows: Vec<Vec<usize>>, g: &Gr) -> Value {
     Value::Cell(CellArray::from_dims(vec![n, 1], rows.iter().map(|r| g.node_list(r, false)).collect()))
 }
 
+/// Index of the edge from `u` to `v` (either way when undirected), the lightest of parallel ones.
+fn edge_between(g: &Gr, u: usize, v: usize) -> Option<usize> {
+    (0..g.edges.len())
+        .filter(|&k| g.edges[k] == (u, v) || (!g.directed && g.edges[k] == (v, u)))
+        .min_by(|&a, &b| g.w(a).partial_cmp(&g.w(b)).unwrap_or(std::cmp::Ordering::Equal))
+}
+
+/// The edge indices (1-based row) along a node path; `closed` adds the edge back to the start.
+fn edge_path(g: &Gr, path: &[usize], closed: bool) -> Value {
+    let mut ks: Vec<f64> = path.windows(2).filter_map(|w| edge_between(g, w[0], w[1])).map(|k| (k + 1) as f64).collect();
+    if closed && path.len() > 1 {
+        if let Some(k) = edge_between(g, path[path.len() - 1], path[0]) {
+            ks.push((k + 1) as f64);
+        }
+    }
+    let n = ks.len();
+    Value::Num(Matrix::new(1, n, ks))
+}
+
+fn edge_cells(g: &Gr, rows: &[Vec<usize>], closed: bool) -> Value {
+    Value::Cell(CellArray::from_dims(vec![rows.len(), 1], rows.iter().map(|r| edge_path(g, r, closed)).collect()))
+}
+
+/// The edge order of `h.value()`: index into `h.edges` of each edge after `canonical`.
+fn canonical_order(h: &Gr) -> Vec<usize> {
+    let ends: Vec<(usize, usize)> = h.edges.iter().map(|&(s, t)| if !h.directed && s > t { (t, s) } else { (s, t) }).collect();
+    let mut idx: Vec<usize> = (0..ends.len()).collect();
+    idx.sort_by_key(|&k| ends[k]);
+    idx
+}
+
 fn edges_matrix(e: &[(usize, usize)]) -> Value {
     let m = e.len();
     let mut data: Vec<f64> = e.iter().map(|x| (x.0 + 1) as f64).collect();
@@ -686,14 +717,15 @@ fn method(it: &mut Interpreter, m: &str, nargout: usize, a: &[Value]) -> Ret {
             let unweighted = rest.iter().any(|v| v.text().map(|x| x.eq_ignore_ascii_case("unweighted")).unwrap_or(false));
             let (dist, pred) = g.sssp(s, g.weighted() && !unweighted);
             if !dist[t].is_finite() {
-                vec![Value::Num(Matrix::new(1, 0, Vec::new())), Value::num(f64::INFINITY)]
+                vec![Value::Num(Matrix::new(1, 0, Vec::new())), Value::num(f64::INFINITY), Value::Num(Matrix::new(1, 0, Vec::new()))]
             } else {
                 let mut path = vec![t];
                 while let Some(p) = pred[*path.last().unwrap()] {
                     path.push(p);
                 }
                 path.reverse();
-                vec![g.node_list(&path, false), Value::num(dist[t])]
+                let ep = edge_path(&g, &path, false);
+                vec![g.node_list(&path, false), Value::num(dist[t]), ep]
             }
         }
         "distances" => {
@@ -868,7 +900,7 @@ fn method(it: &mut Interpreter, m: &str, nargout: usize, a: &[Value]) -> Ret {
                 None => vec![0],
             };
             let starts: Vec<usize> = if forest { roots.iter().copied().chain(0..n).collect() } else { roots };
-            for s in starts {
+            for s in starts.clone() {
                 if s >= n || inside[s] {
                     continue;
                 }
@@ -891,7 +923,28 @@ fn method(it: &mut Interpreter, m: &str, nargout: usize, a: &[Value]) -> Ret {
             let mut h = g.clone();
             h.edges = chosen.iter().map(|&k| g.edges[k]).collect();
             h.weights = g.weights.as_ref().map(|w| chosen.iter().map(|&k| w[k]).collect());
-            vec![h.value()]
+            // Predecessor of each node in the tree (0 at roots, NaN off the tree).
+            let mut pred = vec![f64::NAN; n];
+            let tadj = h.out_adj();
+            let mut seen = vec![false; n];
+            for &s in &starts {
+                if s >= n || seen[s] || !inside[s] {
+                    continue;
+                }
+                seen[s] = true;
+                pred[s] = 0.0;
+                let mut q = VecDeque::from([s]);
+                while let Some(u) = q.pop_front() {
+                    for &(v, _) in &tadj[u] {
+                        if !seen[v] {
+                            seen[v] = true;
+                            pred[v] = (u + 1) as f64;
+                            q.push_back(v);
+                        }
+                    }
+                }
+            }
+            vec![h.value(), Value::Num(Matrix::row(pred))]
         }
         "toposort" => {
             if !g.directed {
@@ -918,7 +971,21 @@ fn method(it: &mut Interpreter, m: &str, nargout: usize, a: &[Value]) -> Ret {
                 }
             }
             post.reverse();
-            vec![g.node_list(&post, false)]
+            let mut out = vec![g.node_list(&post, false)];
+            if nargout > 1 {
+                // The graph with its nodes in that order.
+                let mut inv = vec![0; n];
+                for (newk, &old) in post.iter().enumerate() {
+                    inv[old] = newk;
+                }
+                let h = Gr {
+                    edges: g.edges.iter().map(|&(s, t)| (inv[s], inv[t])).collect(),
+                    names: g.names.as_ref().map(|nm| post.iter().map(|&k| nm[k].clone()).collect()),
+                    ..g.clone()
+                };
+                out.push(h.value());
+            }
+            out
         }
         "isdag" => vec![lg(g.directed && !g.has_cycle())],
         "hascycles" => vec![lg(g.has_cycle())],
@@ -974,6 +1041,27 @@ fn method(it: &mut Interpreter, m: &str, nargout: usize, a: &[Value]) -> Ret {
                     weights: Some(used.iter().map(|&k| flow[k].abs()).collect()),
                 };
                 out.push(gf.value());
+            }
+            if nargout > 2 {
+                // The minimum cut: nodes reachable from s in the residual graph, and the rest.
+                let mut seen = vec![false; n];
+                seen[s] = true;
+                let mut q = VecDeque::from([s]);
+                while let Some(u) = q.pop_front() {
+                    for (k, &(a, b)) in g.edges.iter().enumerate() {
+                        let steps = [(a, b, cap[k] - flow[k]), (b, a, if g.directed { flow[k] } else { cap[k] + flow[k] })];
+                        for (from, to, room) in steps {
+                            if from == u && !seen[to] && room > 1e-12 {
+                                seen[to] = true;
+                                q.push_back(to);
+                            }
+                        }
+                    }
+                }
+                let cs: Vec<usize> = (0..n).filter(|&k| seen[k]).collect();
+                let ct: Vec<usize> = (0..n).filter(|&k| !seen[k]).collect();
+                out.push(g.node_list(&cs, true));
+                out.push(g.node_list(&ct, true));
             }
             out
         }
@@ -1109,7 +1197,9 @@ fn method(it: &mut Interpreter, m: &str, nargout: usize, a: &[Value]) -> Ret {
                 names: g.names.as_ref().map(|nm| order.iter().map(|&k| nm[k].clone()).collect()),
                 ..g.clone()
             };
-            vec![h.value()]
+            // idx: the original edge of each edge of the reordered graph.
+            let idx: Vec<f64> = canonical_order(&h).into_iter().map(|k| (k + 1) as f64).collect();
+            vec![h.value(), Value::Num(Matrix::col(idx))]
         }
         "flipedge" => {
             let which: Vec<usize> = match rest.len() {
@@ -1194,7 +1284,7 @@ fn method(it: &mut Interpreter, m: &str, nargout: usize, a: &[Value]) -> Ret {
                     w.push(dist[v] - dist[p]);
                 }
             }
-            vec![Gr { directed: true, n, names: g.names.clone(), edges, weights: g.weights.as_ref().map(|_| w) }.value()]
+            vec![Gr { directed: true, n, names: g.names.clone(), edges, weights: g.weights.as_ref().map(|_| w) }.value(), Value::Num(Matrix::row(dist))]
         }
         "allpaths" => {
             let (s, t) = (g.node(need(0)?)?, g.node(need(1)?)?);
@@ -1221,9 +1311,14 @@ fn method(it: &mut Interpreter, m: &str, nargout: usize, a: &[Value]) -> Ret {
                 }
             }
             go(s, t, &adj, &mut path, &mut on, &mut paths);
-            vec![cells_of_rows(paths, &g)]
+            let e = edge_cells(&g, &paths, false);
+            vec![cells_of_rows(paths, &g), e]
         }
-        "allcycles" => vec![cells_of_rows(all_cycles(&g), &g)],
+        "allcycles" => {
+            let c = all_cycles(&g);
+            let e = edge_cells(&g, &c, true);
+            vec![cells_of_rows(c, &g), e]
+        }
         "cyclebasis" => {
             if g.directed {
                 return rt("cyclebasis requires an undirected graph.");
@@ -1264,7 +1359,8 @@ fn method(it: &mut Interpreter, m: &str, nargout: usize, a: &[Value]) -> Ret {
                 cycles.push(path);
             }
             cycles.sort();
-            vec![cells_of_rows(cycles, &g)]
+            let e = edge_cells(&g, &cycles, true);
+            vec![cells_of_rows(cycles, &g), e]
         }
         "isisomorphic" | "isomorphism" => {
             let Some(Value::Object(o2)) = rest.first() else { return rt("Second argument must be a graph.") };

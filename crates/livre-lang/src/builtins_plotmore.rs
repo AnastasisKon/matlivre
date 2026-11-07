@@ -855,6 +855,12 @@ fn pareto(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
         ax.xticks.values = Some((1..=order.len()).map(|v| v as f64).collect());
         ax.xticks.labels = Some(order.iter().map(|&i| names.get(i).cloned().unwrap_or_default()).collect());
     }
+    if nargout >= 2 {
+        // [h, ax]: the bar and line handles, and the axes.
+        let h = handles_out(it, &ids, 1)?.and_then(|v| v.into_iter().next()).unwrap_or_else(Value::empty);
+        let ax = it.call_function("gca", Vec::new(), 1)?.remove(0);
+        return Ok(Some(vec![h, ax]));
+    }
     handles_out(it, &ids, nargout)
 }
 

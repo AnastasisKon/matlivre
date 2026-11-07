@@ -1080,43 +1080,52 @@ pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) 
         }
         "fplot" => {
             let f = args.first().ok_or_else(|| LangError::new("Not enough input arguments.", 0))?.clone();
-            let (a, b) = match args.get(1) {
+            // fplot(xt, yt, ...) is the parametric form.
+            let g = args.get(1).filter(|v| matches!(v, Value::Func(_) | Value::Sym(_))).cloned();
+            let lim_at = if g.is_some() { 2 } else { 1 };
+            let (a, b) = match args.get(lim_at) {
                 Some(v) if !v.is_text() => {
                     let m = v.to_matrix()?;
                     (m.data.first().copied().unwrap_or(-5.0), m.data.get(1).copied().unwrap_or(5.0))
                 }
                 _ => (-5.0, 5.0),
             };
-            let opts: Vec<Value> = args.iter().skip(1).skip_while(|v| !v.is_text()).cloned().collect();
+            let opts: Vec<Value> = args.iter().skip(lim_at).skip_while(|v| !v.is_text()).cloned().collect();
             let n = 400;
-            let xs: Vec<f64> = (0..n).map(|k| a + (b - a) * k as f64 / (n - 1) as f64).collect();
-            let ys: Vec<f64> = match &f {
-                Value::Sym(s) => {
-                    let e = s.data.first().cloned().unwrap_or_else(Expr::zero);
-                    let v = default_var(&e);
-                    xs.iter()
-                        .map(|&x| {
-                            e.eval_c(&|name| if Some(name) == v.as_deref() { Some(crate::cplx::C::new(x, 0.0)) } else { None })
-                                .filter(|z| z.im.abs() < 1e-12)
-                                .map(|z| z.re)
-                                .unwrap_or(f64::NAN)
-                        })
-                        .collect()
-                }
-                Value::Func(fv) => {
-                    let mut ys = Vec::with_capacity(n);
-                    for &x in &xs {
-                        let y = it.call_value(fv, vec![Value::num(x)], 1)?.into_iter().next().and_then(|v| v.scalar().ok()).unwrap_or(f64::NAN);
-                        ys.push(y);
+            let ts: Vec<f64> = (0..n).map(|k| a + (b - a) * k as f64 / (n - 1) as f64).collect();
+            let sample = |it: &mut Interpreter, f: &Value| -> R<Vec<f64>> {
+                match f {
+                    Value::Sym(s) => {
+                        let e = s.data.first().cloned().unwrap_or_else(Expr::zero);
+                        let v = default_var(&e);
+                        Ok(ts.iter()
+                            .map(|&x| {
+                                e.eval_c(&|name| if Some(name) == v.as_deref() { Some(crate::cplx::C::new(x, 0.0)) } else { None })
+                                    .filter(|z| z.im.abs() < 1e-12)
+                                    .map(|z| z.re)
+                                    .unwrap_or(f64::NAN)
+                            })
+                            .collect())
                     }
-                    ys
+                    Value::Func(fv) => {
+                        let mut ys = Vec::with_capacity(n);
+                        for &x in &ts {
+                            let y = it.call_value(fv, vec![Value::num(x)], 1)?.into_iter().next().and_then(|v| v.scalar().ok()).unwrap_or(f64::NAN);
+                            ys.push(y);
+                        }
+                        Ok(ys)
+                    }
+                    _ => rt("fplot requires a function handle or a symbolic expression."),
                 }
-                _ => return rt("fplot requires a function handle or a symbolic expression."),
+            };
+            let (xs, ys) = match &g {
+                Some(g) => (sample(it, &f)?, sample(it, g)?),
+                None => (ts.clone(), sample(it, &f)?),
             };
             let mut pargs = vec![Value::Num(Matrix::row(xs)), Value::Num(Matrix::row(ys))];
             pargs.extend(opts);
-            it.call_function("plot", pargs, 0)?;
-            Ok(Some(Vec::new()))
+            let h = it.call_function("plot", pargs, usize::from(nargout > 0))?;
+            Ok(Some(if nargout > 0 { h } else { Vec::new() }))
         }
         "symfun" => rt("Symbolic functions are not supported in this version."),
         _ => Ok(None),
