@@ -1713,6 +1713,14 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             let n = arg(a, 0, name)?.text()?;
             let kind = a.get(1).map(|v| v.text()).transpose()?.unwrap_or_default();
             let path = std::path::Path::new(&n);
+            // Built-in classes as MATLAB reports them: dynamicprops is a file, containers.Map a class.
+            if kind.is_empty() && it.get_var(&n).is_none() {
+                match n.as_str() {
+                    "dynamicprops" => return num(2.0),
+                    "containers.Map" => return num(8.0),
+                    _ => {}
+                }
+            }
             // 1 variable, 5 built-in, 2 function or file, 7 folder.
             let found = match kind.as_str() {
                 "var" => if it.get_var(&n).is_some() { 1.0 } else { 0.0 },
