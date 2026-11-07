@@ -9,27 +9,28 @@ against each other: **all 12 checksums agree across MATLAB, Octave, Scilab and M
 - MATLAB R2023b Update 3 (`matlab -batch`), GNU Octave 11.3.0 (`octave-cli`), Scilab 2025.0.0
   (`WScilex-cli -nb`), matlivre release build (`matlivre-cli`). Runs were sequential, not
   concurrent, on an idle machine after a restart.
-- Run date: 2026-11-07.
+- Run date: 2026-11-07. The MatLivre column was re-measured after switching to mimalloc and
+  reusing the LU buffer (see below); the other engines are from the first run the same day.
 
 | Case | MATLAB (ms) | Octave (ms) | Scilab (ms) | MatLivre (ms) | vs MATLAB | vs Octave | vs Scilab |
 |---|---:|---:|---:|---:|---|---|---|
-| scalar_loop (2M iterations) | 4.57 | 2,267.82 | 1,662.67 | 2.57 | 1.8x faster | 882x faster | 646x faster |
-| while_branch (Collatz, 2.9M steps) | 79.62 | 11,231.69 | 70,510.39 | 14.49 | 5.5x faster | 775x faster | 4,866x faster |
-| fib_recursive (fib(20)) | 0.96 | 123.42 | 70.68 | 0.06 | 15.8x faster | 2,023x faster | 1,159x faster |
-| array_growth (100k appends) | 6.83 | 377.48 | 211.68 | 1.45 | 4.7x faster | 260x faster | 146x faster |
-| indexed_assign (1M writes) | 2.93 | 1,996.90 | 879.51 | 3.34 | 1.1x slower | 598x faster | 263x faster |
-| vector_math (2M elements) | 107.40 | 92.81 | 180.59 | 103.39 | 1.0x faster | 1.1x slower | 1.7x faster |
-| matmul_300 | 0.69 | 0.55 | 0.19 | 0.48 | 1.4x faster | 1.1x faster | 2.6x slower |
-| linsolve_300 | 0.53 | 1.54 | 0.48 | 0.74 | 1.4x slower | 2.1x faster | 1.5x slower |
-| sort_1e6 | 59.09 | 14.82 | 185.38 | 10.01 | 5.9x faster | 1.5x faster | 18.5x faster |
-| string_build (20k appends) | 207.04 | 249.86 | 491.80 | 52.26 | 4.0x faster | 4.8x faster | 9.4x faster |
+| scalar_loop (2M iterations) | 4.57 | 2,267.82 | 1,662.67 | 2.68 | 1.7x faster | 845x faster | 619x faster |
+| while_branch (Collatz, 2.9M steps) | 79.62 | 11,231.69 | 70,510.38 | 14.34 | 5.6x faster | 783x faster | 4,917x faster |
+| fib_recursive (fib(20)) | 0.96 | 123.42 | 70.68 | 0.06 | 16.1x faster | 2,057x faster | 1,178x faster |
+| array_growth (100k appends) | 6.83 | 377.48 | 211.68 | 1.20 | 5.7x faster | 315x faster | 177x faster |
+| indexed_assign (1M writes) | 2.93 | 1,996.90 | 879.51 | 2.47 | 1.2x faster | 808x faster | 356x faster |
+| vector_math (2M elements) | 107.40 | 92.81 | 180.59 | 78.50 | 1.4x faster | 1.2x faster | 2.3x faster |
+| matmul_300 | 0.68 | 0.55 | 0.19 | 0.34 | 2.0x faster | 1.7x faster | 1.8x slower |
+| linsolve_300 | 0.53 | 1.54 | 0.48 | 0.60 | 1.1x slower | 2.6x faster | 1.2x slower |
+| sort_1e6 | 59.09 | 14.82 | 185.38 | 8.44 | 7.0x faster | 1.8x faster | 22.0x faster |
+| string_build (20k appends) | 207.04 | 249.86 | 491.80 | 35.96 | 5.8x faster | 6.9x faster | 13.7x faster |
 | struct_fields (500k updates) | 144.11 | 4,309.09 | 1,841.38 | 0.68 | 212x faster | 6,346x faster | 2,712x faster |
-| cell_ops (100k writes + reads) | 21.54 | 561.40 | 349.36 | 17.54 | 1.2x faster | 32x faster | 19.9x faster |
+| cell_ops (100k writes + reads) | 21.54 | 561.40 | 349.36 | 7.58 | 2.8x faster | 74.1x faster | 46.1x faster |
 
-Geometric mean over the 12 cases: MatLivre is **3.6x faster than MATLAB, 54x faster than Octave
-and 54x faster than Scilab**. MatLivre is faster than MATLAB in 10 of 12 cases (behind in
-`indexed_assign` and `linsolve_300`), than Octave in 11 (behind in `vector_math`) and than
-Scilab in 10 (behind in `matmul_300` and `linsolve_300`).
+Geometric mean over the 12 cases: MatLivre is **4.5x faster than MATLAB, 68x faster than Octave
+and 67x faster than Scilab**. MatLivre is faster than MATLAB in 11 of 12 cases (behind in
+`linsolve_300`), than Octave in all 12 and than Scilab in 10 (behind in `matmul_300` and
+`linsolve_300`; Scilab ships Intel oneMKL).
 
 Caveats: cases under 1 ms vary by tens of percent between runs (MATLAB's `matmul_300` measured
 1.81 ms on 2026-10-29 and 0.69 ms here). The suite is small and favours native loop compilation;
@@ -53,6 +54,10 @@ it does not measure toolbox breadth, plotting or numerical accuracy beyond the c
 - **In-place append** for `s = [s expr]` instead of copying the whole array each time.
 - **Amortized `x(end+1) = v`**, in-place cell element writes, and operands of binary operators
   read by reference instead of copied.
+- **mimalloc as the global allocator.** With the system allocator, every large array came back
+  from Windows as untouched pages, and faulting them in cost about a third of `matmul_300` and
+  up to half of a whole-array operation. `matmul_300` went from ~0.5 to ~0.34 ms.
+- **LU working buffer kept between solves**: `linsolve_300` went from 0.78 to 0.60 ms.
 
 ## Reproduce
 

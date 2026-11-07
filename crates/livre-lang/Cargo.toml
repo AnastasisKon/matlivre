@@ -23,6 +23,7 @@ tar = "0.4"
 roxmltree = "0.20"
 serde = "1"
 faer = "0.24"
+mimalloc = { version = "0.1", default-features = false }
 cranelift-codegen = "0.137"
 cranelift-frontend = "0.137"
 cranelift-jit = "0.137"

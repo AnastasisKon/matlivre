@@ -452,17 +452,32 @@ fn faer_solve(a: &Matrix, b: &Matrix) -> R<Matrix> {
     let req = factor::lu_in_place_scratch::<usize, f64>(n, n, par, Default::default()).or(solve::solve_in_place_scratch::<usize, f64>(n, k, par));
     let mut buf = MemBuffer::new(req);
     let stack = MemStack::new(&mut buf);
-    // L (unit diagonal, strictly below) and U share one buffer.
-    let mut lu = a.data.clone();
-    let (mut fwd, mut bwd) = (vec![0usize; n], vec![0usize; n]);
-    let (_, perm) = factor::lu_in_place(faer::MatMut::from_column_major_slice_mut(&mut lu, n, n), &mut fwd, &mut bwd, par, stack, Default::default());
-    if (0..n).any(|i| !(lu[i * n + i].abs() >= 1e-300)) {
-        return rt("Matrix is singular to working precision.");
-    }
-    let f = faer::MatRef::from_column_major_slice(&lu, n, n);
-    let mut x = b.data.clone();
-    solve::solve_in_place(f, f, perm, faer::MatMut::from_column_major_slice_mut(&mut x, n, k), par, stack);
-    Ok(Matrix::new(n, k, x))
+    // L (unit diagonal, strictly below) and U share one buffer. The buffer is kept between
+    // calls: a fresh allocation of this size comes back from the OS as untouched pages, and
+    // faulting them in costs about as much as the factorization of a 300 x 300 matrix.
+    LU_BUF.with(|cell| {
+        let mut lu = cell.take();
+        lu.clear();
+        lu.extend_from_slice(&a.data);
+        let (mut fwd, mut bwd) = (vec![0usize; n], vec![0usize; n]);
+        let (_, perm) = factor::lu_in_place(faer::MatMut::from_column_major_slice_mut(&mut lu, n, n), &mut fwd, &mut bwd, par, stack, Default::default());
+        let singular = (0..n).any(|i| !(lu[i * n + i].abs() >= 1e-300));
+        let res = if singular {
+            rt("Matrix is singular to working precision.")
+        } else {
+            let f = faer::MatRef::from_column_major_slice(&lu, n, n);
+            let mut x = b.data.clone();
+            solve::solve_in_place(f, f, perm, faer::MatMut::from_column_major_slice_mut(&mut x, n, k), par, stack);
+            Ok(Matrix::new(n, k, x))
+        };
+        cell.set(lu);
+        res
+    })
+}
+
+thread_local! {
+    /// Working copy of the matrix for `faer_solve`, reused from one call to the next.
+    static LU_BUF: std::cell::Cell<Vec<f64>> = const { std::cell::Cell::new(Vec::new()) };
 }
 
 /// Threads for blocked products: one per physical core. Two hyperthreads sharing a core

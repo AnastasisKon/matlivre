@@ -18,8 +18,8 @@ of MATLAB, written in Rust: no MATLAB installation, license or Java runtime is n
 - **Runs live scripts fast.** A typical notebook with four figures runs in 0.11 s. MATLAB's
   Live Editor takes 4.9 s for the same file, and 14.3 s the first time: 43 to 100 times slower.
 - **Runs code fast.** On a 12-case benchmark of loops, recursion, array growth, linear
-  algebra, sorting, strings, structs and cells, MatLivre is 3.6x faster than MATLAB R2023b,
-  54x faster than GNU Octave and 54x faster than Scilab (geometric mean), with identical results
+  algebra, sorting, strings, structs and cells, MatLivre is 4.5x faster than MATLAB R2023b,
+  68x faster than GNU Octave and 67x faster than Scilab (geometric mean), with identical results
   in all four.
 - **Speaks MATLAB.** 1,862 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
   error messages and semantics, checked against MATLAB R2023b output.
@@ -84,27 +84,27 @@ figures to separate windows.
 [`benchmarks/bench.m`](benchmarks/bench.m) runs unchanged in MATLAB, Octave and MatLivre; Scilab
 runs a line-by-line port, [`benchmarks/bench.sce`](benchmarks/bench.sce) (Scilab's syntax differs).
 Each case is the best of 3 runs and reports a checksum, and **all 12 checksums agree in all four
-engines**. Run date: 2026-11-07.
+engines**. Run date: 2026-11-07 (MatLivre column re-measured after the allocator change).
 
 | Case | MATLAB (ms) | Octave (ms) | Scilab (ms) | MatLivre (ms) | MatLivre vs MATLAB | vs Scilab |
 |---|---:|---:|---:|---:|---|---|
-| scalar_loop (2M iterations) | 4.57 | 2,267.82 | 1,662.67 | 2.57 | 1.8x faster | 646x faster |
-| while_branch (Collatz, 2.9M steps) | 79.62 | 11,231.69 | 70,510.38 | 14.49 | 5.5x faster | 4,866x faster |
-| fib_recursive (fib(20)) | 0.96 | 123.42 | 70.68 | 0.06 | 15.8x faster | 1,159x faster |
-| array_growth (100k appends) | 6.83 | 377.48 | 211.68 | 1.45 | 4.7x faster | 146x faster |
-| indexed_assign (1M writes) | 2.93 | 1,996.90 | 879.51 | 3.34 | 1.1x slower | 263x faster |
-| vector_math (2M elements) | 107.40 | 92.81 | 180.59 | 103.39 | 1.0x faster | 1.7x faster |
-| matmul_300 | 0.69 | 0.55 | 0.19 | 0.48 | 1.4x faster | 2.6x slower |
-| linsolve_300 | 0.53 | 1.54 | 0.48 | 0.74 | 1.4x slower | 1.5x slower |
-| sort_1e6 | 59.09 | 14.82 | 185.38 | 10.01 | 5.9x faster | 18.5x faster |
-| string_build (20k appends) | 207.04 | 249.86 | 491.80 | 52.26 | 4.0x faster | 9.4x faster |
+| scalar_loop (2M iterations) | 4.57 | 2,267.82 | 1,662.67 | 2.68 | 1.7x faster | 619x faster |
+| while_branch (Collatz, 2.9M steps) | 79.62 | 11,231.69 | 70,510.38 | 14.34 | 5.6x faster | 4,917x faster |
+| fib_recursive (fib(20)) | 0.96 | 123.42 | 70.68 | 0.06 | 16.1x faster | 1,178x faster |
+| array_growth (100k appends) | 6.83 | 377.48 | 211.68 | 1.20 | 5.7x faster | 177x faster |
+| indexed_assign (1M writes) | 2.93 | 1,996.90 | 879.51 | 2.47 | 1.2x faster | 356x faster |
+| vector_math (2M elements) | 107.40 | 92.81 | 180.59 | 78.50 | 1.4x faster | 2.3x faster |
+| matmul_300 | 0.68 | 0.55 | 0.19 | 0.34 | 2.0x faster | 1.8x slower |
+| linsolve_300 | 0.53 | 1.54 | 0.48 | 0.60 | 1.1x slower | 1.2x slower |
+| sort_1e6 | 59.09 | 14.82 | 185.38 | 8.44 | 7.0x faster | 22.0x faster |
+| string_build (20k appends) | 207.04 | 249.86 | 491.80 | 35.96 | 5.8x faster | 13.7x faster |
 | struct_fields (500k updates) | 144.11 | 4,309.09 | 1,841.38 | 0.68 | 212x faster | 2,712x faster |
-| cell_ops (100k writes + reads) | 21.54 | 561.40 | 349.36 | 17.54 | 1.2x faster | 19.9x faster |
+| cell_ops (100k writes + reads) | 21.54 | 561.40 | 349.36 | 7.58 | 2.8x faster | 46.1x faster |
 
-Geometric mean: **3.6x faster than MATLAB, 54x faster than Octave, 54x faster than Scilab**.
-MatLivre is faster than MATLAB in 10 of 12 cases, than Octave in 11 and than Scilab in 10.
-Where it is behind: `linsolve_300` (MATLAB and Scilab), `matmul_300` (Scilab), `indexed_assign`
-(MATLAB, by 14%) and `vector_math` (Octave, by 11%). Cases under 1 ms vary by tens of percent
+Geometric mean: **4.5x faster than MATLAB, 68x faster than Octave, 67x faster than Scilab**.
+MatLivre is faster than MATLAB in 11 of 12 cases, than Octave in all 12 and than Scilab in 10.
+Where it is behind: `linsolve_300` (MATLAB by 13%, Scilab by 25%) and `matmul_300` (Scilab, which
+uses Intel MKL, by 1.8x). Cases under 1 ms vary by tens of percent
 between runs. The suite is small and favours MatLivre's native loop compilation; it does not
 measure toolbox breadth or plotting. Details and the per-case Octave comparison are in
 [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
@@ -118,6 +118,8 @@ measure toolbox breadth or plotting. Details and the per-case Octave comparison 
 - **Multithreaded linear algebra** through `faer`: blocked matrix products and LU
   factorization.
 - **Parallel elementwise math and sorting** on large arrays (rayon).
+- **A retaining allocator** (mimalloc): large arrays are not handed back to the OS and faulted in again
+  on the next operation, which made products, solves and whole-array operations 25 to 35% faster.
 - **No copies where MATLAB semantics allow it**: in-place appends (`x(end+1) = v`,
   `s = [s v]`), in-place element writes, operands read by reference.
 - **A small runtime**: no JVM, no desktop framework to boot; the app is one native process.

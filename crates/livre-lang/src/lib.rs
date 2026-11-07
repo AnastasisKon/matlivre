@@ -1,6 +1,12 @@
 //! MatLivre language engine: a clean-room implementation of a MATLAB-compatible language
 //! (see `docs/SPEC-live-script.md`, section 5).
 
+// mimalloc keeps freed memory mapped. With the system allocator every large array comes back from
+// the OS as untouched pages, and faulting them in cost a third of a 300 x 300 product and about
+// half of a whole-array operation on a few million elements.
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 pub mod ast;
 pub mod builtins;
 pub mod containers;
