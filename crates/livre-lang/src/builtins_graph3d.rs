@@ -17,7 +17,7 @@ pub const COLORMAPS: &[&str] = &["parula", "turbo", "sky", "abyss", "jet", "hot"
 pub const NAMES: &[&str] = &[
     "parula", "turbo", "sky", "abyss", "jet", "hot", "gray", "cool", "spring", "summer", "autumn", "winter", "bone", "copper", "pink", "hsv", "lines", "prism",
     "flag", "white", "colormap", "clim", "caxis", "view", "shading", "plot3", "scatter3", "stem3", "surf", "surfc", "mesh", "meshc", "meshz", "surface", "pcolor",
-    "contour", "contourf", "contour3", "contourc", "clabel", "quiver", "quiver3", "peaks", "sphere", "cylinder", "ellipsoid", "image", "imagesc", "imshow",
+    "contour", "contourf", "contour3", "contourc", "contours", "clabel", "quiver", "quiver3", "peaks", "sphere", "cylinder", "ellipsoid", "image", "imagesc", "imshow",
     "ind2rgb", "rgb2gray", "im2double", "im2gray", "fsurf", "fmesh", "fcontour", "fplot3", "rotate3d", "hidden", "colorcube",
 ];
 
@@ -665,7 +665,7 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
     if !NAMES.contains(&name) {
         return Ok(None);
     }
-    let a = if COLORMAPS.contains(&name) || matches!(name, "colormap" | "peaks" | "sphere" | "cylinder" | "ellipsoid" | "contourc" | "ind2rgb" | "rgb2gray" | "im2double" | "im2gray") { args } else { crate::builtins_plot::select_axes(it, args)? };
+    let a = if COLORMAPS.contains(&name) || matches!(name, "colormap" | "peaks" | "sphere" | "cylinder" | "ellipsoid" | "contourc" | "contours" | "ind2rgb" | "rgb2gray" | "im2double" | "im2gray") { args } else { crate::builtins_plot::select_axes(it, args)? };
     if COLORMAPS.contains(&name) {
         let n = match a.first() {
             Some(v) => v.scalar()? as usize,
@@ -832,7 +832,7 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
             }
         }
         "contour" | "contourf" | "contour3" => contour(it, a, name, nargout),
-        "contourc" => {
+        "contourc" | "contours" => {
             let (grid_args, spec) = match a.len() {
                 1 | 3 => (a, None),
                 2 | 4 => (&a[..a.len() - 1], Some(a[a.len() - 1].to_matrix()?)),

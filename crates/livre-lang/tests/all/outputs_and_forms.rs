@@ -694,3 +694,28 @@ fn wiki_regressions() {
         ],
     );
 }
+
+#[test]
+fn matching_and_contours() {
+    check(
+        concat!(
+            "p = dmperm(sparse([1 0 1; 0 0 1; 1 1 0]))\n",
+            "p = dmperm(sparse([0 1; 1 0]))\n",
+            "p = dmperm(sparse([1 1 0; 1 0 0; 0 1 1]))\n",
+            "p = dmperm(sparse([1 1 1; 1 0 0; 1 0 0]))\n",
+            "p = dmperm(sparse([0 0; 1 1; 0 1]))\n",
+            "p = dmperm(magic(4) > 8)\n",
+            "C = contours(peaks(5), [0 0]); size(C), C(:, 1)'\n",
+        ),
+        &[
+            "p = 1×3\n\n     1     3     2",
+            "p = 1×2\n\n     2     1",
+            "p = 1×3\n\n     2     1     3",
+            "p = 1×3\n\n     2     1     0",
+            "p = 1×2\n\n     2     3",
+            "p = 1×4\n\n     1     2     4     3",
+            "ans = 1×2\n\n     2    15",
+            "ans = 1×2\n\n     0     5",
+        ],
+    );
+}

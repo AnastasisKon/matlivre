@@ -2189,6 +2189,24 @@ impl Interpreter {
     }
 
     /// Creates an object with property defaults and runs the constructor chain.
+    /// An object of class `c` with its default property values, without running a
+    /// constructor (as `load` creates objects).
+    pub(crate) fn default_object(&mut self, c: &Rc<ClassDef>) -> R<Object> {
+        let mut props = Vec::with_capacity(c.props.len());
+        for p in &c.props {
+            props.push(match &p.default {
+                Some(d) if !p.dependent => self.eval_in_class_scope(d)?,
+                _ => Value::empty(),
+            });
+        }
+        Ok(Object { class: c.clone(), props: Rc::new(RefCell::new(props)) })
+    }
+
+    /// Calls a static method of a class.
+    pub(crate) fn call_static(&mut self, c: &Rc<ClassDef>, member: &str, args: Vec<Value>, nargout: usize) -> R<Vec<Value>> {
+        self.static_call(c, member, args, nargout)
+    }
+
     pub(crate) fn construct(&mut self, c: &Rc<ClassDef>, args: Vec<Value>) -> R<Value> {
         let mut props = Vec::with_capacity(c.props.len());
         for p in &c.props {

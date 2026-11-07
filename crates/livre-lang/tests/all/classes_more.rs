@@ -27,6 +27,11 @@ end
     ),
     ("Day", "classdef Day\n  enumeration\n    Mon, Tue, Wed\n  end\nend\n"),
     ("Dyn", "classdef Dyn < dynamicprops\n  properties\n    A = 1\n  end\nend\n"),
+    ("Plain", "classdef Plain\n  properties\n    A = 1\n    B = 'x'\n  end\nend\n"),
+    (
+        "Sav2",
+        "classdef Sav2\n  properties\n    V = 1\n    Cache = []\n  end\n  methods\n    function s = saveobj(obj)\n      s.V = obj.V;\n    end\n  end\n  methods (Static)\n    function obj = loadobj(s)\n      obj = Sav2; obj.V = s.V * 10;\n    end\n  end\nend\n",
+    ),
     (
         "Bank",
         r#"classdef Bank < handle
@@ -191,4 +196,16 @@ fn dynamic_properties() {
             "c = \n  ConvertToFunctionNotationCorrection with properties:\n\n    MethodToConvert: \"foo\"",
         ]
     );
+}
+
+#[test]
+fn save_and_load_objects() {
+    let out = shown(concat!(
+        "f = [tempname '.mat'];\n",
+        "s = Sav2; s.V = 3; save(f, 's'); clear s; load(f); s.V, class(s)\n",
+        "q = Plain; q.A = 7; q.B = 'hi'; save(f, 'q'); clear q; load(f); q.A, q.B\n",
+        "delete(f);\n",
+        "details(Plain)\n",
+    ));
+    assert_eq!(out, ["ans = 30", "ans = 'Sav2'", "ans = 7", "ans = 'hi'", "  Plain with properties:\n\n    A: 1\n    B: 'x'\n"]);
 }

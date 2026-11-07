@@ -539,6 +539,80 @@ fn with_mat_ext(p: &str) -> String {
     if std::path::Path::new(p).extension().is_none() { format!("{p}.mat") } else { p.to_string() }
 }
 
+/// Field names marking a saved classdef object (MATLAB's own object format is not public).
+const OBJ_CLASS: &str = "MatlivreObjectClass";
+const OBJ_SAVED: &str = "MatlivreSavedByObject";
+
+/// A user classdef object as `save` stores it: its saveobj result, or its properties, as a
+/// struct marked with its class.
+fn object_for_save(it: &mut Interpreter, v: &Value) -> R<Value> {
+    let Value::Object(o) = v else { return Ok(v.clone()) };
+    if crate::gfx::is_gfx(v) || it.find_class(&o.class.name).is_none() {
+        return Ok(v.clone());
+    }
+    let mut saved = false;
+    let mut src = o.clone();
+    let mut fields: Option<StructArray> = None;
+    if let Some(f) = o.class.method("saveobj").cloned() {
+        let class = o.class.clone();
+        match it.call_method(&f, &class, vec![v.clone()], 1)?.into_iter().next() {
+            Some(Value::Struct(s)) => {
+                saved = true;
+                fields = Some(s);
+            }
+            Some(Value::Object(x)) => src = x,
+            _ => {}
+        }
+    }
+    let mut s = StructArray::scalar();
+    s.set(OBJ_CLASS, Value::chars(&o.class.name));
+    s.set(OBJ_SAVED, Value::bool(saved));
+    match fields {
+        Some(f) => {
+            for (k, n) in f.fields.iter().enumerate() {
+                s.set(n, f.elems.first().map(|e| e[k].clone()).unwrap_or_else(Value::empty));
+            }
+        }
+        None => {
+            for p in src.class.props.iter().filter(|p| !p.constant && !p.dependent) {
+                s.set(&p.name, src.get(&p.name).unwrap_or_else(Value::empty));
+            }
+        }
+    }
+    Ok(Value::Struct(s))
+}
+
+/// The object a marked struct stands for: through the class's loadobj when it has one.
+fn object_from_load(it: &mut Interpreter, v: Value) -> R<Value> {
+    let Value::Struct(s) = &v else { return Ok(v) };
+    let Some(cls) = s.get(OBJ_CLASS).and_then(|c| c.text().ok()) else { return Ok(v) };
+    let saved = s.get(OBJ_SAVED).and_then(|b| b.is_true().ok()).unwrap_or(false);
+    let mut data = StructArray::scalar();
+    for (k, n) in s.fields.iter().enumerate() {
+        if n != OBJ_CLASS && n != OBJ_SAVED {
+            data.set(n, s.elems[0][k].clone());
+        }
+    }
+    let Some(c) = it.find_class(&cls) else {
+        it.emit(OutputKind::Warning(format!("Cannot load an object of class '{cls}': its class definition is not on the path. Loading it as a structure.")));
+        return Ok(Value::Struct(data));
+    };
+    let has_loadobj = c.method("loadobj").is_some();
+    if saved && has_loadobj {
+        return Ok(it.call_static(&c, "loadobj", vec![Value::Struct(data)], 1)?.into_iter().next().unwrap_or_else(Value::empty));
+    }
+    let mut o = it.default_object(&c)?;
+    for (k, n) in data.fields.iter().enumerate() {
+        if o.class.prop_index(n).is_some() {
+            o = o.set(n, data.elems[0][k].clone())?;
+        }
+    }
+    if has_loadobj {
+        return Ok(it.call_static(&c, "loadobj", vec![Value::Object(o)], 1)?.into_iter().next().unwrap_or_else(Value::empty));
+    }
+    Ok(Value::Object(o))
+}
+
 fn load(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
     let args: Vec<String> = a.iter().map(|v| v.text()).collect::<R<_>>()?;
     let ascii = args.iter().any(|s| s.eq_ignore_ascii_case("-ascii"));
@@ -554,7 +628,10 @@ fn load(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
                 continue;
             }
             match v {
-                Some(v) => all.push((name, v)),
+                Some(v) => {
+                    let v = object_from_load(it, v)?;
+                    all.push((name, v));
+                }
                 None => it.emit(OutputKind::Warning(format!("Variable '{name}' has a class MatLivre cannot load yet and was skipped."))),
             }
         }
@@ -615,8 +692,9 @@ fn save(it: &mut Interpreter, a: &[Value]) -> R<()> {
             }
         }
         for n in wanted {
-            if let Some(v) = it.get_var(&n) {
-                vars.push((n.clone(), v.clone()));
+            if let Some(v) = it.get_var(&n).cloned() {
+                let v = object_for_save(it, &v)?;
+                vars.push((n.clone(), v));
             }
         }
     }

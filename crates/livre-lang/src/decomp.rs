@@ -11,7 +11,7 @@ use crate::value::*;
 
 type R<T> = Result<T, LangError>;
 
-pub const NAMES: &[&str] = &["addprop", "rmprop", "matlivre_decomposition_type"];
+pub const NAMES: &[&str] = &["addprop", "rmprop", "matlivre_decomposition_type", "dmperm", "details"];
 pub const CLASS: &str = "decomposition";
 /// Methods of the class (for `methods` and the coverage checklist).
 pub const METHODS: &[&str] = &["isIllConditioned", "rcond", "mldivide", "mrdivide"];
@@ -128,9 +128,70 @@ fn names_of(v: &Value) -> R<Vec<String>> {
     })
 }
 
+/// A maximum matching of columns to rows of the nonzero pattern (dmperm's one output):
+/// each column in turn takes the first free row, or one freed along an augmenting path.
+fn max_matching(m: &Matrix) -> Vec<Option<usize>> {
+    let (r, c) = (m.rows(), m.cols());
+    let rows_of: Vec<Vec<usize>> = (0..c).map(|j| (0..r).filter(|&i| m.data[j * r + i] != 0.0).collect()).collect();
+    let mut col_of_row: Vec<Option<usize>> = vec![None; r];
+    let mut row_of_col: Vec<Option<usize>> = vec![None; c];
+    fn augment(j: usize, rows_of: &[Vec<usize>], col_of_row: &mut [Option<usize>], row_of_col: &mut [Option<usize>], seen: &mut [bool]) -> bool {
+        for &i in &rows_of[j] {
+            if seen[i] {
+                continue;
+            }
+            seen[i] = true;
+            let free = match col_of_row[i] {
+                None => true,
+                Some(k) => augment(k, rows_of, col_of_row, row_of_col, seen),
+            };
+            if free {
+                col_of_row[i] = Some(j);
+                row_of_col[j] = Some(i);
+                return true;
+            }
+        }
+        false
+    }
+    for j in 0..c {
+        // A free row first (the cheap assignment), then an augmenting path.
+        if let Some(&i) = rows_of[j].iter().find(|&&i| col_of_row[i].is_none()) {
+            col_of_row[i] = Some(j);
+            row_of_col[j] = Some(i);
+            continue;
+        }
+        let mut seen = vec![false; r];
+        augment(j, &rows_of, &mut col_of_row, &mut row_of_col, &mut seen);
+    }
+    row_of_col
+}
+
 pub fn call(_it: &mut Interpreter, name: &str, a: &[Value], _nargout: usize) -> R<Option<Vec<Value>>> {
     match name {
         "matlivre_decomposition_type" => Ok(Some(vec![decomposition_type(a)?])),
+        // details(obj): the object's display without the "name =" line.
+        "details" => {
+            let v = a.first().ok_or_else(|| LangError::new("Not enough input arguments.", 0))?;
+            if _nargout > 0 {
+                return rt("Too many output arguments.");
+            }
+            let text = match v {
+                Value::Object(o) => {
+                    let t = crate::class::display_object("x", o, _it.format);
+                    t.split_once('\n').map(|(_, rest)| rest.to_string()).unwrap_or(t)
+                }
+                other => crate::display::disp_value(other, _it.format),
+            };
+            _it.emit(crate::interp::OutputKind::Text(format!("{text}\n")));
+            Ok(Some(Vec::new()))
+        }
+        "dmperm" => {
+            let m = a.first().ok_or_else(|| LangError::new("Not enough input arguments.", 0))?.to_matrix()?;
+            if _nargout > 1 {
+                return rt("The block triangular form of dmperm (more than one output) is not supported in this version.");
+            }
+            Ok(Some(vec![Value::Num(Matrix::row(max_matching(&m).into_iter().map(|r| r.map_or(0.0, |r| (r + 1) as f64)).collect()))]))
+        }
         // addprop(obj, name) on a dynamicprops object: the property, and its meta.DynamicProperty.
         "addprop" if matches!(a.first(), Some(Value::Object(o)) if o.class.is_a("dynamicprops")) => {
             let Some(Value::Object(o)) = a.first() else { unreachable!() };
