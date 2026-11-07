@@ -170,7 +170,8 @@ Symbolic Math Toolbox references and its status (1,862 implemented).
 - `classdef` classes (properties, methods, static methods, inheritance, handle and value
   semantics, operator overloading, events and listeners, enumerations, System objects with
   `step`, `setup` and `release`) and function files from the script's folder; argument
-  validation (`mustBe*`, `inputParser`), `Name=Value` arguments, error identifiers and `message` objects;
+  validation (`arguments` blocks with sizes, classes, validators, defaults and name-value
+  options, `mustBe*`, `inputParser`), `Name=Value` arguments, error identifiers and `message` objects;
   `timer` objects, `diary`, `localfunctions` and the `settings` API.
 - Graphs and networks: `graph` and `digraph` with shortest paths, search, components,
   spanning trees, topological sort, maximum flow, centrality, and plotting as a GraphPlot (`highlight`, `labelnode`, `labeledge`, `layout`).
