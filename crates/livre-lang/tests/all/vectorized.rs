@@ -30,18 +30,19 @@ fn reductions_scans_and_expansion_match_matlab() {
 fn linear_algebra_and_lookups_match_matlab() {
     let mut it = Interpreter::new();
     let _ = it.run_source(include_str!("data/linalg_fast.m"));
-    let got: Vec<String> = it
+    let got: String = it
         .take_outputs()
         .into_iter()
         .filter_map(|o| match o.kind {
-            OutputKind::Text(t) => Some(t.trim_end().to_string()),
-            OutputKind::Error(e) => Some(format!("Error: {e}")),
+            OutputKind::Text(t) => Some(t),
+            OutputKind::Error(e) => Some(format!("Error: {e}
+")),
             _ => None,
         })
         .collect();
-    let want: Vec<&str> = include_str!("data/linalg_fast_matlab.txt").lines().collect();
-    assert_eq!(got.len(), want.len());
-    for (g, w) in got.iter().zip(&want) {
+    let want = include_str!("data/linalg_fast_matlab.txt");
+    for (g, w) in got.trim_end().lines().zip(want.trim_end().lines()) {
         assert_eq!(g, w);
     }
+    assert_eq!(got.trim_end().lines().count(), want.trim_end().lines().count());
 }
