@@ -161,7 +161,8 @@ MATLAB compatibility is the rule: semantics, display and error messages follow M
 Symbolic Math Toolbox references and its status (1,862 implemented).
 
 - N-D arrays of every numeric type, `logical`, `char` and strings, with implicit expansion,
-  saturating integer arithmetic and complex numbers; regular expressions and text patterns
+  saturating integer arithmetic and complex numbers, shown in every `format` mode (`long g`, `bank`,
+  `rat`, `hex`, ...); regular expressions and text patterns
   (`digitsPattern + "-" + lettersPattern`).
 - Cell arrays, struct arrays, function handles, anonymous and `inline` functions, `memoize`, `containers.Map`,
   `dictionary`, `categorical`, `table` (joins, grouping, reshaping), `timetable`
