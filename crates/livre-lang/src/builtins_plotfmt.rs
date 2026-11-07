@@ -343,10 +343,22 @@ fn fill(it: &mut Interpreter, a: &[Value], name: &str, nargout: usize) -> Ret {
 
 /// errorbar(y, err), errorbar(x, y, err), errorbar(x, y, neg, pos), with a line spec.
 fn errorbar(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
-    let (head, props) = split_props(a, 0)?;
-    let nums: Vec<Matrix> = head.iter().map(|v| v.to_matrix()).collect::<R<_>>()?;
-    let spec = a.get(head.len()).filter(|v| v.is_text()).and_then(|v| graphics::parse_line_spec(&v.text().ok()?));
-    let props: Vec<(String, Value)> = if spec.is_some() { split_props(a, head.len() + 1)?.1 } else { props };
+    // errorbar(..., ornt, LineSpec, Name, Value): the numbers come first.
+    let nh = a.iter().take_while(|v| !is_textlike(v)).count();
+    let nums: Vec<Matrix> = a[..nh].iter().map(|v| v.to_matrix()).collect::<R<_>>()?;
+    let mut next = nh;
+    if let Some(o) = a.get(next).filter(|v| is_textlike(v)).map(|v| v.text()).transpose()? {
+        match o.to_lowercase().as_str() {
+            "vertical" => next += 1,
+            "horizontal" | "both" => return rt("Horizontal error bars are not supported in this version."),
+            _ => {}
+        }
+    }
+    let spec = a.get(next).filter(|v| is_textlike(v)).and_then(|v| graphics::parse_line_spec(&v.text().ok()?));
+    if spec.is_some() {
+        next += 1;
+    }
+    let (_, props) = split_props(a, next)?;
     let (x, y, neg, pos) = match nums.len() {
         2 => {
             let y = nums[0].data.clone();

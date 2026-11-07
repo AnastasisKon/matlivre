@@ -282,6 +282,25 @@ impl<'a> Lexer<'a> {
                 }
                 _ => {}
             }
+            // `?ClassName` is the class's meta.class object: meta.class.fromName('ClassName').
+            if c == b'?' && self.peek(1).is_ascii_alphabetic() {
+                let start = self.i + 1;
+                let mut j = start;
+                while self.s.get(j).is_some_and(|&b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.') {
+                    j += 1;
+                }
+                let name = self.src[start..j].trim_end_matches('.').to_string();
+                self.i = start + name.len();
+                self.push(Tok::Ident("meta".into()), space);
+                for part in ["class", "fromName"] {
+                    self.push(Tok::Op("."), false);
+                    self.push(Tok::Ident(part.into()), false);
+                }
+                self.push(Tok::Op("("), false);
+                self.push(Tok::Chars(name), false);
+                self.push(Tok::Op(")"), false);
+                continue;
+            }
             let mut matched = None;
             for op in OPS {
                 if self.s[self.i..].starts_with(op.as_bytes()) {

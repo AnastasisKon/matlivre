@@ -488,3 +488,55 @@ fn format_modes() {
         ],
     );
 }
+
+#[test]
+fn missing_functions() {
+    check(
+        concat!(
+            "t = [license('test', 'MATLAB'), license('test', 'Symbolic_Toolbox')]\n",
+            "syms x y\n",
+            "f = symfun(x^2 + y, [x y]);\n",
+            "f(2, 3)\n",
+            "argnames(f)\n",
+            "mc = ?containers.Map; mc.Name\n",
+            "mc = meta.class.fromName('double'); mc.Name\n",
+            "isempty(meta.class.fromName('NoSuchClass'))\n",
+            "p = [powermod(3, -1, 7), powermod(2, -1, 4), powermod(5, -2, 13)]\n",
+            "G = graph(table([1 2; 2 3], [5; 6], 'VariableNames', {'EndNodes', 'Weight'})); G.Edges\n",
+            "G = graph([0 1 1; 1 0 0; 1 0 0], 'upper'); G.Edges\n",
+            "G = graph([0 2 0; 0 0 3; 4 0 0], 'lower'); G.Edges\n",
+            "I = dither([0.1 0.6 0.3; 0.8 0.5 0.2; 0.4 0.9 0.7])\n",
+            "I = dither(uint8([10 200; 130 60]))\n",
+            "syms a b\n",
+            "has([a + b, b], a)\n",
+            "c = children([a + b, a * b]); c{1}\n",
+            "subs(a + b, [a b], {[1 2], [3 4]})\n",
+            "set(0, 'DefaultFigureVisible', 'off');\n",
+            "figure; h = findall(0, 'Type', 'figure'); numel(h) >= 1\n",
+            "h = trimesh([1 2 3], [0 1 0], [0 0 1]); class(h)\n",
+            "h = errorbar(1:3, [2 3 4], [0.5 0.5 0.5], 'o-'); [h.LineStyle h.Marker]\n",
+            "h = scatter3([1 2], [3 4], [5 6], 'filled'); h.MarkerFaceColor\n",
+        ),
+        &[
+            "t = 1×2\n\n     1     1",
+            "ans = 7",
+            "ans = \n[x, y]",
+            "ans = 'containers.Map'",
+            "ans = 'double'",
+            "ans = logical\n   1",
+            "p = 1×3\n\n     5   NaN    12",
+            "ans = 2×2 table\n\n    EndNodes    Weight\n    ________    ______\n\n     1    2       5   \n     2    3       6   ",
+            "ans = 2×2 table\n\n    EndNodes    Weight\n    ________    ______\n\n     1    2       1   \n     1    3       1   ",
+            "ans = 1×2 table\n\n    EndNodes    Weight\n    ________    ______\n\n     1    3       4   ",
+            "I = 3×3 logical array\n\n   0   1   0\n   1   0   0\n   0   1   1",
+            "I = 2×2 logical array\n\n   0   1\n   1   0",
+            "ans = 1×2 logical array\n\n   1   0",
+            "ans = 1×2 cell\n\n    {[a]}    {[b]}",
+            "ans = \n[4, 6]",
+            "ans = logical\n   1",
+            "ans = 'matlab.graphics.chart.primitive.Line'",
+            "ans = '-o'",
+            "ans = 'flat'",
+        ],
+    );
+}

@@ -1608,6 +1608,8 @@ fn descendants(it: &mut Interpreter, id: u64, out: &mut Vec<u64>) {
 fn findobj(it: &mut Interpreter, a: &[Value]) -> Ret {
     let (roots, rest) = match a.first() {
         Some(v) if is_gfx(v) => (ids_of(v).unwrap(), &a[1..]),
+        // 0 is the graphics root.
+        Some(Value::Num(m)) if m.kind != Kind::Char && m.numel() == 1 && m.data[0] == 0.0 => (vec![ROOT], &a[1..]),
         _ => (vec![ROOT], a),
     };
     let mut cands = Vec::new();

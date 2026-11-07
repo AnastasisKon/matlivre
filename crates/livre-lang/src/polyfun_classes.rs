@@ -1433,6 +1433,11 @@ fn mesh_args(a: &[Value], name: &str) -> R<(Vec<Vec<usize>>, Vec<Vec<f64>>, usiz
 /// `triplot` (edges as one line), `trimesh` and `trisurf` (triangles as patches) and
 /// `tetramesh` (the faces of each tetrahedron, colored by tetrahedron).
 fn tri_plot(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Ret {
+    // trimesh(T, x, y) without z draws the 2-D mesh, as triplot does.
+    let numeric = a.iter().take_while(|v| matches!(v, Value::Num(m) if m.kind != Kind::Char)).count();
+    if name == "trimesh" && numeric == 3 {
+        return tri_plot(it, "triplot", a, nargout);
+    }
     let (t, pts, next) = mesh_args(a, name)?;
     let rest: Vec<Value> = a[next..].to_vec();
     if name == "triplot" {

@@ -758,6 +758,10 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
             add_3d(it, series, &props, nargout)
         }
         "scatter3" | "stem3" => {
+            // 'filled' fills the markers with their color.
+            let filled = name == "scatter3" && a.iter().any(|v| v.is_text() && v.text().is_ok_and(|t| t == "filled"));
+            let a: Vec<Value> = a.iter().filter(|v| !(v.is_text() && v.text().is_ok_and(|t| t == "filled"))).cloned().collect();
+            let a = a.as_slice();
             let (head, props) = split_props(a)?;
             if head.len() < 3 {
                 return rt("Not enough input arguments.");
@@ -772,7 +776,11 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
             } else {
                 s.marker = Some(Marker::Circle);
             }
-            let props: Vec<(String, Value)> = props.into_iter().filter(|(n, _)| n != "filled").collect();
+            let mut props: Vec<(String, Value)> = props.into_iter().filter(|(n, _)| n != "filled").collect();
+            if filled {
+                props.insert(0, ("MarkerFaceColor".to_string(), Value::chars("flat")));
+                props.insert(1, ("MarkerEdgeColor".to_string(), Value::chars("none")));
+            }
             add_3d(it, vec![s], &props, nargout)
         }
         "surf" | "mesh" | "surfc" | "meshc" | "meshz" | "surface" | "pcolor" => {

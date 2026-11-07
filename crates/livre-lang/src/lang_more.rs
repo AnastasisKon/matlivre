@@ -255,8 +255,14 @@ fn events(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
 
 fn meta_class(it: &mut Interpreter, a: &[Value]) -> Ret {
     let name = arg(a, 0, "meta.class.fromName")?.text()?;
+    // Built-in classes have a meta.class too, without properties of their own.
+    const BUILTIN: &[&str] = &[
+        "double", "single", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "logical", "char", "string", "cell", "struct",
+        "function_handle", "table", "timetable", "datetime", "duration", "calendarDuration", "categorical", "containers.Map", "dictionary", "sym",
+    ];
     match it.find_class(&name) {
         Some(c) => one(crate::builtins_ops::metaclass_for(it, Some(c), &name)),
+        None if BUILTIN.contains(&name.as_str()) => one(crate::builtins_ops::metaclass_for(it, None, &name)),
         None => one(Value::empty()),
     }
 }
@@ -377,11 +383,26 @@ fn powermod(a: &[Value]) -> Ret {
     let mut out = Vec::with_capacity(n);
     for k in 0..n {
         let (base, exp, md) = (pick(&b, k), pick(&e, k), pick(&m, k));
-        if [base, exp, md].iter().any(|x| x.fract() != 0.0) || exp < 0.0 || md <= 0.0 {
-            return rt("Inputs must be integers, the exponent nonnegative and the modulus positive.");
+        if [base, exp, md].iter().any(|x| x.fract() != 0.0) || md <= 0.0 {
+            return rt("Inputs must be integers and the modulus positive.");
+        }
+        // A negative exponent raises the modular inverse of the base (NaN when it has none).
+        let mut base = base.rem_euclid(md);
+        if exp < 0.0 {
+            let (mut r0, mut r1, mut s0, mut s1) = (base as i128, md as i128, 1i128, 0i128);
+            while r1 != 0 {
+                let q = r0 / r1;
+                (r0, r1) = (r1, r0 - q * r1);
+                (s0, s1) = (s1, s0 - q * s1);
+            }
+            if r0 != 1 {
+                out.push(f64::NAN);
+                continue;
+            }
+            base = s0.rem_euclid(md as i128) as f64;
         }
         let md = md as u128;
-        let (mut r, mut x, mut p) = (1u128 % md, (base.rem_euclid(md as f64)) as u128, exp as u128);
+        let (mut r, mut x, mut p) = (1u128 % md, base as u128, exp.abs() as u128);
         while p > 0 {
             if p & 1 == 1 {
                 r = r * x % md;

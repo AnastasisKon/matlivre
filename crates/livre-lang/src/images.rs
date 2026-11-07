@@ -363,6 +363,43 @@ pub fn call(_it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> R
             };
             one(Value::Num(Matrix::row(vec![lo, hi])))?
         }
+        // dither(I): a grayscale image to binary by Floyd-Steinberg error diffusion.
+        "dither" if a.len() == 1 && arg(a, 0, name)?.dims().len() == 2 => {
+            let img = arg(a, 0, name)?.to_matrix()?;
+            let (r, c) = (img.rows(), img.cols());
+            // Integer images are scaled to [0, 1] by their class range.
+            let (lo, hi) = match img.kind.name() {
+                "uint8" => (0.0, 255.0),
+                "uint16" => (0.0, 65535.0),
+                "int16" => (-32768.0, 32767.0),
+                _ => (0.0, 1.0),
+            };
+            let mut v: Vec<f64> = img.data.iter().map(|&x| (x - lo) / (hi - lo)).collect();
+            let mut out = vec![0.0; r * c];
+            // The scan runs down each column in turn (memory order), so the error goes to the
+            // next row, then to the next column.
+            for j in 0..c {
+                for i in 0..r {
+                    let k = j * r + i;
+                    let old = v[k];
+                    let new = if old >= 0.5 { 1.0 } else { 0.0 };
+                    out[k] = new;
+                    let e = old - new;
+                    let mut add = |ii: usize, jj: usize, w: f64| {
+                        if ii < r && jj < c {
+                            v[jj * r + ii] += e * w;
+                        }
+                    };
+                    add(i + 1, j, 7.0 / 16.0);
+                    if i > 0 {
+                        add(i - 1, j + 1, 3.0 / 16.0);
+                    }
+                    add(i, j + 1, 5.0 / 16.0);
+                    add(i + 1, j + 1, 1.0 / 16.0);
+                }
+            }
+            Some(vec![Value::Num(Matrix::from_dims(vec![r, c], out).with_kind(Kind::Logical))])
+        }
         "rgb2ind" | "dither" => {
             let img = arg(a, 0, name)?.to_matrix()?;
             let map_arg = arg(a, 1, name)?;

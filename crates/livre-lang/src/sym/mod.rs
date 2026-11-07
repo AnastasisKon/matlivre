@@ -729,7 +729,17 @@ pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) 
                     let v = f.data.iter().find_map(default_var).ok_or_else(|| LangError::new("The expression has no symbolic variables to substitute.", 0))?;
                     (vec![sym_val(Expr::var(&v))], vec![args[1].clone()])
                 }
-                _ => (cell_items(&args[1]), cell_items(&args[2])),
+                _ => {
+                    let (mut o, n) = (cell_items(&args[1]), cell_items(&args[2]));
+                    // subs(f, [u v], {U, V}): the variables pair with the cell's elements.
+                    if o.len() == 1 && n.len() > 1 && matches!(args[2], Value::Cell(_)) {
+                        let vars = var_list(&o[0])?;
+                        if vars.len() == n.len() {
+                            o = vars.iter().map(|v| sym_val(Expr::var(v))).collect();
+                        }
+                    }
+                    (o, n)
+                }
             };
             let mut pairs: Vec<(String, Value)> = Vec::new();
             for (o, n) in olds.iter().zip(&news) {
@@ -744,6 +754,24 @@ pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) 
                     for (v, e) in vars.iter().zip(ns.data) {
                         pairs.push((v.clone(), sym_val(e)));
                     }
+                }
+            }
+            // Arrays of one size for a scalar expression give an array (elementwise).
+            if f.data.len() == 1 && pairs.len() > 1 {
+                let vals: Vec<SymArray> = pairs.iter().map(|p| SymArray::from_value(&p.1)).collect::<R<_>>()?;
+                let n = vals.iter().map(|v| v.data.len()).max().unwrap_or(1);
+                if n > 1 && vals.iter().all(|v| v.data.len() == n || v.data.len() == 1) {
+                    let dims = vals.iter().find(|v| v.data.len() == n).map(|v| v.dims.clone()).unwrap_or(vec![1, n]);
+                    let out: Vec<Expr> = (0..n)
+                        .map(|k| {
+                            let mut e = f.data[0].clone();
+                            for (p, v) in pairs.iter().zip(&vals) {
+                                e = e.subs(&p.0, &v.data[if v.data.len() == 1 { 0 } else { k }]);
+                            }
+                            algebra::simplify(&e)
+                        })
+                        .collect();
+                    return one(Value::Sym(SymArray::from_dims(dims, out)));
                 }
             }
             // Substituting an array for a scalar expression gives an array (elementwise).
@@ -995,12 +1023,28 @@ pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) 
             other => if name == "lhs" { other.clone() } else { Expr::zero() },
         }))),
         "children" => {
-            let e = expr_of_scalar(&args[0])?;
-            let kids: Vec<Expr> = match e {
-                Expr::Add(x) | Expr::Mul(x) | Expr::Fn(_, x) => x,
-                Expr::Pow(a, b) | Expr::Rel(_, a, b) => vec![*a, *b],
-                other => vec![other],
+            let kids_of = |e: Expr| -> Vec<Expr> {
+                match e {
+                    Expr::Add(x) | Expr::Mul(x) | Expr::Fn(_, x) => x,
+                    Expr::Pow(a, b) | Expr::Rel(_, a, b) => vec![*a, *b],
+                    other => vec![other],
+                }
             };
+            // An array gives a cell array holding a cell of children for each element.
+            if let Value::Sym(s) = &args[0] {
+                if s.data.len() != 1 {
+                    let items = s
+                        .data
+                        .iter()
+                        .map(|e| {
+                            let k = kids_of(e.clone());
+                            Value::Cell(CellArray::row(k.into_iter().map(sym_val).collect()))
+                        })
+                        .collect();
+                    return one(Value::Cell(CellArray::from_dims(s.dims.clone(), items)));
+                }
+            }
+            let kids = kids_of(expr_of_scalar(&args[0])?);
             let n = kids.len();
             one(Value::Sym(SymArray::from_dims(vec![1, n], kids)))
         }
@@ -1127,7 +1171,24 @@ pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) 
             let h = it.call_function("plot", pargs, usize::from(nargout > 0))?;
             Ok(Some(if nargout > 0 { h } else { Vec::new() }))
         }
-        "symfun" => rt("Symbolic functions are not supported in this version."),
+        // symfun(expr, [x y]): the symbolic function of those variables.
+        "symfun" => {
+            let body = args.first().ok_or_else(|| LangError::new("Not enough input arguments.", 0))?;
+            let vars = args.get(1).ok_or_else(|| LangError::new("Not enough input arguments.", 0))?;
+            let names: Vec<String> = match vars {
+                Value::Sym(s) => s
+                    .data
+                    .iter()
+                    .map(|e| match e {
+                        Expr::Var(n) => Ok(n.clone()),
+                        _ => rt("Second argument must be a vector of symbolic variables."),
+                    })
+                    .collect::<R<_>>()?,
+                Value::Cell(c) => c.data.iter().map(|v| v.text()).collect::<R<_>>()?,
+                other => vec![other.text()?],
+            };
+            Ok(Some(vec![define_symfun(names, body)?]))
+        }
         _ => Ok(None),
     }
 }

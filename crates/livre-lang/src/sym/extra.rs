@@ -1240,6 +1240,11 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> R<
         "has" => {
             let e = sym_arg(a, 0)?;
             let sub = scalar_arg(a, 1)?;
+            // An array tests each element.
+            if e.data.len() != 1 {
+                let m = Matrix::from_dims(e.dims.clone(), e.data.iter().map(|x| if has(x, &sub) { 1.0 } else { 0.0 }).collect()).with_kind(Kind::Logical);
+                return one(Value::Num(m));
+            }
             one(Value::bool(e.data.iter().any(|x| has(x, &sub))))
         }
         "formula" => {

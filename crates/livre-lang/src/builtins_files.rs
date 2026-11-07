@@ -21,7 +21,7 @@ type R<T> = Result<T, LangError>;
 pub const NAMES: &[&str] = &[
     "fullfile", "fileparts", "filesep", "pathsep", "tempdir", "tempname", "matlabroot", "userpath", "filemarker", "dir", "ls", "isfile", "isfolder",
     "isdir", "mkdir", "rmdir", "delete", "copyfile", "movefile", "fopen", "fclose", "fgetl", "fgets", "feof", "ferror", "frewind", "fseek",
-    "ftell", "fread", "fwrite", "fscanf", "fileread", "readlines", "writelines", "getenv", "setenv", "unsetenv", "isenv", "computer", "system",
+    "ftell", "fread", "fwrite", "fscanf", "fileread", "readlines", "writelines", "getenv", "setenv", "unsetenv", "isenv", "computer", "license", "system",
     "dos", "unix", "cmdsep",
 ];
 
@@ -757,6 +757,23 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
             none()
         }
         "isenv" => one(Value::bool(std::env::var_os(arg(a, 0, name)?.text()?).is_some())),
+        // license: MatLivre has no license number; 'test' and 'checkout' report the products
+        // it implements (MATLAB and the Symbolic Math Toolbox).
+        "license" => {
+            const HAVE: &[&str] = &["matlab", "symbolic_toolbox"];
+            match a.first().map(|v| v.text()).transpose()?.map(|t| t.to_lowercase()).as_deref() {
+                None => one(Value::chars("MatLivre")),
+                Some("test") | Some("checkout") => {
+                    let f = arg(a, 1, name)?.text()?.to_lowercase();
+                    one(Value::num(if HAVE.contains(&f.as_str()) { 1.0 } else { 0.0 }))
+                }
+                Some("inuse") => {
+                    let elems = HAVE.iter().map(|f| vec![Value::chars(f), Value::chars(&std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_default())]).collect();
+                    one(Value::Struct(StructArray { dims: vec![HAVE.len(), 1], fields: vec!["feature".into(), "user".into()], elems }))
+                }
+                Some(other) => rt(format!("Unknown license option '{other}'.")),
+            }
+        }
         "computer" => {
             let arch = if cfg!(windows) { "PCWIN64" } else if cfg!(target_os = "macos") { if cfg!(target_arch = "aarch64") { "MACA64" } else { "MACI64" } } else { "GLNXA64" };
             if matches!(a.first(), Some(v) if v.text().map(|t| t == "arch").unwrap_or(false)) {

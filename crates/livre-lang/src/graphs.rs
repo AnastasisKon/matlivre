@@ -490,9 +490,67 @@ fn end_nodes(v: &Value, names: &mut Option<Vec<String>>, n: &mut usize) -> R<Vec
 
 fn construct(directed: bool, a: &[Value]) -> Ret {
     let a: Vec<&Value> = a.iter().filter(|v| !v.text().map(|t| t.eq_ignore_ascii_case("omitselfloops")).unwrap_or(false)).collect();
+    // graph(A, 'upper' | 'lower'): one triangle of the adjacency matrix gives the edges.
+    let tri = a.last().and_then(|v| v.text().ok()).map(|t| t.to_lowercase()).filter(|t| t == "upper" || t == "lower");
+    let a: Vec<&Value> = if tri.is_some() { a[..a.len() - 1].to_vec() } else { a };
     let mut g = Gr { directed, n: 0, names: None, edges: Vec::new(), weights: None };
     match a.as_slice() {
         [] => {}
+        // graph(EdgeTable) / graph(EdgeTable, NodeTable): EndNodes and an optional Weight.
+        [Value::Table(t), rest @ ..] => {
+            let Some(k) = t.names.iter().position(|n| n == "EndNodes") else { return rt("Edge table must have a variable named 'EndNodes'.") };
+            let ends = t.vars[k].to_matrix()?;
+            let m = ends.rows();
+            if ends.cols() != 2 {
+                return rt("EndNodes must have two columns.");
+            }
+            let mut names = None;
+            let mut n = 0;
+            if let Some(Value::Table(nt)) = rest.first() {
+                if let Some(j) = nt.names.iter().position(|x| x == "Name") {
+                    names = Some(texts(&nt.vars[j])?);
+                }
+                n = nt.nrows;
+            }
+            for i in 0..m {
+                let (s, d) = (ends.data[i], ends.data[m + i]);
+                if s < 1.0 || d < 1.0 || s.fract() != 0.0 || d.fract() != 0.0 {
+                    return rt("Node indices must be positive integers.");
+                }
+                g.edges.push((s as usize - 1, d as usize - 1));
+                n = n.max(s as usize).max(d as usize);
+            }
+            if let Some(j) = t.names.iter().position(|x| x == "Weight") {
+                g.weights = Some(t.vars[j].to_matrix()?.data);
+            }
+            g.n = n;
+            g.names = names;
+        }
+        [m, ..] if tri.is_some() && !directed => {
+            let m = m.to_matrix()?;
+            let n = m.rows();
+            if n != m.cols() {
+                return rt("Adjacency matrix must be square.");
+            }
+            g.n = n;
+            let upper = tri.as_deref() == Some("upper");
+            let mut w = Vec::new();
+            for j in 0..n {
+                for i in 0..n {
+                    let x = m.data[j * n + i];
+                    if x != 0.0 && (if upper { i <= j } else { i >= j }) {
+                        g.edges.push((i.min(j), i.max(j)));
+                        w.push(x);
+                    }
+                }
+            }
+            if m.kind != Kind::Logical {
+                g.weights = Some(w);
+            }
+            if let Some(nm) = a.get(1) {
+                g.names = Some(texts(nm)?);
+            }
+        }
         // graph(A) or graph(A, names): an adjacency matrix.
         [m] | [m, _] if matches!(m, Value::Num(x) if x.kind != Kind::Char && x.rows() == x.cols() && x.rows() > 0 || x.numel() == 0) && (a.len() == 1 || !matches!(a[1], Value::Num(_))) => {
             let m = m.to_matrix()?;
