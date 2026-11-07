@@ -21,7 +21,7 @@ of MATLAB, written in Rust: no MATLAB installation, license or Java runtime is n
   algebra, sorting, strings, structs and cells, MatLivre is 4.6x faster than MATLAB R2023b,
   71x faster than GNU Octave and 70x faster than Scilab (geometric mean), with identical results
   in all four.
-- **Speaks MATLAB.** 1,866 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
+- **Speaks MATLAB.** 1,871 MATLAB and Symbolic Math Toolbox functions, MATLAB's display format,
   error messages and semantics, checked against MATLAB R2023b output.
 - **One small program.** A single 36 MB executable that depends only on DLLs shipped with
   Windows.
@@ -194,7 +194,7 @@ expansion work on the arrays in place and in parallel when they are large.
 
 MATLAB compatibility is the rule: semantics, display and error messages follow MATLAB R2023b.
 [`docs/matlab-coverage.md`](docs/matlab-coverage.md) lists every function of the MATLAB and
-Symbolic Math Toolbox references and its status (1,866 implemented).
+Symbolic Math Toolbox references and its status (1,871 implemented).
 
 - N-D arrays of every numeric type, `logical`, `char` and strings, with implicit expansion,
   saturating integer arithmetic and complex numbers, shown in every `format` mode (`long g`, `bank`,

@@ -7,10 +7,10 @@ found in the toolbox folders, checked against MatLivre. Regenerate with
 
 | Status | Count |
 |---|---:|
-| Implemented | 1866 |
+| Implemented | 1871 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **156** |
+| **To implement** | **151** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -326,7 +326,7 @@ Implemented: `&amp;`, `&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `'`, `*`, `+`, `-`, `.'`
 
 Implemented: 84. To implement: 0. In a branch: 0. Out of scope: 0.
 
-Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isInterior`, `isinterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
+Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isinterior`, `isInterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
 
 ## MATLAB > Mathematics > Elementary Math
 
@@ -384,37 +384,33 @@ Implemented: `randi`, `randn`, `randperm`, `RandStream`, `RandStream.create`, `R
 
 ## MATLAB > Mathematics > Sparse Matrices
 
-Implemented: 40. To implement: 6. In a branch: 0. Out of scope: 0.
+Implemented: 41. To implement: 5. In a branch: 0. Out of scope: 0.
 
 To implement:
 
 - [ ] `amd`
 - [ ] `colamd`
 - [ ] `dissect`
-- [ ] `dmperm`
 - [ ] `equilibrate`
 - [ ] `symamd`
 
-Implemented: `bicg`, `bicgstab`, `bicgstabl`, `cgs`, `colperm`, `etree`, `etreeplot`, `full`, `gmres`, `gplot`, `ichol`, `ilu`, `lsqr`, `minres`, `nnz`, `nonzeros`, `nzmax`, `pcg`, `qmr`, `spalloc`, `sparse`, `spaugment`, `spconvert`, `spdiags`, `speye`, `spfun`, `spones`, `spparms`, `sprand`, `sprandn`, `sprandsym`, `sprank`, `spy`, `symbfact`, `symmlq`, `symrcm`, `tfqmr`, `treelayout`, `treeplot`, `unmesh`
+Implemented: `bicg`, `bicgstab`, `bicgstabl`, `cgs`, `colperm`, `dmperm`, `etree`, `etreeplot`, `full`, `gmres`, `gplot`, `ichol`, `ilu`, `lsqr`, `minres`, `nnz`, `nonzeros`, `nzmax`, `pcg`, `qmr`, `spalloc`, `sparse`, `spaugment`, `spconvert`, `spdiags`, `speye`, `spfun`, `spones`, `spparms`, `sprand`, `sprandn`, `sprandsym`, `sprank`, `spy`, `symbfact`, `symmlq`, `symrcm`, `tfqmr`, `treelayout`, `treeplot`, `unmesh`
 
 ## MATLAB > Programming > Classes
 
-Implemented: 28. To implement: 8. In a branch: 0. Out of scope: 0.
+Implemented: 31. To implement: 5. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `details`
 - [ ] `listLength`
-- [ ] `loadobj`
 - [ ] `meta.abstractDetails`
 - [ ] `meta.package.fromName`
 - [ ] `meta.package.getAllPackages`
-- [ ] `saveobj`
 - [ ] `sysobjupdate`
 
 Language keywords to check: `classdef`
 
-Implemented: `addlistener`, `builtin`, `clone`, `empty`, `enumeration`, `eq`, `event.hasListener`, `events`, `import`, `isDone`, `isLocked`, `ismethod`, `isprop`, `listener`, `meta.class.fromName`, `metaclass`, `methods`, `notify`, `numArgumentsFromSubscript`, `properties`, `release`, `setup`, `step`, `subsasgn`, `subsindex`, `subsref`, `substruct`, `superclasses`
+Implemented: `addlistener`, `builtin`, `clone`, `details`, `empty`, `enumeration`, `eq`, `event.hasListener`, `events`, `import`, `isDone`, `isLocked`, `ismethod`, `isprop`, `listener`, `loadobj`, `meta.class.fromName`, `metaclass`, `methods`, `notify`, `numArgumentsFromSubscript`, `properties`, `release`, `saveobj`, `setup`, `step`, `subsasgn`, `subsindex`, `subsref`, `substruct`, `superclasses`
 
 ## MATLAB > Programming > Files and Folders
 
@@ -695,13 +691,14 @@ Implemented: `delsq`, `numgrid`
 
 ## Not in the function reference > matlab/specgraph
 
-Implemented: 0. To implement: 3. In a branch: 0. Out of scope: 10.
+Implemented: 1. To implement: 2. In a branch: 0. Out of scope: 10.
 
 To implement:
 
-- [ ] `contours`
 - [ ] `ezgraph3`
 - [ ] `vissuite`
+
+Implemented: `contours`
 
 Out of scope: `changeseriestype` (internal helper, not a user function), `colstyle` (internal helper, not a user function), `isplotchild` (internal helper, not a user function), `makebars` (internal helper, not a user function), `moviein` (audio/video devices or screen capture), `parseplotapi` (internal helper, not a user function), `plotchild` (internal helper, not a user function), `plotdoneevent` (internal helper, not a user function), `plotutils` (internal helper, not a user function), `usev6plotapi` (internal helper, not a user function)
 
