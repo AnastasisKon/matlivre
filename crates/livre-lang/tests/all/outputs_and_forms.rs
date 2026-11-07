@@ -575,3 +575,40 @@ fn graphics_forms() {
         ],
     );
 }
+
+#[test]
+fn former_stubs() {
+    check(
+        concat!(
+            "s = spparms('spumoni')\n",
+            "spparms('spumoni', 1); s = spparms('spumoni')\n",
+            "spparms('default'); [k, v] = spparms; size(k), v(2)\n",
+            "set(0, 'DefaultFigureVisible', 'off');\n",
+            "figure; plot3(1:3, 1:3, [0 5 10]); z = zticks, za = ztickangle, zf = ztickformat, zs = zscale\n",
+            "zticks([1 2 3]); zticklabels({'a', 'b', 'c'}); zl = zticklabels\n",
+            "syms x\n",
+            "sympref('FloatingPointOutput', true); y = [sym(1/3) + x, sym(2)/7, sym(5)], p = sym(pi)\n",
+            "sympref('default');\n",
+            "tc = tscollection({timeseries([1; 2], [0; 1], 'Name', 'x'), timeseries([3; 4], [0; 1], 'Name', 'm')});\n",
+            "tc = settimeseriesnames(tc, 'x', 'a'); gettimeseriesnames(tc)\n",
+            "c = matlab.lang.correction.ReplaceIdentifierCorrection('a', 'b')\n",
+            "ME = addCorrection(MException('a:b', 'Main'), c); class(ME.Correction)\n",
+        ),
+        &[
+            "s = 0",
+            "s = 1",
+            "ans = 1×2\n\n    19     7",
+            "ans = 1.1000",
+            "z = 1×6\n\n     0     2     4     6     8    10",
+            "za = 0",
+            "zf = '%g'",
+            "zs = 'linear'",
+            "zl = 3×1 cell\n\n    {'a'}\n    {'b'}\n    {'c'}",
+            "y = \n[x + 0.3333, 0.2857, 5]",
+            "p = 3.1416",
+            "ans = 1×2 cell\n\n    {'m'}    {'a'}",
+            "c = \n  ReplaceIdentifierCorrection with properties:\n\n     Identifier: \"a\"\n    Replacement: \"b\"",
+            "ans = 'matlab.lang.correction.ReplaceIdentifierCorrection'",
+        ],
+    );
+}

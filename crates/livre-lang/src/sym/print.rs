@@ -155,6 +155,18 @@ fn wrap(s: (String, u8), min: u8) -> String {
 
 fn pr(e: &Expr, style: Style) -> (String, u8) {
     let (mul_op, div_op, pow_op) = if style == Style::Code { (".*", "./", ".^") } else { ("*", "/", "^") };
+    // sympref('FloatingPointOutput', true): fractions and constants as decimals (0.3333).
+    if style == Style::Matlab && super::formula::floating_point_output() {
+        let x = match e {
+            Expr::Num(n) if !matches!(n, Num::Rat(_, 1)) && !matches!(n, Num::Big(r) if r.is_integer()) => Some(n.to_f64()),
+            Expr::Const(Const::Pi) => Some(std::f64::consts::PI),
+            _ => None,
+        };
+        if let Some(x) = x {
+            let s = crate::display::fmt_short_scalar(x);
+            return (s, if x < 0.0 { P_MUL } else { P_ATOM });
+        }
+    }
     match e {
         Expr::Num(n) => {
             let s = num_text(n, style);

@@ -120,6 +120,65 @@ fn call_handle(it: &mut Interpreter, f: &Value, args: Vec<Value>, nargout: usize
     }
 }
 
+/// The sparse-matrix parameters, in MATLAB's order, with their defaults.
+const SPPARMS: [(&str, f64); 19] = [
+    ("spumoni", 0.0), ("thr_rel", 1.1), ("thr_abs", 1.0), ("exact_d", 0.0), ("supernd", 3.0), ("rreduce", 3.0), ("wh_frac", 0.5), ("autommd", 1.0),
+    ("autoamd", 1.0), ("piv_tol", 0.1), ("bandden", 0.5), ("umfpack", 1.0), ("sym_tol", 0.001), ("ldl_tol", 0.01), ("usema57", 1.0), ("spqrtol", -2.0),
+    ("sp_ctor", 0.0), ("reorder", 0.0), ("no_redo", 0.0),
+];
+
+thread_local! {
+    static SPPARM_VALUES: std::cell::RefCell<Vec<f64>> = std::cell::RefCell::new(SPPARMS.iter().map(|p| p.1).collect());
+}
+
+/// spparms: get and set the sparse-matrix parameters (they are kept, but MatLivre's
+/// solvers do not read them).
+fn spparms(a: &[Value], nargout: usize) -> Ret {
+    let all = || SPPARM_VALUES.with(|v| v.borrow().clone());
+    match a.first() {
+        None => {
+            if nargout == 0 {
+                return none();
+            }
+            let keys: Vec<String> = SPPARMS.iter().map(|p| p.0.to_string()).collect();
+            let w = 7;
+            let mut km = Matrix::zeros(keys.len(), w).with_kind(Kind::Char);
+            for (r, k) in keys.iter().enumerate() {
+                for (c, ch) in format!("{k:<w$}").chars().enumerate() {
+                    km.set(r, c, ch as u32 as f64);
+                }
+            }
+            let vals = Value::Num(Matrix::col(all()));
+            Ok(Some(if nargout >= 2 { vec![Value::Num(km), vals] } else { vec![vals] }))
+        }
+        Some(v) if v.is_text() => {
+            let key = v.text()?.to_lowercase();
+            if key == "default" {
+                SPPARM_VALUES.with(|v| *v.borrow_mut() = SPPARMS.iter().map(|p| p.1).collect());
+                return none();
+            }
+            let Some(k) = SPPARMS.iter().position(|p| p.0 == key) else { return rt(format!("Unknown parameter '{key}'.")) };
+            match a.get(1) {
+                Some(x) => {
+                    let x = x.scalar()?;
+                    SPPARM_VALUES.with(|v| v.borrow_mut()[k] = x);
+                    none()
+                }
+                None => one(Value::num(all()[k])),
+            }
+        }
+        // spparms(values): all of them at once.
+        Some(v) => {
+            let m = v.to_matrix()?;
+            if m.numel() != SPPARMS.len() {
+                return rt(format!("The value vector must have {} elements.", SPPARMS.len()));
+            }
+            SPPARM_VALUES.with(|vv| *vv.borrow_mut() = m.data.clone());
+            none()
+        }
+    }
+}
+
 fn mat(v: &Value) -> R<Matrix> {
     v.to_matrix()
 }
@@ -1071,7 +1130,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
             one(sp(out))
         }
         "sprank" => one(Value::num(sprank(&mat(arg(a, 0, name)?)?) as f64)),
-        "spparms" => none(),
+        "spparms" => spparms(a, nargout),
         "spy" => spy(it, a),
         "gplot" => {
             let m = mat(arg(a, 0, name)?)?;

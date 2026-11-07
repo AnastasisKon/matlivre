@@ -563,6 +563,16 @@ pub(crate) fn store(it: &mut Interpreter, id: u64, name: &str, v: Value) {
 }
 
 /// Ticks of an axis: set values, or the automatic ones within the limits.
+/// The z limits of axes: `zlim`, or the data range rounded out to whole tick steps.
+fn z_limits(ax: &graphics::Axes) -> (f64, f64) {
+    if let Some(l) = ax.zlim {
+        return l;
+    }
+    let (lo, hi) = ax.zbounds();
+    let step = graphics::nice_step(hi - lo, 5.0);
+    ((lo / step + 1e-9).floor() * step, (hi / step - 1e-9).ceil() * step)
+}
+
 pub(crate) fn tick_values(ticks: &graphics::Ticks, lo: f64, hi: f64) -> Vec<f64> {
     if let Some(v) = &ticks.values {
         return v.clone();
@@ -696,9 +706,29 @@ fn computed(it: &mut Interpreter, id: u64, t: Target, name: &str) -> R<Option<Va
             match name {
                 "XLim" => row(&[x0, x1]),
                 "YLim" => row(&[y0, y1]),
+                // Auto z limits: the data range widened to whole tick steps.
                 "ZLim" => {
-                    let (z0, z1) = ax.zlim.unwrap_or((-1.0, 1.0));
+                    let (z0, z1) = z_limits(ax);
                     row(&[z0, z1])
+                }
+                "ZTick" if stored(it, id, name).is_none() => {
+                    let (z0, z1) = z_limits(ax);
+                    row(&tick_values(&graphics::Ticks::default(), z0, z1))
+                }
+                // Labels read back as a column, however they were set.
+                "ZTickLabel" if matches!(stored(it, id, name), Some(Value::Cell(_))) => {
+                    let Some(Value::Cell(c)) = stored(it, id, name) else { unreachable!() };
+                    let n = c.data.len();
+                    Value::Cell(CellArray::from_dims(vec![n, 1], c.data))
+                }
+                "ZTickLabel" if stored(it, id, name).is_none() => {
+                    let (z0, z1) = z_limits(ax);
+                    let values = match stored(it, id, "ZTick") {
+                        Some(v) => v.to_matrix()?.data,
+                        None => tick_values(&graphics::Ticks::default(), z0, z1),
+                    };
+                    let t = graphics::Ticks::default();
+                    label_value(&t, &tick_labels(&t, &values))
                 }
                 "XLimMode" => Value::chars(if ax.xlim.is_some() { "manual" } else { "auto" }),
                 "YLimMode" => Value::chars(if ax.ylim.is_some() { "manual" } else { "auto" }),

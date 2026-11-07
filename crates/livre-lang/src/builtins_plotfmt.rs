@@ -438,15 +438,9 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
     let a = if matches!(name, "saveas" | "print" | "exportgraphics" | "fontsize") { args } else { crate::builtins_plot::select_axes(it, args)? };
     match name {
         "xticks" | "yticks" | "zticks" | "xticklabels" | "yticklabels" | "zticklabels" | "xtickangle" | "ytickangle" | "ztickangle" | "xscale" | "yscale" | "zscale" | "zlim" => {
-            if name.starts_with('z') && name != "zlim" {
-                return none();
-            }
             ticks_fn(it, name, a, nargout)
         }
         "xtickformat" | "ytickformat" | "ztickformat" => {
-            if name == "ztickformat" {
-                return none();
-            }
             tickformat(it, name, a)
         }
         "semilogx" | "semilogy" | "loglog" => {

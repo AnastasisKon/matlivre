@@ -340,6 +340,11 @@ fn with_prefs<T>(f: impl FnOnce(&mut Vec<Value>) -> T) -> T {
     PREF_VALUES.with(|p| f(p.borrow_mut().get_or_insert_with(defaults)))
 }
 
+/// Whether `sympref('FloatingPointOutput')` is on: numbers display in format short.
+pub fn floating_point_output() -> bool {
+    with_prefs(|p| p[4].is_true().unwrap_or(false))
+}
+
 /// The value of `sympref('HeavisideAtOrigin')`.
 pub fn heaviside_at_origin() -> Expr {
     with_prefs(|p| SymArray::from_value(&p[1]).ok().and_then(|s| s.data.into_iter().next()).unwrap_or_else(|| Expr::rat(1, 2)))

@@ -22,7 +22,7 @@ pub const NAMES: &[&str] = &[
     "mustBeNonnegative", "mustBeNonpositive", "mustBeNonsparse", "mustBeNonzero", "mustBeNonzeroLengthText", "mustBeNumeric", "mustBeNumericOrLogical",
     "mustBePositive", "mustBeReal", "mustBeScalarOrEmpty", "mustBeSparse", "mustBeText", "mustBeTextScalar", "mustBeUnderlyingType",
     "mustBeValidVariableName", "mustBeVector", "lasterr", "lasterror", "lastwarn", "rethrow", "matlab.lang.makeValidName",
-    "matlab.lang.makeUniqueStrings", "namedargs2cell", "onCleanup", "validatecolor", "mlock", "munlock", "mislocked", "inputParser",
+    "matlab.lang.makeUniqueStrings", "matlab.lang.correction.AppendArgumentsCorrection", "matlab.lang.correction.ReplaceIdentifierCorrection", "namedargs2cell", "onCleanup", "validatecolor", "mlock", "munlock", "mislocked", "inputParser",
     "matlivre_inputparser_method", "MException", "MException.last", "throw", "throwAsCaller", "getReport", "addCause", "addCorrection",
     "matlivre_mexception_method",
 ];
@@ -517,6 +517,37 @@ fn flag(o: &Object, name: &str) -> bool {
     o.get(name).map(|v| v.is_true().unwrap_or(false)).unwrap_or(false)
 }
 
+/// A suggested fix attached to an MException with addCorrection: an object of the class
+/// `name` whose properties `props` hold the constructor's arguments as strings.
+fn correction(name: &str, props: &[&str], a: &[Value]) -> Ret {
+    thread_local! {
+        static DEFS: RefCell<HashMap<String, Rc<ClassDef>>> = RefCell::new(HashMap::new());
+    }
+    if a.len() < props.len() {
+        return rt("Not enough input arguments.");
+    }
+    let def = DEFS.with(|d| {
+        d.borrow_mut()
+            .entry(name.to_string())
+            .or_insert_with(|| {
+                // Parsed under its short name, then given the full one.
+                let short = name.rsplit('.').next().unwrap_or(name);
+                let mut src = format!("classdef {short}\n  properties\n");
+                for p in props {
+                    src.push_str(&format!("    {p}\n"));
+                }
+                src.push_str("  end\nend\n");
+                let ast = crate::class::parse_classdef(&src).expect("built-in class source parses");
+                let mut def = ClassDef::build(ast, &[]);
+                def.name = name.to_string();
+                Rc::new(def)
+            })
+            .clone()
+    });
+    let values = a[..props.len()].iter().map(|v| v.text().map(Value::string)).collect::<R<Vec<_>>>()?;
+    one(Value::Object(Object { class: def, props: Rc::new(RefCell::new(values)) }))
+}
+
 fn new_input_parser() -> Ret {
     let empty_struct = Value::Struct(StructArray::scalar());
     let values = vec![
@@ -883,6 +914,8 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
             Ok(Some(vec![made, Value::Num(Matrix::from_dims(dims, changed).with_kind(Kind::Logical))]))
         }
         "matlab.lang.makeUniqueStrings" => make_unique(a),
+        "matlab.lang.correction.AppendArgumentsCorrection" => correction(name, &["Arguments"], a),
+        "matlab.lang.correction.ReplaceIdentifierCorrection" => correction(name, &["Identifier", "Replacement"], a),
         "namedargs2cell" => {
             let Some(Value::Struct(s)) = a.first() else { return rt("Input must be a scalar structure.") };
             if s.elems.len() != 1 {
@@ -899,8 +932,32 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
             one(Value::Object(Object { class: cleanup_class(), props: Rc::new(RefCell::new(vec![f])) }))
         }
         "validatecolor" => validatecolor(a),
-        "mlock" | "munlock" => Ok(Some(Vec::new())),
-        "mislocked" => one(Value::bool(false)),
+        // Locked functions: mlock locks the function that calls it; munlock and mislocked take
+        // a name or default to the calling function.
+        "mlock" | "munlock" | "mislocked" => {
+            thread_local! {
+                static LOCKED: RefCell<std::collections::HashSet<String>> = RefCell::new(std::collections::HashSet::new());
+            }
+            let target = match a.first() {
+                Some(v) => Some(v.text()?),
+                None => it.current_function(),
+            };
+            match name {
+                "mlock" => {
+                    if let Some(f) = it.current_function() {
+                        LOCKED.with(|l| l.borrow_mut().insert(f));
+                    }
+                    Ok(Some(Vec::new()))
+                }
+                "munlock" => {
+                    if let Some(f) = target {
+                        LOCKED.with(|l| l.borrow_mut().remove(&f));
+                    }
+                    Ok(Some(Vec::new()))
+                }
+                _ => one(Value::bool(target.is_some_and(|f| LOCKED.with(|l| l.borrow().contains(&f))))),
+            }
+        }
         "inputParser" => new_input_parser(),
         "matlivre_inputparser_method" => ip_method(it, a),
         _ => Ok(None),

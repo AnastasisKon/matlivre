@@ -765,13 +765,12 @@ fn tc_method(m: &str, a: &[Value]) -> Ret {
         }
         "settimeseriesnames" => {
             let (old, new) = (arg(rest, 0, m)?.text()?, arg(rest, 1, m)?.text()?);
-            for (n, v) in ms.iter_mut() {
-                if *n == old {
-                    *n = new.clone();
-                    let mut t = Ts::of(v)?;
-                    t.name = new.clone();
-                    *v = t.value();
-                }
+            // The renamed member moves to the end, as MATLAB re-adds it.
+            if let Some(k) = ms.iter().position(|(n, _)| *n == old) {
+                let (_, v) = ms.remove(k);
+                let mut t = Ts::of(&v)?;
+                t.name = new.clone();
+                ms.push((new.clone(), t.value()));
             }
             one(collection(&name, ms)?)
         }
