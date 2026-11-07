@@ -558,7 +558,7 @@ fn buffer_style(distance: f64, opts: &[(String, Value)]) -> R<BufferStyle<f64>> 
         match k.as_str() {
             "jointtype" => join = v.text()?.to_lowercase(),
             "miterlimit" => miter = v.scalar()?,
-            other => return rt(format!("'{other}' is not a recognized parameter.")),
+            _ => return rt("Parameter name must be 'JointType' or 'MiterLimit'."),
         }
     }
     let arc = std::f64::consts::PI / 90.0;

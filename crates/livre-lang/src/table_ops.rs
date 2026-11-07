@@ -250,7 +250,19 @@ fn splitvars(a: &[Value]) -> Ret {
 
 fn convertvars(it: &mut Interpreter, a: &[Value]) -> Ret {
     let t = table_at(a, 0, "convertvars")?;
-    let ix = var_indices(t, crate::builtins::arg(a, 1, "convertvars")?)?;
+    let sel = crate::builtins::arg(a, 1, "convertvars")?;
+    // A function handle picks the variables for which it returns true.
+    let ix = if let Value::Func(_) = sel {
+        let mut ix = Vec::new();
+        for (i, v) in t.vars.iter().enumerate() {
+            if it.call_func_value(sel, vec![v.clone()], 1)?.first().map(|r| r.is_true()).transpose()?.unwrap_or(false) {
+                ix.push(i);
+            }
+        }
+        ix
+    } else {
+        var_indices(t, sel)?
+    };
     let ty = crate::builtins::arg(a, 2, "convertvars")?.clone();
     let mut vars = t.vars.clone();
     for i in ix {
@@ -290,16 +302,75 @@ fn fun_label(f: &Value) -> String {
     }
 }
 
+/// Rows of each group of the grouping variables `g`, groups in sorted order of their values.
+fn table_groups(t: &Table, g: &[usize]) -> R<Vec<Vec<usize>>> {
+    #[derive(Clone, PartialEq, PartialOrd)]
+    enum K {
+        N(f64),
+        S(String),
+    }
+    let mut keys: Vec<Vec<K>> = vec![Vec::new(); t.nrows];
+    for &i in g {
+        for (r, key) in keys.iter_mut().enumerate() {
+            let x = rows(&t.vars[i], &[r])?;
+            key.push(match &x {
+                Value::Num(m) if m.kind != crate::value::Kind::Char => K::N(m.data.first().copied().unwrap_or(f64::NAN)),
+                Value::Cell(c) => K::S(c.data.first().map(|v| v.text()).transpose()?.unwrap_or_default()),
+                other => match other.text() {
+                    Ok(s) => K::S(s),
+                    Err(_) => K::N(other.to_matrix().ok().and_then(|m| m.data.first().copied()).unwrap_or(f64::NAN)),
+                },
+            });
+        }
+    }
+    let mut order: Vec<usize> = (0..t.nrows).collect();
+    order.sort_by(|&p, &q| keys[p].partial_cmp(&keys[q]).unwrap_or(std::cmp::Ordering::Equal));
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    for r in order {
+        match groups.last_mut() {
+            Some(last) if keys[last[0]] == keys[r] => last.push(r),
+            _ => groups.push(vec![r]),
+        }
+    }
+    for gr in groups.iter_mut() {
+        gr.sort();
+    }
+    Ok(groups)
+}
+
 fn varfun(it: &mut Interpreter, a: &[Value]) -> Ret {
     let f = crate::builtins::arg(a, 0, "varfun")?.clone();
     let t = table_at(a, 1, "varfun")?;
     let (_, opts) = split_opts(&a[2..], &["InputVariables", "OutputFormat", "GroupingVariables"]);
+    let gix: Vec<usize> = match opt(&opts, "GroupingVariables") {
+        Some(v) => var_indices(t, v)?,
+        None => Vec::new(),
+    };
     let ix: Vec<usize> = match opt(&opts, "InputVariables") {
         Some(v) => var_indices(t, v)?,
-        None => (0..t.vars.len()).collect(),
+        None => (0..t.vars.len()).filter(|i| !gix.contains(i)).collect(),
     };
     let format = opt(&opts, "OutputFormat").map(|v| v.text()).transpose()?.unwrap_or_else(|| "table".into());
     let label = fun_label(&f);
+    if !gix.is_empty() {
+        // One row per group: the grouping values, GroupCount, then each function result.
+        let groups = table_groups(t, &gix)?;
+        let firsts: Vec<usize> = groups.iter().map(|g| g[0]).collect();
+        let mut names: Vec<String> = gix.iter().map(|&i| t.names[i].clone()).collect();
+        let mut vars: Vec<Value> = gix.iter().map(|&i| rows(&t.vars[i], &firsts)).collect::<R<_>>()?;
+        names.push("GroupCount".into());
+        vars.push(Value::Num(Matrix::col(groups.iter().map(|g| g.len() as f64).collect())));
+        for &i in &ix {
+            let mut col = Vec::new();
+            for g in &groups {
+                let out = it.call_func_value(&f, vec![rows(&t.vars[i], g)?], 1)?;
+                col.push(out.into_iter().next().unwrap_or_else(Value::empty));
+            }
+            names.push(format!("{label}_{}", t.names[i]));
+            vars.push(indexing::vconcat(col)?);
+        }
+        return one(Value::Table(Box::new(Table::new(names, vars)?)));
+    }
     let mut names = Vec::new();
     let mut vars = Vec::new();
     for i in ix {
@@ -332,6 +403,39 @@ fn rowfun(it: &mut Interpreter, a: &[Value]) -> Ret {
         _ => 1,
     };
     let format = opt(&opts, "OutputFormat").map(|v| v.text()).transpose()?.unwrap_or_else(|| "table".into());
+    if let Some(gv) = opt(&opts, "GroupingVariables") {
+        // The function gets each group's rows; its output rows repeat the group's values.
+        let gix = var_indices(t, gv)?;
+        let ix: Vec<usize> = if opt(&opts, "InputVariables").is_some() { ix } else { (0..t.vars.len()).filter(|i| !gix.contains(i)).collect() };
+        let groups = table_groups(t, &gix)?;
+        let mut cols: Vec<Vec<Value>> = vec![Vec::new(); nout];
+        let mut rep_rows: Vec<usize> = Vec::new();
+        let mut counts: Vec<f64> = Vec::new();
+        for g in &groups {
+            let args: Vec<Value> = ix.iter().map(|&i| rows(&t.vars[i], g)).collect::<R<_>>()?;
+            let out = it.call_func_value(&f, args, nout)?;
+            if out.len() < nout {
+                return rt("The function returned fewer outputs than requested.");
+            }
+            let m = out.first().map(|v| v.dims()[0]).unwrap_or(1);
+            for _ in 0..m {
+                rep_rows.push(g[0]);
+                counts.push(g.len() as f64);
+            }
+            for (k, v) in out.into_iter().take(nout).enumerate() {
+                cols[k].push(v);
+            }
+        }
+        let outs: Vec<Value> = cols.into_iter().map(indexing::vconcat).collect::<R<_>>()?;
+        let mut names: Vec<String> = gix.iter().map(|&i| t.names[i].clone()).collect();
+        let mut vars: Vec<Value> = gix.iter().map(|&i| rows(&t.vars[i], &rep_rows)).collect::<R<_>>()?;
+        names.push("GroupCount".into());
+        vars.push(Value::Num(Matrix::col(counts)));
+        let base = names.len();
+        names.extend(out_names.unwrap_or_else(|| (1..=nout).map(|k| format!("Var{}", base + k)).collect()));
+        vars.extend(outs);
+        return one(Value::Table(Box::new(Table::new(names, vars)?)));
+    }
     let mut cols: Vec<Vec<Value>> = vec![Vec::new(); nout];
     for r in 0..t.nrows {
         let args: Vec<Value> = ix.iter().map(|&i| rows(&t.vars[i], &[r])).collect::<R<_>>()?;
@@ -431,6 +535,37 @@ fn innerjoin(a: &[Value]) -> Ret {
         }
     }
     one(Value::Table(Box::new(Table::new(names, vars)?)))
+}
+
+/// join(Tleft, Tright): each left row takes the right variables of the one right row with the
+/// same key values, keeping the left rows in their order.
+pub fn join_tables(a: &[Value]) -> Ret {
+    let l = table_at(a, 0, "join")?;
+    let r = table_at(a, 1, "join")?;
+    let (_, opts) = split_opts(&a[2..], JOIN_OPTS);
+    let (lk, rk) = join_keys(l, r, &opts)?;
+    let (lrows, rrows) = (key_rows(l, &lk)?, key_rows(r, &rk)?);
+    for (j, y) in rrows.iter().enumerate() {
+        if rrows[..j].contains(y) {
+            return rt("The key variables for the right table must have unique values.");
+        }
+    }
+    let mut ri = Vec::with_capacity(l.nrows);
+    for x in &lrows {
+        match rrows.iter().position(|y| y == x) {
+            Some(j) => ri.push(j),
+            None => return rt("The key variable for the right table must contain all values in the key variable for the left table."),
+        }
+    }
+    let mut names = l.names.clone();
+    let mut vars = l.vars.clone();
+    for (j, (n, v)) in r.names.iter().zip(&r.vars).enumerate() {
+        if !rk.contains(&j) {
+            names.push(if names.contains(n) { format!("{n}_right") } else { n.clone() });
+            vars.push(rows(v, &ri)?);
+        }
+    }
+    one(rebuild(l, names, vars)?)
 }
 
 fn outerjoin(a: &[Value], arg_names: &[Option<String>]) -> Ret {

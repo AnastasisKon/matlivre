@@ -509,6 +509,18 @@ pub fn call(_it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> R
             }
             one(Value::Num(Matrix::new(6, 7, data)))
         }
+        // [h,m,s] = hms(duration): whole hours and minutes, and the seconds left.
+        "hms" if matches!(a.first(), Some(Value::Time(t)) if t.kind == crate::time::TimeKind::Duration) => {
+            let Some(Value::Time(t)) = a.first() else { unreachable!() };
+            let ms: Vec<f64> = t.data.iter().map(|e| e[0]).collect();
+            let col = |f: &dyn Fn(f64) -> f64| Value::Num(Matrix::from_dims(t.dims.clone(), ms.iter().map(|&x| f(x)).collect()));
+            let outs = vec![
+                col(&|x| (x / 3_600_000.0).trunc()),
+                col(&|x| ((x % 3_600_000.0) / 60_000.0).trunc()),
+                col(&|x| (x % 60_000.0) / 1000.0),
+            ];
+            Ok(Some(outs.into_iter().take(nargout.max(1)).collect()))
+        }
         "ymd" | "hms" => {
             let t = time_arg(a, 0, name)?;
             let comps: Vec<(i64, i64, i64, i64, i64, f64)> = (0..t.data.len()).map(|i| parts(t.wall(i) / 86_400_000.0 + EPOCH)).collect();

@@ -189,6 +189,8 @@ fn textscan(text: &str, fmt: &str, repeat: Option<usize>, a: &[Value], start: us
         None => Vec::new(),
     };
     let header = option(a, start, "HeaderLines").map(|v| v.scalar()).transpose()?.unwrap_or(0.0) as usize;
+    // The value of an empty numeric field.
+    let empty_value = option(a, start, "EmptyValue").map(|v| v.scalar()).transpose()?.unwrap_or(f64::NAN);
     let comment = option(a, start, "CommentStyle").map(|v| v.text()).transpose()?;
     let mut body: String = text.split_inclusive('\n').skip(header).collect();
     if let Some(c) = &comment {
@@ -288,7 +290,7 @@ fn textscan(text: &str, fmt: &str, repeat: Option<usize>, a: &[Value], start: us
                     let v = if numeric {
                         match parse_number(&tok) {
                             Some(x) => Value::num(x),
-                            None if tok.is_empty() && pos < chars.len() && is_delim(chars[pos]) => Value::num(f64::NAN),
+                            None if tok.is_empty() && pos < chars.len() && is_delim(chars[pos]) => Value::num(empty_value),
                             None => {
                                 pos = st;
                                 break 'outer;
@@ -386,13 +388,20 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
             Ok(Some((0..m.cols().min(nargout.max(1))).map(|j| Value::Num(Matrix::col(m.data[j * r..(j + 1) * r].to_vec()))).collect()))
         }
         "writematrix" => {
-            let m = arg(a, 0, name)?.to_matrix()?;
             let path = match a.get(1) {
                 Some(p) if !p.text().map(|t| t.eq_ignore_ascii_case("Delimiter") || t.eq_ignore_ascii_case("WriteMode")).unwrap_or(false) => p.text()?,
                 _ => "matrix.txt".into(),
             };
             let delim = default_delim(&path, a, 2)?;
             let append = option(a, 2, "WriteMode").map(|v| v.text().map(|t| t.eq_ignore_ascii_case("append"))).transpose()?.unwrap_or(false);
+            // A string array writes its text, one element per field (<missing> empty).
+            if let Value::Str(s) = arg(a, 0, name)? {
+                let (r, k) = (s.dims[0], if s.dims[0] == 0 { 0 } else { s.data.len() / s.dims[0] });
+                let rows: Vec<Vec<String>> = (0..r).map(|i| (0..k).map(|j| s.data[j * r + i].clone().unwrap_or_default()).collect()).collect();
+                write_rows(&path, &rows, &delim, append)?;
+                return none();
+            }
+            let m = arg(a, 0, name)?.to_matrix()?;
             write_rows(&path, &rows_of_matrix(&m), &delim, append)?;
             none()
         }

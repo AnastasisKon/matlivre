@@ -729,6 +729,11 @@ fn method(it: &mut Interpreter, m: &str, nargout: usize, a: &[Value]) -> Ret {
             }
         }
         "distances" => {
+            // A trailing 'Method', 'unweighted' ignores the weights.
+            let mpos = rest.iter().position(|v| v.text().is_ok_and(|t| t.eq_ignore_ascii_case("Method")));
+            let unweighted = mpos.and_then(|k| rest.get(k + 1)).is_some_and(|v| v.text().is_ok_and(|t| t.eq_ignore_ascii_case("unweighted")));
+            let rest = &rest[..mpos.unwrap_or(rest.len())];
+            let use_w = g.weighted() && !unweighted;
             let src = match rest.first().filter(|v| !v.is_text() || g.names.is_some()) {
                 Some(v) if !v.text().map(|x| x.eq_ignore_ascii_case("all")).unwrap_or(false) => g.nodes(v)?,
                 _ => (0..n).collect(),
@@ -740,7 +745,7 @@ fn method(it: &mut Interpreter, m: &str, nargout: usize, a: &[Value]) -> Ret {
             let (r, c) = (src.len(), dst.len());
             let mut data = vec![0.0; r * c];
             for (i, &s) in src.iter().enumerate() {
-                let (d, _) = g.sssp(s, g.weighted());
+                let (d, _) = g.sssp(s, use_w);
                 for (j, &t) in dst.iter().enumerate() {
                     data[j * r + i] = d[t];
                 }

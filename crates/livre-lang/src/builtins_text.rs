@@ -421,6 +421,17 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
                 }
             })?)
         }
+        // A numeric position counts characters: insertAfter(s, 2, t) puts t after the 2nd.
+        "insertAfter" | "insertBefore" if matches!(a.get(1), Some(v) if !v.is_text() && !matches!(v, Value::Str(_) | Value::Cell(_))) => {
+            let k = arg(a, 1, name)?.as_usize()?;
+            let ins = arg(a, 2, name)?.text()?;
+            let at = if name == "insertAfter" { k } else { k.saturating_sub(1) };
+            one(map_text(arg(a, 0, name)?, |s| {
+                let chars: Vec<char> = s.chars().collect();
+                let at = at.min(chars.len());
+                format!("{}{ins}{}", chars[..at].iter().collect::<String>(), chars[at..].iter().collect::<String>())
+            })?)
+        }
         "insertAfter" | "insertBefore" => {
             let pat = arg(a, 1, name)?.text()?;
             let ins = arg(a, 2, name)?.text()?;
@@ -447,6 +458,17 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
                 };
                 if name == "extractBefore" { before } else { after }
             })?)
+        }
+        // Numeric start and end positions, inclusive; char input gives a cell.
+        "extractBetween" if matches!(a.get(1), Some(v) if !v.is_text() && !matches!(v, Value::Str(_) | Value::Cell(_))) => {
+            let (i, j) = (arg(a, 1, name)?.as_usize()?, arg(a, 2, name)?.as_usize()?);
+            let v = arg(a, 0, name)?;
+            let out = map_text(v, |s| {
+                let chars: Vec<char> = s.chars().collect();
+                let (lo, hi) = (i.max(1) - 1, j.min(chars.len()));
+                if lo < hi { chars[lo..hi].iter().collect() } else { String::new() }
+            })?;
+            one(if matches!(v, Value::Num(_)) { Value::Cell(CellArray::new(1, 1, vec![out])) } else { out })
         }
         "extractBetween" => {
             let p1 = arg(a, 1, name)?.text()?;
@@ -599,6 +621,7 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
             };
             Ok(Some(vec![row(parts), row(found)]))
         }
+        "join" if matches!(a.first(), Some(Value::Table(_))) => crate::table_ops::join_tables(a),
         "strjoin" | "join" => {
             let v = arg(a, 0, name)?;
             let items = text_list(v)?;

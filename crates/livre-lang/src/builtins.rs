@@ -2763,11 +2763,26 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             if a.is_empty() || a.iter().any(|v| v.text().map(|s| s == "all" || s == "variables").unwrap_or(false)) {
                 it.clear_current_scope();
             } else {
+                // Names, wildcards (`a*`), or regular expressions after `-regexp`.
+                let mut regexp = false;
                 for v in a {
                     let pat = v.text()?;
-                    if let Some(prefix) = pat.strip_suffix('*') {
+                    if pat == "-regexp" {
+                        regexp = true;
+                        continue;
+                    }
+                    if regexp {
+                        let re = fancy_regex::Regex::new(&pat).map_err(|e| LangError::new(e.to_string(), 0))?;
                         for n in it.var_names() {
-                            if n.starts_with(prefix) {
+                            if re.is_match(&n).unwrap_or(false) {
+                                it.remove_var(&n);
+                            }
+                        }
+                    } else if pat.contains('*') {
+                        let re = format!("^{}$", pat.split('*').map(fancy_regex::escape).collect::<Vec<_>>().join(".*"));
+                        let re = fancy_regex::Regex::new(&re).map_err(|e| LangError::new(e.to_string(), 0))?;
+                        for n in it.var_names() {
+                            if re.is_match(&n).unwrap_or(false) {
                                 it.remove_var(&n);
                             }
                         }

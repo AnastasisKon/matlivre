@@ -661,6 +661,11 @@ pub fn call(it_arg_names: &[Option<String>], name: &str, args: &[Value], _nargou
         }
         "table2struct" => {
             let t = table_arg(args, name)?;
+            // 'ToScalar', true: one struct whose fields hold whole variables.
+            let scalar = args.len() >= 3 && args[1].text().is_ok_and(|k| k.eq_ignore_ascii_case("ToScalar")) && args[2].is_true()?;
+            if scalar {
+                return one(Value::Struct(StructArray { dims: vec![1, 1], fields: t.names.clone(), elems: vec![t.vars.clone()] }));
+            }
             let mut elems = Vec::with_capacity(t.nrows);
             for r in 0..t.nrows {
                 let mut e = Vec::new();

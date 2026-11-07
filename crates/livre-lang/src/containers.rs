@@ -1071,11 +1071,27 @@ fn cat_method(it: &mut Interpreter, m: &str, a: &[Value], nargout: usize) -> Ret
         }
         "addcats" => {
             let mut c = c;
+            // addcats(A, new, 'Before', cat) / 'After': insert there instead of at the end.
+            let mut at = None;
+            if a.len() >= 4 {
+                let key = a[2].text()?;
+                let anchor = a[3].text()?;
+                let Some(k) = c.cats.iter().position(|x| *x == anchor) else { return rt(format!("'{anchor}' is not a category.")) };
+                at = Some(if key.eq_ignore_ascii_case("Before") { k } else if key.eq_ignore_ascii_case("After") { k + 1 } else { return rt(format!("'{key}' is not a recognized parameter.")) });
+            }
+            let mut pos = at.unwrap_or(c.cats.len());
             for nm in texts(crate::builtins::arg(a, 1, "addcats")?)? {
                 if c.cats.contains(&nm) {
                     return rt(format!("'{nm}' is already a category."));
                 }
-                c.cats.push(nm);
+                c.cats.insert(pos, nm);
+                // Codes after the insertion point move up by one.
+                for x in c.codes.data.iter_mut() {
+                    if *x as usize > pos {
+                        *x += 1.0;
+                    }
+                }
+                pos += 1;
             }
             one(c.value())
         }

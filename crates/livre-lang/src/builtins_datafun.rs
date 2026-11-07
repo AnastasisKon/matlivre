@@ -2253,7 +2253,11 @@ fn issortedrows(a: &[Value]) -> Ret {
     let o = Opts::parse(a, &["ascend", "descend", "monotonic", "strictascend", "strictdescend", "strictmonotonic"], &["ComparisonMethod", "MissingPlacement"])?;
     let method = comparison_method(&o)?;
     let src = arg(&o.pos, 0, "issortedrows")?;
-    let m = src.to_matrix()?;
+    // A table compares its variables side by side.
+    let m = match src {
+        Value::Table(t) => indexing::hconcat(t.vars.clone())?.to_matrix()?,
+        other => other.to_matrix()?,
+    };
     let dir = o.last_of(&["ascend", "descend", "monotonic", "strictascend", "strictdescend", "strictmonotonic"]).unwrap_or("ascend").to_string();
     let n = m.rows();
     let check = |desc: bool, strict: bool| -> R<bool> {
@@ -4973,14 +4977,14 @@ fn pivot(it: &mut Interpreter, a: &[Value]) -> Ret {
     one(Value::Table(Box::new(Table::new(names, vars)?)))
 }
 
-fn fillmissing2(a: &[Value], nargout: usize) -> Ret {
+fn fillmissing2(it: &mut Interpreter, a: &[Value], nargout: usize) -> Ret {
     let o = Opts::parse(a, &[], &["MissingLocations", "SamplePoints", "MaxDistance"])?;
     let x = num_arg(&o.pos, 0, "fillmissing2")?;
     let method = arg(&o.pos, 1, "fillmissing2")?.text().map(|t| t.to_lowercase()).unwrap_or_default();
     if !["nearest", "linear", "natural", "cubic", "v4", "movmean", "movmedian"].contains(&method.as_str()) {
         return rt("Fill method must be 'nearest', 'linear', 'natural', 'cubic', 'v4', 'movmean', or 'movmedian'.");
     }
-    if !["nearest", "movmean", "movmedian"].contains(&method.as_str()) {
+    if method == "cubic" {
         return rt(format!("Fill method '{method}' is not supported by fillmissing2 in this version."));
     }
     if x.dims.len() > 2 {
@@ -4993,7 +4997,26 @@ fn fillmissing2(a: &[Value], nargout: usize) -> Ret {
     };
     let mut out = x.clone();
     let known: Vec<usize> = (0..miss.len()).filter(|&p| !miss[p]).collect();
-    if method == "nearest" {
+    if matches!(method.as_str(), "linear" | "natural" | "v4") {
+        // Scattered interpolation over the (row, column) positions of the known elements;
+        // linear and natural leave points outside their convex hull missing.
+        let gone: Vec<usize> = (0..miss.len()).filter(|&p| miss[p]).collect();
+        if !gone.is_empty() && known.len() >= 3 {
+            let col = |ps: &[usize], f: &dyn Fn(usize) -> f64| Value::Num(Matrix::col(ps.iter().map(|&p| f(p)).collect()));
+            let args = vec![
+                col(&known, &|p| (p / r + 1) as f64),
+                col(&known, &|p| (p % r + 1) as f64),
+                col(&known, &|p| x.data[p]),
+                col(&gone, &|p| (p / r + 1) as f64),
+                col(&gone, &|p| (p % r + 1) as f64),
+                Value::chars(&method),
+            ];
+            let v = it.call_function("griddata", args, 1)?.remove(0).to_matrix()?;
+            for (k, &p) in gone.iter().enumerate() {
+                out.data[p] = v.data.get(k).copied().unwrap_or(f64::NAN);
+            }
+        }
+    } else if method == "nearest" {
         // A triangulation needs three points not on one line.
         let (r0, c0) = known.first().map(|&p| (p % r, p / r)).unwrap_or((0, 0));
         let (r1, c1) = known.get(1).map(|&p| (p % r, p / r)).unwrap_or((0, 0));
@@ -5083,7 +5106,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         "gradient" => gradient(a, nargout),
         "del2" => mat(del2(a)?),
         "fillmissing" => fillmissing(it, a, nargout),
-        "fillmissing2" => fillmissing2(a, nargout),
+        "fillmissing2" => fillmissing2(it, a, nargout),
         "standardizeMissing" => standardize_missing(a),
         "rmmissing" => rmmissing(a, nargout),
         "isoutlier" => isoutlier(a),
