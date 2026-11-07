@@ -52,6 +52,39 @@ fn oriented(data: Vec<C>, column: bool) -> Matrix {
     from_complex(dims, &data)
 }
 
+/// Full convolution of real sequences. The output is cut into blocks computed in parallel; each
+/// element still adds its products in the order of the first sequence, as the plain double loop
+/// does, so the result is unchanged.
+fn conv_real(a: &[f64], b: &[f64]) -> Vec<f64> {
+    use rayon::prelude::*;
+    if a.is_empty() || b.is_empty() {
+        return Vec::new();
+    }
+    let (n, m) = (a.len(), b.len());
+    let mut out = vec![0.0; n + m - 1];
+    const BLOCK: usize = 2048;
+    let work = |blk: usize, o: &mut [f64]| {
+        let k0 = blk * BLOCK;
+        let k1 = k0 + o.len();
+        for i in k0.saturating_sub(m - 1)..n.min(k1) {
+            let jlo = k0.saturating_sub(i);
+            let jhi = m.min(k1 - i);
+            let x = a[i];
+            let src = &b[jlo..jhi];
+            let dst = &mut o[i + jlo - k0..i + jhi - k0];
+            for (d, &y) in dst.iter_mut().zip(src) {
+                *d += x * y;
+            }
+        }
+    };
+    if n * m >= (1 << 16) {
+        out.par_chunks_mut(BLOCK).enumerate().for_each(|(blk, o)| work(blk, o));
+    } else {
+        out.chunks_mut(BLOCK).enumerate().for_each(|(blk, o)| work(blk, o));
+    }
+    out
+}
+
 fn conv_c(a: &[C], b: &[C]) -> Vec<C> {
     if a.is_empty() || b.is_empty() {
         return Vec::new();
@@ -117,7 +150,11 @@ fn conv(a: &[Value]) -> Ret {
         Some(s) => s.text()?.to_ascii_lowercase(),
         None => "full".into(),
     };
-    let full = conv_c(&complex_of(&u), &complex_of(&v));
+    let full = if !u.is_complex() && !v.is_complex() {
+        conv_real(&u.data, &v.data).into_iter().map(|x| C::new(x, 0.0)).collect()
+    } else {
+        conv_c(&complex_of(&u), &complex_of(&v))
+    };
     let (nu, nv) = (u.numel(), v.numel());
     let part = match shape.as_str() {
         "full" => full,

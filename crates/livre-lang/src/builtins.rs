@@ -751,6 +751,11 @@ fn element(v: &Value, k: usize, unwrap_cells: bool) -> R<Value> {
 }
 
 pub fn call(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize) -> Ret {
+    // faer's factorizations (QR, SVD, eigenvalues, Cholesky) default to the global thread pool,
+    // where they ran up to 100 times slower than single-threaded on matrices of a few hundred
+    // rows; products and solves pass their own parallelism explicitly.
+    static FAER_INIT: std::sync::Once = std::sync::Once::new();
+    FAER_INIT.call_once(|| faer::set_global_parallelism(faer::Par::Seq));
     if args.first().is_some_and(crate::builtins_sparse::is_sparse) {
         let first = args[0].clone();
         let mut r = call_dense(it, name, args, nargout)?;
@@ -2188,7 +2193,10 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             let (stable, rows, last) = (flag("stable"), flag("rows"), flag("last"));
             // Items: the elements, or the rows with 'rows'.
             let (r, c) = (m.rows(), m.cols());
-            let items: Vec<Vec<f64>> = if rows { (0..r).map(|i| (0..c).map(|j| m.data[j * r + i]).collect()).collect() } else { m.data.iter().map(|&x| vec![x]).collect() };
+            let items: Vec<Vec<f64>> = if rows { (0..r).map(|i| (0..c).map(|j| m.data[j * r + i]).collect()).collect() } else { Vec::new() };
+            let n_items = if rows { items.len() } else { m.data.len() };
+            // Element `i` as a slice (a single value unless rows are compared).
+            let item = |i: usize| -> &[f64] { if rows { &items[i] } else { std::slice::from_ref(&m.data[i]) } };
             // Sort the items (NaN last), then group equal neighbours; NaN is never equal to
             // anything, so each NaN is its own item.
             let cmp = |p: &[f64], q: &[f64]| {
@@ -2206,12 +2214,17 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 std::cmp::Ordering::Equal
             };
             let same = |p: &[f64], q: &[f64]| p.iter().zip(q).all(|(x, y)| x == y);
-            let mut sorted: Vec<usize> = (0..items.len()).collect();
-            sorted.sort_by(|&i, &j| cmp(&items[i], &items[j]));
+            let mut sorted: Vec<usize> = (0..n_items).collect();
+            if n_items >= ops::PAR_MIN {
+                use rayon::slice::ParallelSliceMut;
+                sorted.par_sort_by(|&i, &j| cmp(item(i), item(j)));
+            } else {
+                sorted.sort_by(|&i, &j| cmp(item(i), item(j)));
+            }
             let mut groups: Vec<(usize, usize)> = Vec::new(); // (first, last) occurrence, in sorted order
-            let mut ic_raw = vec![0usize; items.len()];
+            let mut ic_raw = vec![0usize; n_items];
             for (k, &i) in sorted.iter().enumerate() {
-                if k > 0 && same(&items[sorted[k - 1]], &items[i]) {
+                if k > 0 && same(item(sorted[k - 1]), item(i)) {
                     let g = groups.len() - 1;
                     groups[g].0 = groups[g].0.min(i);
                     groups[g].1 = groups[g].1.max(i);
@@ -2236,12 +2249,12 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 let mut d = vec![0.0; k * c];
                 for (ri, &g) in order.iter().enumerate() {
                     for j in 0..c {
-                        d[j * k + ri] = items[groups[g].0][j];
+                        d[j * k + ri] = item(groups[g].0)[j];
                     }
                 }
                 Matrix::new(k, c, d)
             } else {
-                let vals: Vec<f64> = order.iter().map(|&g| items[groups[g].0][0]).collect();
+                let vals: Vec<f64> = order.iter().map(|&g| m.data[groups[g].0]).collect();
                 if m.dims.len() == 2 && m.dims[0] == 1 { Matrix::row(vals) } else { Matrix::col(vals) }
             };
             Ok(Some(vec![Value::Num(out.with_kind(m.kind)), Value::Num(Matrix::col(ia)), Value::Num(Matrix::col(ic))]))
@@ -2259,15 +2272,34 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                     return rt("Inputs A and S must have the same number of columns in the 'rows' case.");
                 }
                 let (xr, sr, c) = (xm.rows(), sm.rows(), xm.cols());
-                let loc: Vec<f64> = (0..xr)
-                    .map(|i| (0..sr).find(|&k| (0..c).all(|j| xm.data[j * xr + i] == sm.data[j * sr + k])).map(|k| (k + 1) as f64).unwrap_or(0.0))
-                    .collect();
+                // Rows as keys of the bit patterns (-0 as 0); a row holding NaN matches nothing.
+                let key = |m: &Matrix, rows: usize, i: usize| -> Option<Vec<u64>> {
+                    (0..c).map(|j| {
+                        let v = m.data[j * rows + i];
+                        if v.is_nan() { None } else { Some((if v == 0.0 { 0.0f64 } else { v }).to_bits()) }
+                    }).collect()
+                };
+                let mut first: std::collections::HashMap<Vec<u64>, usize> = std::collections::HashMap::with_capacity(sr);
+                for k in 0..sr {
+                    if let Some(kk) = key(&sm, sr, k) {
+                        first.entry(kk).or_insert(k);
+                    }
+                }
+                let loc: Vec<f64> = (0..xr).map(|i| key(&xm, xr, i).and_then(|kk| first.get(&kk).copied()).map(|k| (k + 1) as f64).unwrap_or(0.0)).collect();
                 return Ok(Some(vec![
                     Value::Num(Matrix::col(loc.iter().map(|&l| (l > 0.0) as u8 as f64).collect()).with_kind(Kind::Logical)),
                     Value::Num(Matrix::col(loc)),
                 ]));
             }
-            let loc: Vec<f64> = xm.data.iter().map(|v| sm.data.iter().position(|s| s == v).map(|p| (p + 1) as f64).unwrap_or(0.0)).collect();
+            // First position of each value of the set (-0 and 0 are equal, NaN equals nothing).
+            let norm = |v: f64| if v == 0.0 { 0.0f64 } else { v };
+            let mut first: std::collections::HashMap<u64, usize> = std::collections::HashMap::with_capacity(sm.data.len());
+            for (p, &s) in sm.data.iter().enumerate() {
+                if !s.is_nan() {
+                    first.entry(norm(s).to_bits()).or_insert(p);
+                }
+            }
+            let loc: Vec<f64> = xm.data.iter().map(|&v| if v.is_nan() { 0.0 } else { first.get(&norm(v).to_bits()).map(|&p| (p + 1) as f64).unwrap_or(0.0) }).collect();
             Ok(Some(vec![
                 Value::Num(Matrix::from_dims(xm.dims.clone(), loc.iter().map(|&l| (l > 0.0) as u8 as f64).collect()).with_kind(Kind::Logical)),
                 Value::Num(Matrix::from_dims(xm.dims.clone(), loc)),
@@ -2453,9 +2485,7 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 let s = it.call_function("svd", vec![Value::Num(m.clone())], 1)?.remove(0);
                 return num(s.to_matrix()?.data.iter().copied().fold(0.0, f64::max));
             }
-            let real = Matrix::from_dims(m.dims.clone(), m.data.clone());
-            let ata = ops::matmul(&real.transpose(), &real)?;
-            num(sym_eigs(&ata).into_iter().fold(0.0f64, f64::max).max(0.0).sqrt())
+            num(crate::builtins_matfun::two_norm(&m)?)
         }
         "det" => num(ops::det(&m_arg(a, 0, name)?)?),
         "inv" => {
@@ -2485,8 +2515,8 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             let n = m.rows();
             let symmetric = !m.is_complex() && (0..n).all(|i| (0..n).all(|j| (m.get(i, j) - m.get(j, i)).abs() <= 1e-12 * (m.get(i, j).abs() + 1.0)));
             if symmetric {
-                let (vals, vecs) = jacobi_eig(&m);
-                if nargout >= 2 {
+                let (vals, vecs) = crate::builtins_matfun::eig_symmetric(&m, nargout >= 2)?;
+                if let Some(vecs) = vecs {
                     let mut d = Matrix::zeros(n, n);
                     for i in 0..n {
                         d.set(i, i, vals[i]);
@@ -2499,11 +2529,7 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 let (v, d) = crate::builtins_matfun::eig_vd(&m)?;
                 return Ok(Some(vec![v, d]));
             }
-            // Characteristic polynomial (Faddeev–LeVerrier), then its roots.
-            let coeffs = char_poly(&Matrix::from_dims(m.dims.clone(), m.data.clone()))?;
-            let mut roots = poly_roots(&coeffs.iter().map(|&c| C::new(c, 0.0)).collect::<Vec<_>>());
-            roots.sort_by(|p, q| p.re.partial_cmp(&q.re).unwrap_or(std::cmp::Ordering::Equal).then(p.im.partial_cmp(&q.im).unwrap_or(std::cmp::Ordering::Equal)));
-            mat(Matrix::complex(vec![n, 1], roots.iter().map(|z| z.re).collect(), roots.iter().map(|z| z.im).collect()))
+            Ok(Some(vec![crate::builtins_matfun::eig_values(&m)?]))
         }
         "roots" => {
             let p = m_arg(a, 0, name)?;
@@ -3179,84 +3205,6 @@ fn time_reduction(name: &str, t: &TimeArray, args: &[Value]) -> Ret {
         "abs" if t.kind == TimeKind::Duration => Ok(Some(vec![wrap(m.map(f64::abs))])),
         _ => Ok(None),
     }
-}
-
-/// Eigen-decomposition of a real symmetric matrix by cyclic Jacobi rotations.
-fn jacobi_eig(m: &Matrix) -> (Vec<f64>, Matrix) {
-    let n = m.rows();
-    let mut a = Matrix::from_dims(m.dims.clone(), m.data.clone());
-    let mut v = ops::identity(n);
-    for _ in 0..100 {
-        let off: f64 = (0..n).flat_map(|i| (0..n).filter(move |&j| j != i).map(move |j| (i, j))).map(|(i, j)| a.get(i, j).powi(2)).sum();
-        if off < 1e-22 {
-            break;
-        }
-        for p in 0..n {
-            for q in p + 1..n {
-                let apq = a.get(p, q);
-                if apq.abs() < 1e-300 {
-                    continue;
-                }
-                let theta = (a.get(q, q) - a.get(p, p)) / (2.0 * apq);
-                let t = theta.signum() / (theta.abs() + (theta * theta + 1.0).sqrt());
-                let t = if theta == 0.0 { 1.0 } else { t };
-                let c = 1.0 / (t * t + 1.0).sqrt();
-                let s = t * c;
-                for k in 0..n {
-                    let (akp, akq) = (a.get(k, p), a.get(k, q));
-                    a.set(k, p, c * akp - s * akq);
-                    a.set(k, q, s * akp + c * akq);
-                }
-                for k in 0..n {
-                    let (apk, aqk) = (a.get(p, k), a.get(q, k));
-                    a.set(p, k, c * apk - s * aqk);
-                    a.set(q, k, s * apk + c * aqk);
-                }
-                for k in 0..n {
-                    let (vkp, vkq) = (v.get(k, p), v.get(k, q));
-                    v.set(k, p, c * vkp - s * vkq);
-                    v.set(k, q, s * vkp + c * vkq);
-                }
-            }
-        }
-    }
-    // Ascending eigenvalues with matching vectors (MATLAB's order for symmetric input).
-    let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by(|&i, &j| a.get(i, i).partial_cmp(&a.get(j, j)).unwrap_or(std::cmp::Ordering::Equal));
-    let vals = order.iter().map(|&i| a.get(i, i)).collect();
-    let mut vecs = Matrix::zeros(n, n);
-    for (c, &i) in order.iter().enumerate() {
-        // Normalize sign so the largest component is positive.
-        let col: Vec<f64> = (0..n).map(|r| v.get(r, i)).collect();
-        let big = col.iter().cloned().fold(0.0f64, |acc, x| if x.abs() > acc.abs() { x } else { acc });
-        let s = if big < 0.0 { -1.0 } else { 1.0 };
-        for r in 0..n {
-            vecs.set(r, c, s * col[r]);
-        }
-    }
-    (vals, vecs)
-}
-
-fn sym_eigs(m: &Matrix) -> Vec<f64> {
-    jacobi_eig(m).0
-}
-
-/// Characteristic polynomial coefficients (highest degree first).
-fn char_poly(a: &Matrix) -> R<Vec<f64>> {
-    let n = a.rows();
-    let mut coeffs = vec![1.0];
-    let mut mk = Matrix::zeros(n, n);
-    let id = ops::identity(n);
-    let mut c = 1.0;
-    for k in 1..=n {
-        // M_k = A M_{k-1} + c_{k-1} I ; c_k = -tr(A M_k)/k
-        let am = ops::matmul(a, &mk)?;
-        mk = broadcast(&am, &id, |x, y| x + c * y)?;
-        let amk = ops::matmul(a, &mk)?;
-        c = -(0..n).map(|i| amk.get(i, i)).sum::<f64>() / k as f64;
-        coeffs.push(c);
-    }
-    Ok(coeffs)
 }
 
 pub(crate) fn gamma_fn(x: f64) -> f64 {

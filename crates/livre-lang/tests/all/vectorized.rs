@@ -23,3 +23,25 @@ fn reductions_scans_and_expansion_match_matlab() {
         assert_eq!(g, w);
     }
 }
+
+/// Eigenvalues, QR, Cholesky, LU, norm, convolution, `ismember`, `unique` and `containers.Map` on
+/// matrices large enough to take the fast kernels (`data/linalg_fast.m`), against MATLAB R2023b.
+#[test]
+fn linear_algebra_and_lookups_match_matlab() {
+    let mut it = Interpreter::new();
+    let _ = it.run_source(include_str!("data/linalg_fast.m"));
+    let got: Vec<String> = it
+        .take_outputs()
+        .into_iter()
+        .filter_map(|o| match o.kind {
+            OutputKind::Text(t) => Some(t.trim_end().to_string()),
+            OutputKind::Error(e) => Some(format!("Error: {e}")),
+            _ => None,
+        })
+        .collect();
+    let want: Vec<&str> = include_str!("data/linalg_fast_matlab.txt").lines().collect();
+    assert_eq!(got.len(), want.len());
+    for (g, w) in got.iter().zip(&want) {
+        assert_eq!(g, w);
+    }
+}

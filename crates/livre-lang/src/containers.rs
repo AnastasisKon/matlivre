@@ -344,28 +344,58 @@ fn new_map(a: &[Value]) -> Ret {
     one(obj)
 }
 
-fn map_get(o: &Object, key: &Value) -> R<Value> {
-    let (keys, vals, kt, _) = map_parts(o);
-    let k = map_key(key, &kt)?;
-    match keys.iter().position(|x| values_equal(x, &k)) {
-        Some(i) => Ok(vals[i].clone()),
-        None => rt("The specified key is not present in this container."),
-    }
+/// Position of `k` in the sorted key list (`Ok`), or where it would go (`Err`).
+fn key_search(keys: &[Value], k: &Value) -> Result<usize, usize> {
+    keys.binary_search_by(|x| key_cmp(x, k))
 }
 
-fn map_set(o: &Object, key: &Value, v: Value) -> R<()> {
-    let (mut keys, mut vals, kt, vt) = map_parts(o);
+fn map_get(o: &Object, key: &Value) -> R<Value> {
+    let kt = prop(o, "KeyType").text().unwrap_or_default();
     let k = map_key(key, &kt)?;
-    let v = map_value(v, &vt)?;
-    match keys.iter().position(|x| values_equal(x, &k)) {
-        Some(i) => vals[i] = v,
-        None => {
-            let at = keys.iter().position(|x| key_cmp(x, &k) == std::cmp::Ordering::Greater).unwrap_or(keys.len());
-            keys.insert(at, k);
-            vals.insert(at, v);
+    let p = o.props.borrow();
+    let (ki, vi) = (o.class.prop_index("Keys_").unwrap(), o.class.prop_index("Values_").unwrap());
+    if let (Value::Cell(kc), Value::Cell(vc)) = (&p[ki], &p[vi]) {
+        if let Ok(i) = key_search(&kc.data, &k) {
+            return Ok(vc.data[i].clone());
         }
     }
-    map_store(o, keys, vals);
+    rt("The specified key is not present in this container.")
+}
+
+/// Sets `key` in place: the key and value lists stay sorted, and nothing else is copied.
+fn map_set(o: &Object, key: &Value, v: Value) -> R<()> {
+    let kt = prop(o, "KeyType").text().unwrap_or_default();
+    let vt = prop(o, "ValueType").text().unwrap_or_default();
+    let k = map_key(key, &kt)?;
+    let v = map_value(v, &vt)?;
+    let mut p = o.props.borrow_mut();
+    let (ki, vi, ci) = (o.class.prop_index("Keys_").unwrap(), o.class.prop_index("Values_").unwrap(), o.class.prop_index("Count").unwrap());
+    let found = match &p[ki] {
+        Value::Cell(kc) => key_search(&kc.data, &k),
+        _ => Err(0),
+    };
+    let n = match found {
+        Ok(i) => {
+            if let Value::Cell(vc) = &mut p[vi] {
+                vc.data[i] = v;
+            }
+            return Ok(());
+        }
+        Err(at) => {
+            let mut n = 0;
+            if let Value::Cell(kc) = &mut p[ki] {
+                kc.data.insert(at, k);
+                n = kc.data.len();
+                kc.dims = vec![1, n];
+            }
+            if let Value::Cell(vc) = &mut p[vi] {
+                vc.data.insert(at, v);
+                vc.dims = vec![1, n];
+            }
+            n
+        }
+    };
+    p[ci] = Value::Num(Matrix::scalar(n as f64).with_kind(Kind::from_name("uint64").unwrap()));
     Ok(())
 }
 
@@ -379,6 +409,28 @@ fn key_list(v: &Value) -> (Vec<Value>, Dims, bool) {
 }
 
 fn map_method(it: &mut Interpreter, m: &str, o: &Object, a: &[Value]) -> Ret {
+    // Lookups work on the stored lists in place; the other methods copy them.
+    if matches!(m, "isKey" | "length" | "isempty") {
+        let ki = o.class.prop_index("Keys_").unwrap();
+        let count = match &o.props.borrow()[ki] {
+            Value::Cell(kc) => kc.data.len(),
+            _ => 0,
+        };
+        match m {
+            "length" => return one(Value::num(count as f64)),
+            "isempty" => return one(Value::bool(count == 0)),
+            _ => {
+                let (ks, dims, _) = key_list(a.get(1).ok_or_else(|| LangError::new("Not enough input arguments.", 0))?);
+                let kt = prop(o, "KeyType").text()?;
+                let p = o.props.borrow();
+                let found: Vec<bool> = match &p[ki] {
+                    Value::Cell(kc) => ks.iter().map(|k| map_key(k, &kt).map(|k| key_search(&kc.data, &k).is_ok()).unwrap_or(false)).collect(),
+                    _ => vec![false; ks.len()],
+                };
+                return one(logical(dims, found));
+            }
+        }
+    }
     let (keys, vals, _, _) = map_parts(o);
     match m {
         "keys" => one(Value::Cell(CellArray::from_dims(vec![1, keys.len()], keys))),
@@ -393,7 +445,7 @@ fn map_method(it: &mut Interpreter, m: &str, o: &Object, a: &[Value]) -> Ret {
         "isKey" => {
             let (ks, dims, _) = key_list(a.get(1).ok_or_else(|| LangError::new("Not enough input arguments.", 0))?);
             let kt = prop(o, "KeyType").text()?;
-            let found: Vec<bool> = ks.iter().map(|k| map_key(k, &kt).map(|k| keys.iter().any(|x| values_equal(x, &k))).unwrap_or(false)).collect();
+            let found: Vec<bool> = ks.iter().map(|k| map_key(k, &kt).map(|k| key_search(&keys, &k).is_ok()).unwrap_or(false)).collect();
             one(logical(dims, found))
         }
         "remove" => {
@@ -1378,7 +1430,14 @@ pub fn dims(o: &Object) -> Dims {
             Some(Value::Num(m)) => m.dims.clone(),
             _ => vec![0, 0],
         },
-        MAP => vec![cell_items(prop(o, "Keys_")).len(), 1],
+        MAP => {
+            let ki = o.class.prop_index("Keys_").unwrap();
+            let n = match &o.props.borrow()[ki] {
+                Value::Cell(kc) => kc.data.len(),
+                _ => 0,
+            };
+            vec![n, 1]
+        }
         _ => vec![1, 1],
     }
 }

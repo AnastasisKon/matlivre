@@ -419,6 +419,23 @@ fn apply_left(a: &mut M, v: &[Z], t: Z, r0: usize, c0: usize, c1: usize) {
     if t == ZERO {
         return;
     }
+    // Real reflector applied to real columns: the complex products reduce to real ones exactly
+    // (the imaginary parts stay zero), so work on the real parts of contiguous column slices.
+    if t.im == 0.0 && v.iter().all(|z| z.im == 0.0) && (c0..c1).all(|j| a.d[j * a.r + r0..j * a.r + r0 + v.len()].iter().all(|z| z.im == 0.0)) {
+        let (m, len) = (a.r, v.len());
+        for j in c0..c1 {
+            let col = &mut a.d[j * m + r0..j * m + r0 + len];
+            let mut s = 0.0;
+            for (vk, z) in v.iter().zip(col.iter()) {
+                s += vk.re * z.re;
+            }
+            let s = s * t.re;
+            for (vk, z) in v.iter().zip(col.iter_mut()) {
+                z.re -= vk.re * s;
+            }
+        }
+        return;
+    }
     for j in c0..c1 {
         let mut s = ZERO;
         for (k, vk) in v.iter().enumerate() {
@@ -537,6 +554,9 @@ fn rot_cols(a: &mut M, i: usize, k: usize, c: f64, s: Z, r0: usize, r1: usize) {
 /// and the row order, so A(p,:) = L*U. Zero pivot columns are skipped as in `getrf`.
 fn lu_packed(a: &M) -> (M, Vec<usize>) {
     let (m, n) = (a.r, a.c);
+    if m * n >= 1024 && a.is_real() {
+        return lu_packed_real(a);
+    }
     let mut f = a.clone();
     let mut p: Vec<usize> = (0..m).collect();
     for k in 0..m.min(n) {
@@ -584,6 +604,58 @@ fn lu_packed(a: &M) -> (M, Vec<usize>) {
         }
     }
     (f, p)
+}
+
+/// `lu_packed` for a real matrix: the same steps on the real parts, with each column update a
+/// contiguous loop (`f(:,j) -= f(:,k) * u`).
+fn lu_packed_real(a: &M) -> (M, Vec<usize>) {
+    let (m, n) = (a.r, a.c);
+    let mut f: Vec<f64> = a.d.iter().map(|z| z.re).collect();
+    let mut p: Vec<usize> = (0..m).collect();
+    for k in 0..m.min(n) {
+        let mut piv = k;
+        let mut best = f[k * m + k].abs();
+        for i in k + 1..m {
+            let v = f[k * m + i].abs();
+            if v > best {
+                best = v;
+                piv = i;
+            }
+        }
+        if f[k * m + piv] == 0.0 {
+            continue;
+        }
+        if piv != k {
+            for j in 0..n {
+                f.swap(j * m + k, j * m + piv);
+            }
+            p.swap(k, piv);
+        }
+        let pivot = f[k * m + k];
+        if pivot.abs() >= f64::MIN_POSITIVE {
+            let r = 1.0 / pivot;
+            for x in &mut f[k * m + k + 1..(k + 1) * m] {
+                *x *= r;
+            }
+        } else {
+            for x in &mut f[k * m + k + 1..(k + 1) * m] {
+                *x /= pivot;
+            }
+        }
+        for j in k + 1..n {
+            let (left, right) = f.split_at_mut(j * m);
+            let colk = &left[k * m + k + 1..(k + 1) * m];
+            let colj = &mut right[..m];
+            let u = colj[k];
+            if u == 0.0 {
+                continue;
+            }
+            for (x, &l) in colj[k + 1..].iter_mut().zip(colk) {
+                *x -= l * u;
+            }
+        }
+    }
+    (M { r: m, c: n, d: f.into_iter().map(|x| Z::new(x, 0.0)).collect() }, p)
 }
 
 fn lu_split(f: &M) -> (M, M) {
@@ -919,6 +991,16 @@ fn lstsq(it: Option<&mut Interpreter>, a: &M, b: &M) -> (M, usize) {
 /// pivot, with the factor of the leading (k-1)×(k-1) block.
 fn chol_upper(a: &M) -> Result<M, (usize, M)> {
     let n = a.r;
+    if n >= 64 && a.is_real() {
+        // The factor of the upper triangle; a failure falls through to the loop below, which
+        // reports where the matrix stops being positive definite.
+        let data: Vec<f64> = a.d.iter().map(|z| z.re).collect();
+        let f = faer::MatRef::from_column_major_slice(&data, n, n);
+        if let Ok(llt) = f.llt(faer::Side::Upper) {
+            let l = llt.L();
+            return Ok(M::from_fn(n, n, |i, j| if i <= j { re(l[(j, i)]) } else { ZERO }));
+        }
+    }
     let mut r = M::zeros(n, n);
     for j in 0..n {
         let mut s = a.at(j, j).re;
@@ -1187,6 +1269,87 @@ fn eig_herm(a: &M) -> R<(Vec<f64>, M)> {
 
 fn is_herm(a: &M) -> bool {
     a.is_square() && (0..a.r).all(|j| (j..a.r).all(|i| a.at(i, j) == a.at(j, i).conj()))
+}
+
+/// The 2-norm of a real matrix: its largest singular value.
+pub(crate) fn two_norm(a: &Matrix) -> R<f64> {
+    if a.data.iter().any(|v| v.is_nan()) {
+        return Ok(f64::NAN);
+    }
+    if a.data.iter().any(|v| v.is_infinite()) {
+        return Ok(f64::INFINITY);
+    }
+    let m = M::of(a);
+    if m.r == 0 || m.c == 0 {
+        return Ok(0.0);
+    }
+    Ok(singular_values(&m)?.into_iter().fold(0.0, f64::max))
+}
+
+/// Eigenvalues (and, on request, eigenvectors with the sign fixed so that the largest component
+/// is positive) of a real symmetric matrix, ascending, through faer.
+pub(crate) fn eig_symmetric(a: &Matrix, vectors: bool) -> R<(Vec<f64>, Option<Matrix>)> {
+    let n = a.rows();
+    let fail = |_| LangError::new("EIG did not converge.", 0);
+    if a.data.iter().any(|v| !v.is_finite()) {
+        return rt("Input to EIG must not contain NaN or Inf.");
+    }
+    let f = faer::MatRef::from_column_major_slice(&a.data, n, n);
+    if !vectors {
+        return Ok((f.self_adjoint_eigenvalues(faer::Side::Lower).map_err(fail)?, None));
+    }
+    let e = f.self_adjoint_eigen(faer::Side::Lower).map_err(fail)?;
+    let vals: Vec<f64> = (0..n).map(|i| e.S().column_vector()[i]).collect();
+    let u = e.U();
+    let mut data = vec![0.0; n * n];
+    for j in 0..n {
+        let mut big = 0.0f64;
+        for i in 0..n {
+            if u[(i, j)].abs() > big.abs() {
+                big = u[(i, j)];
+            }
+        }
+        let s = if big < 0.0 { -1.0 } else { 1.0 };
+        for i in 0..n {
+            data[j * n + i] = s * u[(i, j)];
+        }
+    }
+    Ok((vals, Some(Matrix::new(n, n, data))))
+}
+
+/// Eigenvalues of a square matrix as a column (no eigenvectors are computed).
+pub(crate) fn eig_values(a: &Matrix) -> R<Value> {
+    let m = M::of(a);
+    if m.r == 0 {
+        return Ok(Value::Num(Matrix::zeros(0, 1)));
+    }
+    if m.has_nonfinite() {
+        return rt("Input to EIG must not contain NaN or Inf.");
+    }
+    if is_herm(&m) {
+        let (v, _) = eig_herm(&m)?;
+        return Ok(Value::Num(Matrix::col(v)));
+    }
+    let fail = |_| LangError::new("EIG did not converge.", 0);
+    let mut vals: Vec<Z> = if m.is_real() { m.faer_re().eigenvalues().map_err(fail)? } else { m.faer().eigenvalues().map_err(fail)? };
+    let n = m.r;
+    if m.is_real() {
+        // Conjugate pairs of a real matrix come positive imaginary part first, as from LAPACK.
+        let mut j = 0;
+        while j + 1 < n {
+            if vals[j].im < 0.0 && vals[j + 1] == vals[j].conj() {
+                vals.swap(j, j + 1);
+                j += 2;
+            } else {
+                j += 1;
+            }
+        }
+    }
+    if a.is_complex() || vals.iter().any(|z| z.im != 0.0) {
+        Ok(Value::Num(Matrix::complex(vec![n, 1], vals.iter().map(|z| z.re).collect(), vals.iter().map(|z| z.im).collect())))
+    } else {
+        Ok(Value::Num(Matrix::col(vals.iter().map(|z| z.re).collect())))
+    }
 }
 
 /// Eigenvalues of a square matrix.
@@ -2836,6 +2999,22 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
             let vector = zero || opts.iter().any(|o| o == "vector");
             let k = m.r.min(m.c);
             let rows = if econ { k } else { m.r };
+            // Large real matrices without column pivoting: faer's blocked Householder QR, which
+            // follows the same conventions (R(k,k) = -sign(a)*norm, no reflection of a column
+            // that is already zero below the diagonal).
+            if nargout < 3 && m.r * m.c >= 4096 && !c && m.is_real() && !m.has_nonfinite() {
+                let data: Vec<f64> = m.d.iter().map(|z| z.re).collect();
+                let fa = faer::MatRef::from_column_major_slice(&data, m.r, m.c);
+                let qr = fa.qr();
+                let rf = qr.R();
+                let r = M::from_fn(rows, m.c, |i, j| if j >= i && i < k { re(rf[(i, j)]) } else { ZERO });
+                if nargout <= 1 {
+                    return one(r.val(false));
+                }
+                let qf = if econ { qr.compute_thin_Q() } else { qr.compute_Q() };
+                let q = M::from_fn(m.r, qf.ncols(), |i, j| re(qf[(i, j)]));
+                return vals(vec![q.val(false), r.val(false)]);
+            }
             let f = qr_fact(&m, nargout >= 3);
             let r = f.r(rows);
             if nargout <= 1 {

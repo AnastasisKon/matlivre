@@ -1,0 +1,19 @@
+eigS 73.199917 162.48578 6477.0543
+eigV 1 6477.0543
+eigA 80 38.5271 41.1954
+qr 1 1 40
+qre 80 40 1 19
+chol 1 718.0466
+cholfail 1
+lu 1 35.816177
+norm 41.290455
+rank 50
+conv 1506.8802 159
+ismember 6400 290815
+unique 50 2589 167972
+ismember2 1011 3022
+ismember3 111 212
+map 5 [1 3 5 7 9] 6 1
+map2 4 0
+smap 3 a,b,c 20
+convsame 47.359587 400
