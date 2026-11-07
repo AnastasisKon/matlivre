@@ -59,6 +59,7 @@ mod sparse;
 mod specfun;
 mod special_functions;
 mod strings;
+mod vectorized;
 mod structio;
 mod svdsketch_frac;
 mod sym_dae;

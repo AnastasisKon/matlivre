@@ -31,8 +31,44 @@ pub fn broadcast(a: &Matrix, b: &Matrix, f: impl Fn(f64, f64) -> f64 + Sync + Se
         let data = if big { a.data.par_iter().map(|&x| f(x, y)).collect() } else { a.data.iter().map(|&x| f(x, y)).collect() };
         return Ok(Matrix::from_dims(a.dims.clone(), data));
     }
-    let (dims, pairs) = nd::broadcast_pairs(&a.dims, &b.dims)?;
-    Ok(Matrix::from_dims(dims, pairs.into_iter().map(|(i, j)| f(a.data[i], b.data[j])).collect()))
+    // General implicit expansion: each line along the first dimension is computed with fixed
+    // strides (0 on an expanded dimension), lines in parallel for large results.
+    let dims = nd::broadcast_dims(&a.dims, &b.dims)?;
+    let n = nd::numel(&dims);
+    if n == 0 {
+        return Ok(Matrix::from_dims(dims, Vec::new()));
+    }
+    let rank = dims.len();
+    let strides_of = |d: &[usize]| -> Vec<usize> {
+        let mut s = vec![0; rank];
+        let mut acc = 1;
+        for (k, sk) in s.iter_mut().enumerate() {
+            let len = *d.get(k).unwrap_or(&1);
+            *sk = if len == 1 { 0 } else { acc };
+            acc *= len;
+        }
+        s
+    };
+    let (sa, sb) = (strides_of(&a.dims), strides_of(&b.dims));
+    let line = |l: usize, out: &mut [f64]| {
+        let (mut oa, mut ob, mut rem) = (0, 0, l);
+        for k in 1..rank {
+            let sub = rem % dims[k];
+            rem /= dims[k];
+            oa += sub * sa[k];
+            ob += sub * sb[k];
+        }
+        for (x, o) in out.iter_mut().enumerate() {
+            *o = f(a.data[oa + x * sa[0]], b.data[ob + x * sb[0]]);
+        }
+    };
+    let mut data = vec![0.0; n];
+    if big && n / dims[0] >= 2 {
+        data.par_chunks_mut(dims[0]).enumerate().for_each(|(l, c)| line(l, c));
+    } else {
+        data.chunks_mut(dims[0]).enumerate().for_each(|(l, c)| line(l, c));
+    }
+    Ok(Matrix::from_dims(dims, data))
 }
 
 /// Element count from which elementwise work is split across threads.
@@ -245,11 +281,19 @@ pub fn num_binary(op: BinOp, x: &Matrix, y: &Matrix) -> R<Matrix> {
             let nz = |m: &Matrix| -> Matrix {
                 Matrix::from_dims(m.dims.clone(), (0..m.numel()).map(|i| b2f(m.data[i] != 0.0 || m.im_at(i) != 0.0)).collect())
             };
-            if x.data.iter().any(|v| v.is_nan()) || y.data.iter().any(|v| v.is_nan()) {
+            let has_nan = |m: &Matrix| -> bool {
+                use rayon::prelude::*;
+                if m.numel() >= PAR_MIN { m.data.par_iter().any(|v| v.is_nan()) } else { m.data.iter().any(|v| v.is_nan()) }
+            };
+            if has_nan(x) || has_nan(y) {
                 return rt("NaN values cannot be converted to logicals.");
             }
-            let (p, q) = (nz(x), nz(y));
             let and = matches!(op, And | AndAnd);
+            if !complex {
+                // Real operands: test the values in place instead of copying both arrays first.
+                return Ok(logical(broadcast(x, y, |a, b| b2f(if and { a != 0.0 && b != 0.0 } else { a != 0.0 || b != 0.0 }))?));
+            }
+            let (p, q) = (nz(x), nz(y));
             return Ok(logical(broadcast(&p, &q, |a, b| b2f(if and { a != 0.0 && b != 0.0 } else { a != 0.0 || b != 0.0 }))?));
         }
         _ => {}

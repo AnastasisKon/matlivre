@@ -72,6 +72,15 @@ pub(crate) fn m_arg(args: &[Value], i: usize, fname: &str) -> R<Matrix> {
     }
 }
 
+/// Like [`m_arg`], but borrows a numeric argument instead of copying it (large arrays).
+pub(crate) fn m_cow<'a>(args: &'a [Value], i: usize, fname: &str) -> R<std::borrow::Cow<'a, Matrix>> {
+    match arg(args, i, fname)? {
+        Value::Num(m) => Ok(std::borrow::Cow::Borrowed(m)),
+        Value::Sym(s) => Ok(std::borrow::Cow::Owned(s.to_matrix()?)),
+        other => rt(format!("Undefined function '{fname}' for input arguments of type '{}'.", other.class_name())),
+    }
+}
+
 fn bool_mat(m: &Matrix, f: impl Fn(f64) -> bool) -> Matrix {
     Matrix::from_dims(m.dims.clone(), m.data.iter().map(|&x| if f(x) { 1.0 } else { 0.0 }).collect()).with_kind(Kind::Logical)
 }
@@ -166,22 +175,85 @@ pub(crate) fn slices(d: &[usize], dim: usize) -> (Dims, Vec<Vec<usize>>) {
     (nd::normalize(out_dims), out)
 }
 
-/// Applies `f` to each slice along `dim`.
-fn reduce(m: &Matrix, dim: usize, f: impl Fn(&[f64]) -> f64) -> Matrix {
+/// The values of a slice, without the NaNs when `omit` is set (no copy otherwise).
+fn filt_of(v: &[f64], omit: bool) -> std::borrow::Cow<'_, [f64]> {
+    if omit { v.iter().copied().filter(|x| !x.is_nan()).collect::<Vec<f64>>().into() } else { v.into() }
+}
+
+/// Geometry of the slices along `dim` (1-based): the result dims, the distance between
+/// consecutive elements of a slice, the slice length and the number of outer blocks. Slice
+/// `idx` (in result order) starts at `(idx / stride) * stride * len + idx % stride`.
+pub(crate) fn slice_geom(d: &[usize], dim: usize) -> (Dims, usize, usize, usize) {
+    let k = dim - 1;
+    if k >= d.len() {
+        return (d.to_vec(), nd::numel(d), 1, 1);
+    }
+    let mut out_dims = d.to_vec();
+    out_dims[k] = 1;
+    (nd::normalize(out_dims), d[..k].iter().product(), d[k], d[k + 1..].iter().product())
+}
+
+/// Applies `f` to each slice along `dim`. Contiguous slices are passed without copying, and
+/// large reductions run on several threads.
+fn reduce(m: &Matrix, dim: usize, f: impl Fn(&[f64]) -> f64 + Sync) -> Matrix {
+    use rayon::prelude::*;
     if m.dims == [0, 0] {
         return Matrix::scalar(f(&[]));
     }
-    let (dims, sl) = slices(&m.dims, dim);
-    let mut buf = Vec::new();
-    let data = sl
-        .iter()
-        .map(|s| {
+    let (dims, stride, len, outer) = slice_geom(&m.dims, dim);
+    let total = stride * outer;
+    let one = |idx: usize, buf: &mut Vec<f64>| -> f64 {
+        let base = (idx / stride) * stride * len + idx % stride;
+        if stride == 1 {
+            f(&m.data[base..base + len])
+        } else {
             buf.clear();
-            buf.extend(s.iter().map(|&p| m.data[p]));
-            f(&buf)
-        })
-        .collect();
+            buf.extend((0..len).map(|j| m.data[base + j * stride]));
+            f(buf)
+        }
+    };
+    let data: Vec<f64> = if total >= 2 && total * len >= ops::PAR_MIN {
+        (0..total).into_par_iter().map_init(Vec::new, |buf, idx| one(idx, buf)).collect()
+    } else {
+        let mut buf = Vec::new();
+        (0..total).map(|idx| one(idx, &mut buf)).collect()
+    };
     Matrix::from_dims(dims, data)
+}
+
+/// `sum` or `prod` along a dimension other than the first, accumulating whole rows at a time
+/// (contiguous reads and writes) instead of gathering each strided slice. The order of the
+/// additions in each slice is unchanged. Returns `None` when the generic path should be used.
+fn fold_strided(m: &Matrix, dim: usize, is_sum: bool) -> Option<Matrix> {
+    use rayon::prelude::*;
+    let (dims, stride, len, outer) = slice_geom(&m.dims, dim);
+    if stride <= 1 || len == 0 || m.dims == [0, 0] {
+        return None;
+    }
+    let mut out = vec![0.0; stride * outer];
+    let fill = |o: usize, i0: usize, oc: &mut [f64]| {
+        let base = o * stride * len + i0;
+        oc.copy_from_slice(&m.data[base..base + oc.len()]);
+        for j in 1..len {
+            let row = &m.data[base + j * stride..base + j * stride + oc.len()];
+            if is_sum {
+                oc.iter_mut().zip(row).for_each(|(a, b)| *a += b);
+            } else {
+                oc.iter_mut().zip(row).for_each(|(a, b)| *a *= b);
+            }
+        }
+    };
+    const CH: usize = 4096;
+    if stride * outer * len >= ops::PAR_MIN {
+        out.par_chunks_mut(stride).enumerate().for_each(|(o, out_o)| {
+            out_o.par_chunks_mut(CH).enumerate().for_each(|(c, oc)| fill(o, c * CH, oc));
+        });
+    } else {
+        for (o, out_o) in out.chunks_mut(stride).enumerate() {
+            fill(o, 0, out_o);
+        }
+    }
+    Some(Matrix::from_dims(dims, out))
 }
 
 fn reduce_c(m: &Matrix, dim: usize, f: impl Fn(&[C]) -> C) -> Matrix {
@@ -200,10 +272,25 @@ fn reduce_c(m: &Matrix, dim: usize, f: impl Fn(&[C]) -> C) -> Matrix {
 fn cumulate(m: &Matrix, dim: usize, f: impl Fn(f64, f64) -> f64) -> Matrix {
     let mut out = m.clone();
     out.kind = if m.kind.is_int() || m.kind == Kind::Single { m.kind } else { Kind::Double };
-    let (_, sl) = slices(&m.dims, dim);
-    for s in sl {
-        for w in 1..s.len() {
-            out.data[s[w]] = out.kind.cast(f(out.data[s[w - 1]], m.data[s[w]]));
+    let (_, stride, len, outer) = slice_geom(&m.dims, dim);
+    if len < 2 || stride == 0 {
+        return out;
+    }
+    let kind = out.kind;
+    let plain = kind == Kind::Double;
+    for o in 0..outer {
+        let base = o * stride * len;
+        for j in 1..len {
+            let at = base + j * stride;
+            if plain {
+                for i in at..at + stride {
+                    out.data[i] = f(out.data[i - stride], m.data[i]);
+                }
+            } else {
+                for i in at..at + stride {
+                    out.data[i] = kind.cast(f(out.data[i - stride], m.data[i]));
+                }
+            }
         }
     }
     out
@@ -1639,7 +1726,10 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
         // properties with no output prints the list, as MATLAB does.
         "properties" if nargout == 0 && matches!(arg(a, 0, name)?, Value::Object(_)) || nargout == 0 && arg(a, 0, name)?.is_text() => {
             let (cls, names): (String, Vec<String>) = match arg(a, 0, name)? {
-                Value::Object(o) => (o.class.name.clone(), o.class.props.iter().filter(|p| !p.hidden).map(|p| p.name.clone()).collect()),
+                Value::Object(o) => (
+                    o.class.name.clone(),
+                    o.class.props.iter().filter(|p| !p.hidden).map(|p| p.name.clone()).chain(o.dyn_props().unwrap_or_default().fields).collect(),
+                ),
                 v => {
                     let cls = v.text()?;
                     match it.find_class(&cls) {
@@ -1659,7 +1749,9 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
         }
         "fieldnames" | "properties" => match arg(a, 0, name)? {
             Value::Struct(s) => one(name_col(s.fields.iter().map(|n| Value::chars(n)).collect())),
-            Value::Object(o) => one(name_col(o.class.props.iter().filter(|p| !p.hidden).map(|p| Value::chars(&p.name)).collect())),
+            Value::Object(o) => one(name_col(
+                o.class.props.iter().filter(|p| !p.hidden).map(|p| p.name.clone()).chain(o.dyn_props().unwrap_or_default().fields).map(|n: String| Value::chars(&n)).collect(),
+            )),
             Value::Table(t) => one(name_col(t.names.iter().map(|n| Value::chars(n)).collect())),
             v if v.is_text() => {
                 let cls = v.text()?;
@@ -1695,7 +1787,7 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
         "isprop" | "ismethod" => {
             let Value::Object(o) = arg(a, 0, name)? else { return one(Value::bool(false)) };
             let n = arg(a, 1, name)?.text()?;
-            one(Value::bool(if name == "isprop" { o.class.prop_index(&n).is_some() } else { o.class.method(&n).is_some() }))
+            one(Value::bool(if name == "isprop" { o.has_prop(&n) } else { o.class.method(&n).is_some() }))
         }
         "rmfield" => match arg(a, 0, name)? {
             Value::Struct(s) => {
@@ -1716,16 +1808,15 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
 
         // ---- reductions --------------------------------------------------------------------
         "sum" | "prod" | "mean" | "median" | "mode" | "std" | "var" | "any" | "all" | "nnz" => {
-            let m = m_arg(a, 0, name)?;
+            let m = m_cow(a, 0, name)?;
             if name == "nnz" {
                 return num((0..m.numel()).filter(|&i| m.data[i] != 0.0 || m.im_at(i) != 0.0).count() as f64);
             }
             let dim_index = if matches!(name, "std" | "var") { 2 } else { 1 };
             let all_dims = a.get(dim_index).map(|v| v.text().map(|t| t == "all").unwrap_or(false)).unwrap_or(false);
-            let m = if all_dims { m.clone().reshaped(vec![m.numel(), 1]) } else { m };
+            let m = if all_dims { { let n = m.numel(); std::borrow::Cow::Owned(m.into_owned().reshaped(vec![n, 1])) } } else { m };
             let dim = if all_dims { 1 } else { dim_arg(a, dim_index, &m)? };
             let omit = a.iter().any(|v| v.text().map(|t| t == "omitnan").unwrap_or(false));
-            let filt = |v: &[f64]| -> Vec<f64> { if omit { v.iter().copied().filter(|x| !x.is_nan()).collect() } else { v.to_vec() } };
             let w = if matches!(name, "std" | "var") { a.get(1).and_then(|v| v.scalar().ok()).unwrap_or(0.0) } else { 0.0 };
             if m.is_complex() && matches!(name, "sum" | "mean" | "prod") {
                 let out = reduce_c(&m, dim, |v| match name {
@@ -1778,17 +1869,19 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 }
                 return Ok(Some(vec![Value::Num(mm), Value::Num(Matrix::from_dims(dims.clone(), fv)), Value::Cell(CellArray::from_dims(dims, cv))]));
             }
+            let strided = if matches!(name, "sum" | "prod") && !omit { fold_strided(&m, dim, name == "sum") } else { None };
             let r = match name {
-                "sum" => reduce(&m, dim, |v| filt(v).iter().sum()),
-                "prod" => reduce(&m, dim, |v| filt(v).iter().product()),
+                _ if strided.is_some() => strided.unwrap(),
+                "sum" => reduce(&m, dim, |v| filt_of(v, omit).iter().sum()),
+                "prod" => reduce(&m, dim, |v| filt_of(v, omit).iter().product()),
                 "mean" => reduce(&m, dim, |v| {
-                    let v = filt(v);
+                    let v = filt_of(v, omit);
                     if v.is_empty() { f64::NAN } else { v.iter().sum::<f64>() / v.len() as f64 }
                 }),
-                "median" => reduce(&m, dim, |v| median_of(&filt(v))),
+                "median" => reduce(&m, dim, |v| median_of(&filt_of(v, omit))),
                 "mode" => reduce(&m, dim, mode_of),
-                "std" => reduce(&m, dim, |v| variance(&filt(v), w).sqrt()),
-                "var" => reduce(&m, dim, |v| variance(&filt(v), w)),
+                "std" => reduce(&m, dim, |v| variance(&filt_of(v, omit), w).sqrt()),
+                "var" => reduce(&m, dim, |v| variance(&filt_of(v, omit), w)),
                 "any" => reduce(&m, dim, |v| v.iter().any(|&x| x != 0.0 && !x.is_nan()) as u8 as f64).with_kind(Kind::Logical),
                 _ => reduce(&m, dim, |v| v.iter().all(|&x| x != 0.0) as u8 as f64).with_kind(Kind::Logical),
             };
@@ -1802,7 +1895,7 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             mat(r)
         }
         "cumsum" | "cumprod" | "cummax" | "cummin" => {
-            let m = m_arg(a, 0, name)?;
+            let m = m_cow(a, 0, name)?;
             // Options after the data: a dimension, 'reverse'/'forward' and 'omitnan'/'includenan'.
             let mut dim_given: Option<Value> = None;
             let mut reverse = false;
@@ -1824,11 +1917,13 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 Some(v) => dim_arg(&[Value::empty(), v], 1, &m)?,
                 None => dim_arg(&a[..1], 1, &m)?,
             };
-            let src = if omit && matches!(name, "cumsum" | "cumprod") {
+            let replaced;
+            let src: &Matrix = if omit && matches!(name, "cumsum" | "cumprod") {
                 let neutral = if name == "cumsum" { 0.0 } else { 1.0 };
-                m.map(|x| if x.is_nan() { neutral } else { x })
+                replaced = m.map(|x| if x.is_nan() { neutral } else { x });
+                &replaced
             } else {
-                m.clone()
+                &m
             };
             let run = |m: &Matrix| match name {
                 "cumsum" => cumulate(m, dim, |p, x| p + x),
@@ -1839,7 +1934,7 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 _ => cumulate(m, dim, |p, x| if p.is_nan() || x.is_nan() { f64::NAN } else { p.min(x) }),
             };
             if !reverse {
-                return mat(run(&src));
+                return mat(run(src));
             }
             // 'reverse': accumulate from the end of each slice.
             let flip = |m: &Matrix| {
@@ -1852,7 +1947,7 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 }
                 out
             };
-            mat(flip(&run(&flip(&src))))
+            mat(flip(&run(&flip(src))))
         }
         "max" | "min" => {
             let is_max = name == "max";
@@ -1863,23 +1958,25 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 let kind = ops::arith_kind(x.kind, y.kind).unwrap_or(Kind::Double);
                 return mat(broadcast(&x, &y, |p, q| if p.is_nan() { q } else if q.is_nan() { p } else if better(q, p) { q } else { p })?.cast_to(kind));
             }
-            let m = m_arg(a, 0, name)?;
+            let m = m_cow(a, 0, name)?;
             if m.is_empty() {
                 return Ok(Some(vec![Value::empty(), Value::empty()]));
             }
             let all_dims = a.get(2).map(|v| v.text().map(|t| t == "all").unwrap_or(false)).unwrap_or(false);
-            let m = if all_dims { m.clone().reshaped(vec![m.numel(), 1]) } else { m };
+            let m = if all_dims { { let n = m.numel(); std::borrow::Cow::Owned(m.into_owned().reshaped(vec![n, 1])) } } else { m };
             let dim = if all_dims { 1 } else { dim_arg(a, 2, &m)? };
             // Complex values compare by magnitude.
-            let key: Vec<f64> = (0..m.numel()).map(|i| if m.is_complex() { C::new(m.data[i], m.im_at(i)).abs() } else { m.data[i] }).collect();
-            let (dims, sl) = slices(&m.dims, dim);
-            let mut pos = Vec::with_capacity(sl.len());
-            let mut idx = Vec::with_capacity(sl.len());
-            for s in &sl {
+            use rayon::prelude::*;
+            let cplx = m.is_complex();
+            let keyat = |p: usize| -> f64 { if cplx { C::new(m.data[p], m.im_at(p)).abs() } else { m.data[p] } };
+            let (dims, stride, len, outer) = slice_geom(&m.dims, dim);
+            let total = stride * outer;
+            let scan = |idx: usize| -> (usize, usize) {
+                let base = (idx / stride) * stride * len + idx % stride;
                 let mut bi = 0;
                 let mut bv = f64::NAN;
-                for (k, &p) in s.iter().enumerate() {
-                    let x = key[p];
+                for k in 0..len {
+                    let x = keyat(base + k * stride);
                     if x.is_nan() {
                         continue;
                     }
@@ -1888,9 +1985,42 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                         bi = k;
                     }
                 }
-                pos.push(s[bi]);
-                idx.push((bi + 1) as f64);
-            }
+                (base + bi * stride, bi)
+            };
+            let found: Vec<(usize, usize)> = if total == 1 && !cplx && len >= 4 * ops::PAR_MIN {
+                // One long vector: best (value, position) of each chunk, then the best of those,
+                // the earliest winning a tie as in the sequential scan.
+                const CH: usize = 1 << 16;
+                let parts: Vec<(f64, usize)> = m
+                    .data
+                    .par_chunks(CH)
+                    .enumerate()
+                    .map(|(c, ch)| {
+                        let (mut bv, mut bi) = (f64::NAN, 0);
+                        for (k, &x) in ch.iter().enumerate() {
+                            if !x.is_nan() && (bv.is_nan() || better(x, bv)) {
+                                bv = x;
+                                bi = c * CH + k;
+                            }
+                        }
+                        (bv, bi)
+                    })
+                    .collect();
+                let (mut bv, mut bi) = (f64::NAN, 0);
+                for (v, i) in parts {
+                    if !v.is_nan() && (bv.is_nan() || better(v, bv)) {
+                        bv = v;
+                        bi = i;
+                    }
+                }
+                vec![(bi, bi)]
+            } else if total >= 2 && total * len >= ops::PAR_MIN {
+                (0..total).into_par_iter().map(scan).collect()
+            } else {
+                (0..total).map(scan).collect()
+            };
+            let pos: Vec<usize> = found.iter().map(|f| f.0).collect();
+            let idx: Vec<f64> = found.iter().map(|f| (f.1 + 1) as f64).collect();
             let mut vals = m.gather(&pos, dims.clone());
             // Characters compare as their codes and come back as double.
             if vals.kind == Kind::Char {
@@ -2136,12 +2266,26 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             ]))
         }
         "find" => {
-            let m = m_arg(a, 0, name)?;
+            let m = m_cow(a, 0, name)?;
             let limit = match a.get(1) {
                 Some(v) => v.as_usize()?,
                 None => usize::MAX,
             };
             let last = a.get(2).map(|v| v.text().map(|t| t == "last").unwrap_or(false)).unwrap_or(false);
+            if limit == usize::MAX && !last && nargout < 2 && !m.is_complex() {
+                use rayon::prelude::*;
+                const CH: usize = 1 << 16;
+                let pick = |c: usize, ch: &[f64]| -> Vec<f64> { ch.iter().enumerate().filter(|(_, v)| **v != 0.0).map(|(i, _)| (c * CH + i + 1) as f64).collect() };
+                let data: Vec<f64> = if m.numel() >= ops::PAR_MIN {
+                    let parts: Vec<Vec<f64>> = m.data.par_chunks(CH).enumerate().map(|(c, ch)| pick(c, ch)).collect();
+                    let mut out = Vec::with_capacity(parts.iter().map(Vec::len).sum());
+                    parts.into_iter().for_each(|p| out.extend(p));
+                    out
+                } else {
+                    m.data.chunks(CH).enumerate().flat_map(|(c, ch)| pick(c, ch)).collect()
+                };
+                return mat(if m.dims.len() == 2 && m.dims[0] == 1 { Matrix::row(data) } else { Matrix::col(data) });
+            }
             let mut ix: Vec<usize> = (0..m.numel()).filter(|&i| m.data[i] != 0.0 || m.im_at(i) != 0.0).collect();
             if last {
                 let skip = ix.len().saturating_sub(limit);
