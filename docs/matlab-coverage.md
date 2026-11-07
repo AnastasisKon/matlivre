@@ -3,14 +3,14 @@
 Every function in the MATLAB R2023b and Symbolic Math Toolbox function references (the
 installation's `help/*/helpfuncbycat.xml`), plus key classes and undocumented public functions
 found in the toolbox folders, checked against MatLivre. Regenerate with
-`tools/coverage/update.sh` after merging work (2026-11-06).
+`tools/coverage/update.sh` after merging work (2026-11-07).
 
 | Status | Count |
 |---|---:|
-| Implemented | 1862 |
+| Implemented | 1866 |
 | In a branch not merged yet | 0 |
 | Language keyword (check it works) | 25 |
-| **To implement** | **160** |
+| **To implement** | **156** |
 | Out of scope | 1332 |
 
 Out of scope, by category of the function reference: app building, external language
@@ -326,7 +326,7 @@ Implemented: `&amp;`, `&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `'`, `*`, `+`, `-`, `.'`
 
 Implemented: 84. To implement: 0. In a branch: 0. Out of scope: 0.
 
-Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isinterior`, `isInterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
+Implemented: `addboundary`, `alphaShape`, `alphaSpectrum`, `alphaTriangulation`, `area`, `barycentricToCartesian`, `baryToCart`, `boundary`, `boundaryFacets`, `boundaryshape`, `boundingbox`, `cartesianToBarycentric`, `cartToBary`, `centroid`, `circumcenter`, `circumcenters`, `convexHull`, `convhull`, `convhulln`, `criticalAlpha`, `delaunay`, `delaunayn`, `DelaunayTri`, `delaunayTriangulation`, `dsearchn`, `edgeAttachments`, `edges`, `faceNormal`, `faceNormals`, `featureEdges`, `freeBoundary`, `holes`, `incenter`, `incenters`, `inOutStatus`, `inpolygon`, `inShape`, `isConnected`, `isEdge`, `ishole`, `isInterior`, `isinterior`, `issimplified`, `nearestNeighbor`, `nearestvertex`, `nsidedpoly`, `numboundaries`, `numRegions`, `numsides`, `overlaps`, `patch`, `perimeter`, `pointLocation`, `polyarea`, `polybuffer`, `polyshape`, `rectint`, `regions`, `rmboundary`, `rmholes`, `rmslivers`, `rotate`, `scale`, `sortboundaries`, `sortregions`, `stlread`, `stlwrite`, `subtract`, `surfaceArea`, `tetramesh`, `translate`, `triangulation`, `trimesh`, `triplot`, `TriRep`, `trisurf`, `tsearchn`, `turningdist`, `vertexAttachments`, `vertexNormal`, `volume`, `voronoi`, `voronoiDiagram`, `voronoin`
 
 ## MATLAB > Mathematics > Elementary Math
 
@@ -450,17 +450,14 @@ To implement:
 
 ## MATLAB > Programming > Programming Utilities
 
-Implemented: 24. To implement: 5. In a branch: 0. Out of scope: 0.
+Implemented: 27. To implement: 2. In a branch: 0. Out of scope: 0.
 
 To implement:
 
-- [ ] `matlab.lang.correction.AppendArgumentsCorrection`
-- [ ] `matlab.lang.correction.ConvertToFunctionNotationCorrection`
-- [ ] `matlab.lang.correction.ReplaceIdentifierCorrection`
 - [ ] `parallel.pool.Constant`
 - [ ] `parfevalOnAll`
 
-Implemented: `addCause`, `addCorrection`, `canUseGPU`, `canUseParallelPool`, `eval`, `evalc`, `evalin`, `getReport`, `isvalid`, `maxNumCompThreads`, `MException`, `MException.last`, `rethrow`, `run`, `start`, `startat`, `stop`, `throw`, `throwAsCaller`, `timer`, `timerfind`, `timerfindall`, `try, catch`, `wait`
+Implemented: `addCause`, `addCorrection`, `canUseGPU`, `canUseParallelPool`, `eval`, `evalc`, `evalin`, `getReport`, `isvalid`, `matlab.lang.correction.AppendArgumentsCorrection`, `matlab.lang.correction.ConvertToFunctionNotationCorrection`, `matlab.lang.correction.ReplaceIdentifierCorrection`, `maxNumCompThreads`, `MException`, `MException.last`, `rethrow`, `run`, `start`, `startat`, `stop`, `throw`, `throwAsCaller`, `timer`, `timerfind`, `timerfindall`, `try, catch`, `wait`
 
 ## MATLAB > Programming > Scripts
 
@@ -633,12 +630,11 @@ Out of scope: `deployprefdir` (internal helper, not a user function), `matfinfo`
 
 ## Not in the function reference > matlab/lang
 
-Implemented: 3. To implement: 7. In a branch: 0. Out of scope: 2.
+Implemented: 4. To implement: 6. In a branch: 0. Out of scope: 2.
 
 To implement:
 
 - [ ] `doclink`
-- [ ] `dynamicprops`
 - [ ] `lists`
 - [ ] `parallel_function`
 - [ ] `precedence`
@@ -647,7 +643,7 @@ To implement:
 
 Language keywords to check: `break`, `case`, `catch`, `continue`, `else`, `elseif`, `for`, `function`, `if`, `otherwise`, `parfor`, `return`, `switch`, `try`, `while`
 
-Implemented: `display`, `handle`, `message`
+Implemented: `display`, `dynamicprops`, `handle`, `message`
 
 Out of scope: `checkSyntacticWarnings` (internal helper, not a user function), `ParallelException` (internal helper, not a user function)
 
