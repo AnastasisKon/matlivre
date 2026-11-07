@@ -240,7 +240,11 @@ pub fn assign_plan(d: &[usize], idx: &[IndexArg], rhs_dims: &[usize]) -> R<(Dims
             }
             let count: usize = idx.iter().zip(&new_e).map(|(a, &n)| a.count(n)).product();
             if rn != 1 && rn != count {
-                let lhs: Vec<usize> = idx.iter().zip(&new_e).map(|(a, &n)| a.count(n)).collect();
+                // Trailing singleton dimensions are not shown (1-by-1, not 1-by-1-by-1).
+                let mut lhs: Vec<usize> = idx.iter().zip(&new_e).map(|(a, &n)| a.count(n)).collect();
+                while lhs.len() > 2 && lhs.last() == Some(&1) {
+                    lhs.pop();
+                }
                 return rt(format!(
                     "Unable to perform assignment because the size of the left side is {} and the size of the right side is {}.",
                     size_text(&lhs).replace('×', "-by-"),

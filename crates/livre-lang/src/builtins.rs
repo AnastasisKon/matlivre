@@ -2866,7 +2866,7 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             if let Some(Value::Object(o)) = parts.first() {
                 if let Some(p) = crate::messages::parts(o) {
                     let (msg, id) = p?;
-                    return crate::error::rt_id(&id, msg);
+                    return Err(LangError::new(msg, 0).with_id(id).raised());
                 }
             }
             let msg = match parts.first() {
@@ -2883,7 +2883,7 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             if msg.is_empty() {
                 return none();
             }
-            crate::error::rt_id(&id, msg)
+            Err(LangError::new(msg, 0).with_id(id).raised())
         }
         "warning" => {
             let mut parts: &[Value] = a;

@@ -30,7 +30,7 @@ pub const NAMES: &[&str] = &[
 // ---- MException ----------------------------------------------------------------------------
 
 const ME_PROPS: &[&str] = &["identifier", "message", "cause", "stack", "Correction"];
-const ME_METHODS: &[&str] = &["throw", "rethrow", "throwAsCaller", "getReport", "addCause", "addCorrection"];
+pub(crate) const ME_METHODS: &[&str] = &["throw", "rethrow", "throwAsCaller", "getReport", "addCause", "addCorrection"];
 
 fn me_class() -> Rc<ClassDef> {
     thread_local! {
@@ -44,7 +44,8 @@ fn me_class() -> Rc<ClassDef> {
         for p in ME_PROPS {
             src.push_str(&format!("    {p}\n"));
         }
-        src.push_str("  end\n  methods\n");
+        // Hidden: the report text and whether error/throw raised it (for getReport, rethrow).
+        src.push_str("  end\n  properties (Hidden)\n    MatlivreReport\n    MatlivreRaised\n  end\n  methods\n");
         for m in ME_METHODS {
             src.push_str(&format!("    function varargout = {m}(varargin)\n      varargout = matlivre_mexception_method('{m}', varargin{{:}});\n    end\n"));
         }
@@ -86,8 +87,25 @@ pub fn mexception(message: &str, identifier: &str) -> Value {
         Value::Cell(CellArray::from_dims(vec![0, 0], Vec::new())),
         Value::Struct(stack),
         Value::empty(),
+        Value::chars(""),
+        Value::bool(false),
     ];
     Value::Object(Object { class: me_class(), props: Rc::new(RefCell::new(values)) })
+}
+
+/// The MException `catch e` sees: with the error's stack and report.
+pub fn mexception_caught(message: &str, identifier: &str, stack: &[crate::error::ErrFrame], raised: bool, report: &str) -> Value {
+    let me = mexception(message, identifier);
+    if let Value::Object(o) = &me {
+        let n = stack.len();
+        let elems = stack.iter().map(|f| vec![Value::chars(&f.file), Value::chars(&f.name), Value::num(f.line as f64)]).collect();
+        let s = StructArray { dims: vec![n, 1], fields: vec!["file".into(), "name".into(), "line".into()], elems };
+        let mut p = o.props.borrow_mut();
+        p[3] = Value::Struct(s);
+        p[5] = Value::chars(report);
+        p[6] = Value::bool(raised);
+    }
+    me
 }
 
 /// (message, identifier) of an error value: an MException or an error struct.
@@ -112,9 +130,38 @@ fn me_method(it: &mut Interpreter, a: &[Value]) -> Ret {
     let out = match m.as_str() {
         "throw" | "rethrow" | "throwAsCaller" => {
             it.last_error = (msg.clone(), id.clone());
-            return rt_id(&id, msg);
+            let mut e = LangError::new(msg, 0).with_id(id).raised();
+            if m == "throwAsCaller" {
+                e.drop_frames = 1;
+            }
+            // rethrow keeps the stack the exception was caught with.
+            if m == "rethrow" {
+                if let Value::Object(o) = me {
+                    if let Some(Value::Struct(s)) = o.get("stack") {
+                        if !s.elems.is_empty() {
+                            e.stack = (0..s.elems.len())
+                                .map(|k| crate::error::ErrFrame {
+                                    file: s.get_at(k, "file").and_then(|v| v.text().ok()).unwrap_or_default(),
+                                    name: s.get_at(k, "name").and_then(|v| v.text().ok()).unwrap_or_default(),
+                                    line: s.get_at(k, "line").and_then(|v| v.scalar().ok()).unwrap_or(0.0) as usize,
+                                })
+                                .collect();
+                            e.captured = true;
+                        }
+                    }
+                    e.raised = o.get("MatlivreRaised").and_then(|v| v.is_true().ok()).unwrap_or(true);
+                }
+            }
+            return Err(e);
         }
-        "getReport" => vec![Value::chars(&msg)],
+        // The report built when the error was caught; an exception never thrown is its message.
+        "getReport" => {
+            let report = match me {
+                Value::Object(o) => o.get("MatlivreReport").and_then(|v| v.text().ok()).unwrap_or_default(),
+                _ => String::new(),
+            };
+            vec![Value::chars(if report.is_empty() { &msg } else { &report })]
+        }
         "addCause" | "addCorrection" => {
             let Value::Object(o) = me else { return rt("Expected an MException.") };
             let copy = Object { class: o.class.clone(), props: Rc::new(RefCell::new(o.props.borrow().clone())) };

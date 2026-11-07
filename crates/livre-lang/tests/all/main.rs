@@ -12,6 +12,7 @@ mod dates;
 mod dates_types;
 mod elfun;
 mod elmat;
+mod error_stacks;
 mod excel;
 mod extended;
 mod figfile;

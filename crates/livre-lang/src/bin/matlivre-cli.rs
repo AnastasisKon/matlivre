@@ -8,6 +8,10 @@ fn run(path: std::path::PathBuf, src: String) -> i32 {
     if let Some(dir) = path.canonicalize().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
         it.set_search_path(vec![dir]);
     }
+    // Error stacks name the script: "Error in name (line n)".
+    let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let full = path.canonicalize().map(|p| p.display().to_string().trim_start_matches(r"\\?\").to_string()).unwrap_or_default();
+    it.set_script(&stem, &full);
     it.set_output_sink(|outs| {
         use std::io::Write;
         let mut so = std::io::stdout().lock();

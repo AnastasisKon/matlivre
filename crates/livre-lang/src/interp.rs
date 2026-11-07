@@ -60,6 +60,17 @@ struct Frame {
     globals: HashSet<String>,
     /// The user function running in this frame (for `mfilename`).
     func: Option<String>,
+    /// The line of the statement this frame is running (for error stacks).
+    line: usize,
+}
+
+/// Where a function's code comes from: the file's name (without extension), its path, and
+/// its lines (for error reports).
+#[derive(Clone)]
+struct CodeSource {
+    stem: String,
+    path: String,
+    lines: Rc<Vec<String>>,
 }
 
 enum Resolved {
@@ -98,6 +109,12 @@ pub struct Interpreter {
     pub(crate) exporter: Option<Box<dyn FnMut(&Figure, ExportFormat, f32) -> Result<Vec<u8>, String>>>,
     pending: Vec<Output>,
     top_line: usize,
+    /// The script being run (for error stacks), its path and lines.
+    script_name: String,
+    script_path: String,
+    script_lines: Rc<Vec<String>>,
+    /// The source of each user function, by name.
+    code_sources: HashMap<String, CodeSource>,
     flush: Option<Box<dyn FnMut(Vec<Output>)>>,
     cancel: Option<Arc<AtomicBool>>,
     pub(crate) tic: Instant,
@@ -141,7 +158,7 @@ impl Default for Interpreter {
 impl Interpreter {
     pub fn new() -> Self {
         Self {
-            base: Frame { vars: HashMap::new(), globals: HashSet::new(), func: None },
+            base: Frame { vars: HashMap::new(), globals: HashSet::new(), func: None, line: 0 },
             frames: Vec::new(),
             global_vars: HashMap::new(),
             functions: HashMap::new(),
@@ -162,6 +179,10 @@ impl Interpreter {
             exporter: None,
             pending: Vec::new(),
             top_line: 0,
+            script_name: String::new(),
+            script_path: String::new(),
+            script_lines: Rc::new(Vec::new()),
+            code_sources: HashMap::new(),
             flush: None,
             cancel: None,
             tic: Instant::now(),
@@ -291,6 +312,12 @@ impl Interpreter {
             }
         };
         self.define_functions(&prog);
+        // The script's lines, and its local functions' source, for error reports.
+        let lines: Rc<Vec<String>> = Rc::new(src.lines().map(str::to_string).collect());
+        self.script_lines = lines.clone();
+        for f in &prog.functions {
+            self.code_sources.insert(f.name.clone(), CodeSource { stem: self.script_name.clone(), path: self.script_path.clone(), lines: lines.clone() });
+        }
         self.run(&prog.body)
     }
 
@@ -519,9 +546,14 @@ impl Interpreter {
         if self.not_on_path.contains(name) || self.classes.contains_key(name) {
             return None;
         }
-        let Some((_, src)) = self.read_path_file(name) else {
+        let Some((file, src)) = self.read_path_file(name) else {
             self.not_on_path.insert(name.to_string());
             return None;
+        };
+        let code = CodeSource {
+            stem: file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+            path: file.display().to_string(),
+            lines: Rc::new(src.lines().map(str::to_string).collect()),
         };
         if crate::class::is_classdef(&src) {
             return None;
@@ -532,6 +564,9 @@ impl Interpreter {
             return None;
         }
         let main = prog.functions[0].clone();
+        for f in &prog.functions {
+            self.code_sources.entry(f.name.clone()).or_insert_with(|| code.clone());
+        }
         self.local_groups.push((true, prog.functions.iter().map(|f| f.name.clone()).collect()));
         // Subfunctions are visible to the file's main function (registered globally here).
         for f in &prog.functions[1..] {
@@ -723,8 +758,9 @@ impl Interpreter {
     }
 
     fn exec(&mut self, s: &Stmt) -> R<Flow> {
-        if self.frames.is_empty() {
-            self.top_line = s.line;
+        match self.frames.last_mut() {
+            Some(f) => f.line = s.line,
+            None => self.top_line = s.line,
         }
         self.check_cancel()?;
         let r = self.exec_inner(s);
@@ -732,8 +768,79 @@ impl Interpreter {
             if e.line == 0 && self.frames.is_empty() {
                 e.line = s.line;
             }
+            if !e.captured {
+                e.captured = true;
+                e.stack = self.error_stack();
+                let drop = e.drop_frames.min(e.stack.len());
+                e.stack.drain(..drop);
+            }
             e
         })
+    }
+
+    /// The call stack, innermost first: each function frame with its line, then the script.
+    fn error_stack(&self) -> Vec<crate::error::ErrFrame> {
+        let mut out = Vec::new();
+        for f in self.frames.iter().rev() {
+            // The wrappers of MException's own methods (throw, rethrow, ...) are not frames.
+            if f.func.as_deref().is_some_and(|n| !self.code_sources.contains_key(n) && crate::builtins_validate::ME_METHODS.contains(&n)) {
+                continue;
+            }
+            if let Some(name) = &f.func {
+                let file = self.code_sources.get(name).map(|c| c.path.clone()).unwrap_or_default();
+                out.push(crate::error::ErrFrame { name: name.clone(), file, line: f.line });
+            }
+        }
+        if !self.script_name.is_empty() {
+            out.push(crate::error::ErrFrame { name: self.script_name.clone(), file: self.script_path.clone(), line: self.top_line });
+        }
+        out
+    }
+
+    /// How a frame is named in a report: `file>function` for a local function, else the name.
+    fn frame_label(&self, f: &crate::error::ErrFrame) -> String {
+        match self.code_sources.get(&f.name) {
+            Some(c) if !c.stem.is_empty() && c.stem != f.name => format!("{}>{}", c.stem, f.name),
+            _ => f.name.clone(),
+        }
+    }
+
+    /// The source text of a frame's line.
+    fn frame_source(&self, f: &crate::error::ErrFrame) -> Option<String> {
+        let lines = if f.name == self.script_name && !self.script_name.is_empty() {
+            self.script_lines.clone()
+        } else {
+            self.code_sources.get(&f.name)?.lines.clone()
+        };
+        lines.get(f.line.checked_sub(1)?).map(|l| l.trim_end().to_string())
+    }
+
+    /// `getReport` of an error: "Error using f" for one raised by `error`/`throw`, the
+    /// message, then an "Error in f (line n)" block with the source line for each caller.
+    pub(crate) fn error_report(&self, message: &str, stack: &[crate::error::ErrFrame], raised: bool) -> String {
+        let mut out = String::new();
+        let mut frames = stack;
+        if raised {
+            if let Some(first) = stack.first() {
+                out.push_str(&format!("Error using {}\n", self.frame_label(first)));
+                frames = &stack[1..];
+            }
+        }
+        out.push_str(message);
+        for f in frames {
+            out.push_str(&format!("\n\nError in {} (line {})", self.frame_label(f), f.line));
+            if let Some(src) = self.frame_source(f) {
+                out.push('\n');
+                out.push_str(&src);
+            }
+        }
+        out
+    }
+
+    /// Names the script being run, for error stacks (`Error in name (line n)`).
+    pub fn set_script(&mut self, name: &str, path: &str) {
+        self.script_name = name.to_string();
+        self.script_path = path.to_string();
     }
 
     /// Emits the display of `name = v`, honoring `disp`/`display` overloads of objects.
@@ -922,7 +1029,9 @@ impl Interpreter {
                     let id = if e.identifier.is_empty() { crate::builtins_validate::builtin_identifier(&e.message).to_string() } else { e.identifier.clone() };
                     self.last_error = (e.message.clone(), id.clone());
                     if let Some(name) = catch_var {
-                        self.set_var(name, crate::builtins_validate::mexception(&e.message, &id));
+                        let report = self.error_report(&e.message, &e.stack, e.raised);
+                        let me = crate::builtins_validate::mexception_caught(&e.message, &id, &e.stack, e.raised, &report);
+                        self.set_var(name, me);
                     }
                     return self.exec_block(catch_body);
                 }
@@ -1817,7 +1926,7 @@ impl Interpreter {
     }
 
     fn eval_in_class_scope(&mut self, e: &Expr) -> R<Value> {
-        self.frames.push(Frame { vars: HashMap::new(), globals: HashSet::new(), func: None });
+        self.frames.push(Frame { vars: HashMap::new(), globals: HashSet::new(), func: None, line: 0 });
         let r = self.eval(e);
         self.frames.pop();
         r
@@ -2003,7 +2112,7 @@ impl Interpreter {
                 if has_varargin {
                     vars.insert("varargin".into(), Value::Cell(CellArray::row(rest)));
                 }
-                self.frames.push(Frame { vars, globals: HashSet::new(), func: None });
+                self.frames.push(Frame { vars, globals: HashSet::new(), func: None, line: 0 });
                 let r = self.eval_multi(&f.body, nargout.max(1));
                 self.frames.pop();
                 self.depth -= 1;
@@ -2184,7 +2293,7 @@ impl Interpreter {
         let nargin = nargin + nv_args.len();
         vars.insert("nargin".into(), Value::num(nargin as f64));
         vars.insert("nargout".into(), Value::num(nargout as f64));
-        self.frames.push(Frame { vars, globals: HashSet::new(), func: Some(f.name.clone()) });
+        self.frames.push(Frame { vars, globals: HashSet::new(), func: Some(f.name.clone()), line: 0 });
         let r = if f.args.is_empty() { Ok(()) } else { self.check_arguments(f, nv_param.as_deref(), nargin - nv_args.len(), nv_args) };
         let r = match r {
             Ok(()) => self.exec_block(&f.body),
