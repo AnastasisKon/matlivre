@@ -121,7 +121,7 @@ sparse operations cost O(n^2) instead of O(nonzeros), and sizes are limited by m
 | sparse tridiagonal solve, n = 3,000 | 0.07 | 6.85 | 92.6x slower |
 | 2-D Poisson solve, 2,500 unknowns | 1.69 | 12.33 | 7.3x slower |
 | 200 sparse matrix-vector products, n = 3,000 | 2.10 | 649.8 | 310x slower |
-| `pcg` on the Poisson matrix | 3.02 | 588.0 | 195x slower |
+| `pcg` on the Poisson matrix | 3.02 | 23.4 | 7.8x slower |
 | elementwise math, 1e7 elements | 139.8 | 169.3 | 1.2x slower |
 | `cumsum`, 1e7 elements | 45.60 | 79.48 | 1.7x slower |
 | `find` on a logical mask, 1e7 | 25.43 | 55.54 | 2.2x slower |

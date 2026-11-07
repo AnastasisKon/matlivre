@@ -133,3 +133,18 @@ fn sparse_solve_matches_matlab() {
         ]
     );
 }
+
+/// Iterative solvers on a 1,600-unknown Poisson matrix (stored as compressed columns inside the
+/// solver): flags, iteration counts and solutions as in MATLAB R2023b.
+#[test]
+fn iterative_solvers_on_a_larger_sparse_system_match_matlab() {
+    let src = concat!(
+        "m = 40; I = speye(m); T = spdiags([-ones(m,1) 2*ones(m,1) -ones(m,1)], -1:1, m, m); P = kron(I,T)+kron(T,I); f = ones(m*m,1);\n",
+        "[u,fl,rr,it] = pcg(P, f, 1e-8, 500); fprintf('pcg %d %d %d %.6g\\n', fl, it, norm(P*u-f) < 1e-5, sum(u));\n",
+        "[u,fl,rr,it] = bicgstab(P, f, 1e-8, 500); fprintf('bicgstab %d %.1f %d %.6g\\n', fl, it, norm(P*u-f) < 1e-5, sum(u));\n",
+        "[u,fl,rr,it] = gmres(P, f, 30, 1e-8, 40); fprintf('gmres %d %d %d %d %.6g\\n', fl, it(1), it(2), norm(P*u-f) < 1e-5, sum(u));\n",
+        "[u,fl,rr,it] = lsqr(P, f, 1e-8, 500); fprintf('lsqr %d %d %d\\n', fl, it, norm(P*u-f) < 1e-5);\n",
+    );
+    let out: Vec<String> = shown(src).into_iter().map(|s| s.trim_end().to_string()).collect();
+    assert_eq!(out, ["pcg 0 74 1 99117.6", "bicgstab 0 53.5 1 99117.6", "gmres 0 6 30 1 99117.6", "lsqr 0 267 1"]);
+}

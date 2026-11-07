@@ -457,12 +457,53 @@ fn delsq(a: &[Value]) -> Ret {
 /// The operator of a solver: a matrix or a function handle computing A*x (and A'*x).
 enum Op {
     M(Matrix),
+    /// A matrix with few nonzeros, in compressed sparse column form (rows sorted in each column).
+    S { rows: usize, cols: usize, ptr: Vec<usize>, idx: Vec<u32>, val: Vec<f64> },
     F(Value),
 }
 
 impl Op {
+    /// The operator of a matrix: compressed sparse columns when fewer than a fifth of the
+    /// elements are nonzero (every product then costs the nonzeros, not rows x columns).
+    fn from_matrix(m: Matrix) -> Op {
+        let (rows, cols) = (m.rows(), m.cols());
+        if rows * cols < 4096 || m.is_complex() || m.dims.len() != 2 {
+            return Op::M(m);
+        }
+        let limit = rows * cols / 5;
+        let (mut ptr, mut idx, mut val) = (Vec::with_capacity(cols + 1), Vec::new(), Vec::new());
+        ptr.push(0);
+        for col in m.data.chunks_exact(rows) {
+            for (i, &v) in col.iter().enumerate() {
+                if v != 0.0 {
+                    idx.push(i as u32);
+                    val.push(v);
+                }
+            }
+            if val.len() > limit {
+                return Op::M(m);
+            }
+            ptr.push(val.len());
+        }
+        Op::S { rows, cols, ptr, idx, val }
+    }
+
     fn apply(&self, it: &mut Interpreter, x: &[f64], transpose: bool) -> R<Vec<f64>> {
         match self {
+            Op::S { rows, cols, ptr, idx, val } => Ok(if transpose {
+                (0..*cols).map(|j| (ptr[j]..ptr[j + 1]).map(|e| val[e] * x[idx[e] as usize]).sum()).collect()
+            } else {
+                let mut y = vec![0.0; *rows];
+                for j in 0..*cols {
+                    let xj = x[j];
+                    if xj != 0.0 {
+                        for e in ptr[j]..ptr[j + 1] {
+                            y[idx[e] as usize] += val[e] * xj;
+                        }
+                    }
+                }
+                y
+            }),
             Op::M(m) => {
                 let (r, c) = (m.rows(), m.cols());
                 Ok(if transpose {
@@ -551,7 +592,7 @@ fn report(it: &mut Interpreter, name: &str, s: &Solve, tol: f64, maxit: usize, n
 fn solver(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Ret {
     let op = match arg(a, 0, name)? {
         f @ Value::Func(_) => Op::F(f.clone()),
-        v => Op::M(mat(v)?),
+        v => Op::from_matrix(mat(v)?),
     };
     let b = mat(arg(a, 1, name)?)?.data;
     let n = b.len();
