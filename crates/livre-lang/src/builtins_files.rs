@@ -577,6 +577,10 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
             }
         }
         "delete" => {
+            if let Some(Value::Object(o)) = a.first().filter(|v| matches!(v, Value::Object(o) if o.class.name == "meta.DynamicProperty")) {
+                crate::decomp::delete_dynamic_property(o);
+                return none();
+            }
             for v in a.iter().filter(|v| !matches!(v, Value::Num(m) if m.is_empty())) {
                 // Graphics handles are deleted by the graphics code; here only files.
                 let pat = v.text()?;

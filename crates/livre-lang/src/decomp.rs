@@ -131,6 +131,21 @@ fn names_of(v: &Value) -> R<Vec<String>> {
 pub fn call(_it: &mut Interpreter, name: &str, a: &[Value], _nargout: usize) -> R<Option<Vec<Value>>> {
     match name {
         "matlivre_decomposition_type" => Ok(Some(vec![decomposition_type(a)?])),
+        // addprop(obj, name) on a dynamicprops object: the property, and its meta.DynamicProperty.
+        "addprop" if matches!(a.first(), Some(Value::Object(o)) if o.class.is_a("dynamicprops")) => {
+            let Some(Value::Object(o)) = a.first() else { unreachable!() };
+            let n = a.get(1).ok_or_else(|| LangError::new("Not enough input arguments.", 0))?.text()?;
+            if o.has_prop(&n) {
+                return rt(format!("'{n}' is already defined as a property."));
+            }
+            if !n.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) || !n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                return rt(format!("'{n}' is not a valid property name."));
+            }
+            let mut s = o.dyn_props().unwrap_or_default();
+            s.set(&n, Value::empty());
+            o.set_dyn_props(s);
+            Ok(Some(vec![dynamic_property(&n, &a[0])]))
+        }
         "addprop" | "rmprop" => {
             let Some(Value::Table(t)) = a.first() else { return Ok(None) };
             let mut t = t.clone();
@@ -161,5 +176,33 @@ pub fn call(_it: &mut Interpreter, name: &str, a: &[Value], _nargout: usize) -> 
             Ok(Some(vec![Value::Table(t)]))
         }
         _ => Ok(None),
+    }
+}
+
+/// The meta.DynamicProperty object addprop returns (it keeps its owner, for delete).
+fn dynamic_property(name: &str, owner: &Value) -> Value {
+    thread_local! {
+        static DEF: std::cell::RefCell<Option<std::rc::Rc<crate::class::ClassDef>>> = const { std::cell::RefCell::new(None) };
+    }
+    let def = DEF.with(|d| {
+        d.borrow_mut()
+            .get_or_insert_with(|| {
+                let src = "classdef DynamicProperty < handle\n  properties\n    Name\n    Description\n  end\n  properties (Hidden)\n    Owner\n  end\nend\n";
+                let ast = crate::class::parse_classdef(src).expect("built-in class source parses");
+                let mut def = crate::class::ClassDef::build(ast, &[]);
+                def.name = "meta.DynamicProperty".into();
+                std::rc::Rc::new(def)
+            })
+            .clone()
+    });
+    Value::Object(crate::class::Object { class: def, props: std::rc::Rc::new(std::cell::RefCell::new(vec![Value::chars(name), Value::chars(""), owner.clone()])) })
+}
+
+/// delete(p) of a meta.DynamicProperty: removes the property from its object.
+pub fn delete_dynamic_property(p: &crate::class::Object) {
+    let (Some(Value::Object(owner)), Some(name)) = (p.get("Owner"), p.get("Name").and_then(|v| v.text().ok())) else { return };
+    if let Some(mut s) = owner.dyn_props() {
+        s.remove_field(&name);
+        owner.set_dyn_props(s);
     }
 }

@@ -26,6 +26,7 @@ end
 "#,
     ),
     ("Day", "classdef Day\n  enumeration\n    Mon, Tue, Wed\n  end\nend\n"),
+    ("Dyn", "classdef Dyn < dynamicprops\n  properties\n    A = 1\n  end\nend\n"),
     (
         "Bank",
         r#"classdef Bank < handle
@@ -159,6 +160,35 @@ fn tolerant_sets_and_powermod_match_matlab() {
             "ic = 4×1\n\n     3\n     1\n     1\n     2",
             "R = 2×2\n\n     1     2\n     5     5",
             "p = 2",
+        ]
+    );
+}
+
+#[test]
+fn dynamic_properties() {
+    let out = shown(concat!(
+        "d = Dyn;\n",
+        "p = addprop(d, 'Extra'); class(p), p.Name\n",
+        "d.Extra = 5; d.Extra\n",
+        "isprop(d, 'Extra')\n",
+        "properties(d)\n",
+        "d\n",
+        "delete(p); isprop(d, 'Extra')\n",
+        "try, addprop(d, 'A'), catch e, disp(e.message), end\n",
+        "c = matlab.lang.correction.ConvertToFunctionNotationCorrection('foo')\n",
+    ));
+    assert_eq!(
+        out,
+        [
+            "ans = 'meta.DynamicProperty'",
+            "ans = 'Extra'",
+            "ans = 5",
+            "ans = logical\n   1",
+            "\nProperties for class Dyn:\n\n    A\n    Extra\n\n",
+            "d = \n  Dyn with properties:\n\n        A: 1\n    Extra: 5",
+            "ans = logical\n   0",
+            "'A' is already defined as a property.\n",
+            "c = \n  ConvertToFunctionNotationCorrection with properties:\n\n    MethodToConvert: \"foo\"",
         ]
     );
 }

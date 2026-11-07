@@ -22,7 +22,7 @@ pub const NAMES: &[&str] = &[
     "mustBeNonnegative", "mustBeNonpositive", "mustBeNonsparse", "mustBeNonzero", "mustBeNonzeroLengthText", "mustBeNumeric", "mustBeNumericOrLogical",
     "mustBePositive", "mustBeReal", "mustBeScalarOrEmpty", "mustBeSparse", "mustBeText", "mustBeTextScalar", "mustBeUnderlyingType",
     "mustBeValidVariableName", "mustBeVector", "lasterr", "lasterror", "lastwarn", "rethrow", "matlab.lang.makeValidName",
-    "matlab.lang.makeUniqueStrings", "matlab.lang.correction.AppendArgumentsCorrection", "matlab.lang.correction.ReplaceIdentifierCorrection", "namedargs2cell", "onCleanup", "validatecolor", "mlock", "munlock", "mislocked", "inputParser",
+    "matlab.lang.makeUniqueStrings", "matlab.lang.correction.AppendArgumentsCorrection", "matlab.lang.correction.ReplaceIdentifierCorrection", "matlab.lang.correction.ConvertToFunctionNotationCorrection", "namedargs2cell", "onCleanup", "validatecolor", "mlock", "munlock", "mislocked", "inputParser",
     "matlivre_inputparser_method", "MException", "MException.last", "throw", "throwAsCaller", "getReport", "addCause", "addCorrection",
     "matlivre_mexception_method",
 ];
@@ -963,6 +963,7 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         "matlab.lang.makeUniqueStrings" => make_unique(a),
         "matlab.lang.correction.AppendArgumentsCorrection" => correction(name, &["Arguments"], a),
         "matlab.lang.correction.ReplaceIdentifierCorrection" => correction(name, &["Identifier", "Replacement"], a),
+        "matlab.lang.correction.ConvertToFunctionNotationCorrection" => correction(name, &["MethodToConvert"], a),
         "namedargs2cell" => {
             let Some(Value::Struct(s)) = a.first() else { return rt("Input must be a scalar structure.") };
             if s.elems.len() != 1 {

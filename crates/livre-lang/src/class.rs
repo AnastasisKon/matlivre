@@ -9,7 +9,7 @@ use crate::ast::{Expr, Function};
 use crate::display::NumFormat;
 use crate::error::LangError;
 use crate::lexer::{tokenize, Kw, Tok};
-use crate::value::Value;
+use crate::value::{StructArray, Value};
 
 type R<T> = Result<T, LangError>;
 
@@ -41,6 +41,9 @@ pub struct ClassAst {
 
 /// The hidden property holding an enumeration member's name.
 pub const ENUM_PROP: &str = "MatlivreEnumMember";
+
+/// The hidden property of a `dynamicprops` object holding its dynamic properties (a struct).
+pub const DYN_PROP: &str = "MatlivreDynamicProps";
 
 /// A loaded class with inherited members merged in.
 #[derive(Debug)]
@@ -105,11 +108,17 @@ impl ClassDef {
             statics.extend(s.statics.iter().cloned());
         }
         for s in &ast.supers {
-            if s == "handle" {
+            if s == "handle" || s == "dynamicprops" {
                 is_handle = true;
-                if !ancestors.contains(s) {
-                    ancestors.push(s.clone());
+                for a in [s.as_str(), "handle"] {
+                    if !ancestors.iter().any(|x| x == a) {
+                        ancestors.push(a.to_string());
+                    }
                 }
+            }
+            // Instances of a dynamicprops class keep their added properties here.
+            if s == "dynamicprops" && !props.iter().any(|p| p.name == DYN_PROP) {
+                props.push(PropDef { name: DYN_PROP.into(), default: None, constant: false, dependent: false, hidden: true });
             }
         }
         for p in ast.props {
@@ -170,12 +179,45 @@ pub fn enum_name(o: &Object) -> Option<String> {
 
 impl Object {
     pub fn get(&self, name: &str) -> Option<Value> {
-        self.class.prop_index(name).map(|i| self.props.borrow()[i].clone())
+        match self.class.prop_index(name) {
+            Some(i) => Some(self.props.borrow()[i].clone()),
+            None => self.dyn_get(name),
+        }
+    }
+
+    /// The dynamic properties of a `dynamicprops` object, in the order they were added.
+    pub fn dyn_props(&self) -> Option<StructArray> {
+        let i = self.class.prop_index(DYN_PROP)?;
+        match &self.props.borrow()[i] {
+            Value::Struct(s) => Some(s.clone()),
+            _ => Some(StructArray::scalar()),
+        }
+    }
+
+    fn dyn_get(&self, name: &str) -> Option<Value> {
+        self.dyn_props()?.get(name).cloned()
+    }
+
+    /// Whether the object has the property, declared or dynamic.
+    pub fn has_prop(&self, name: &str) -> bool {
+        self.class.prop_index(name).is_some() || self.dyn_props().is_some_and(|s| s.field_index(name).is_some())
+    }
+
+    /// Writes the dynamic properties back (handle objects share them).
+    pub fn set_dyn_props(&self, s: StructArray) {
+        if let Some(i) = self.class.prop_index(DYN_PROP) {
+            self.props.borrow_mut()[i] = Value::Struct(s);
+        }
     }
 
     /// Sets a property, copying first for value classes that share storage.
     pub fn set(mut self, name: &str, v: Value) -> R<Object> {
         let Some(i) = self.class.prop_index(name) else {
+            if let Some(mut s) = self.dyn_props().filter(|s| s.field_index(name).is_some()) {
+                s.set(name, v);
+                self.set_dyn_props(s);
+                return Ok(self);
+            }
             return Err(LangError::new(format!("Unrecognized property '{name}' for class '{}'.", self.class.name), 0));
         };
         let p = &self.class.props[i];
@@ -205,6 +247,9 @@ pub fn format_object(name: &str, o: &Object, values: &[Value], f: NumFormat) -> 
     if visible.is_empty() {
         return format!("{name} = \n  {short} with no properties.");
     }
+    // Dynamic properties come after the declared ones, aligned with them.
+    let dynamic = o.dyn_props().unwrap_or_default();
+    let w = w.max(dynamic.fields.iter().map(|n| n.len()).max().unwrap_or(0));
     for i in visible {
         // An enumeration member shows its name.
         let text = match &values[i] {
@@ -212,6 +257,10 @@ pub fn format_object(name: &str, o: &Object, values: &[Value], f: NumFormat) -> 
             other => crate::display::field_text(other, f),
         };
         out.push_str(&format!("    {:>w$}: {}\n", o.class.props[i].name, text));
+    }
+    for (k, n) in dynamic.fields.iter().enumerate() {
+        let v = dynamic.elems.first().map(|e| e[k].clone()).unwrap_or_else(Value::empty);
+        out.push_str(&format!("    {n:>w$}: {}\n", crate::display::field_text(&v, f)));
     }
     out.trim_end().to_string()
 }

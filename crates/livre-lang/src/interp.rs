@@ -605,7 +605,8 @@ impl Interpreter {
         };
         let mut supers = Vec::new();
         for s in &ast.supers {
-            if s == "handle" {
+            // Built-in base classes have nothing to load.
+            if s == "handle" || s == "dynamicprops" {
                 continue;
             }
             match self.find_class(s) {
@@ -1284,7 +1285,7 @@ impl Interpreter {
                         let new = self.apply_assign(None, rest, rhs)?;
                         return crate::io_more::matfile_assign(&o, f, new);
                     }
-                    if o.class.prop_index(f).is_none() {
+                    if !o.has_prop(f) {
                         return rt(format!("Unrecognized property '{f}' for class '{}'.", o.class.name));
                     }
                     let sub = o.get(f);
@@ -1910,6 +1911,9 @@ impl Interpreter {
             Value::Object(o) if crate::sym::units::is_symunit(&o.class.name) => crate::sym::units::member(name),
             Value::Object(o) => {
                 let Some(i) = o.class.prop_index(name) else {
+                    if let Some(v) = o.get(name) {
+                        return Ok(v);
+                    }
                     return rt(format!("Unrecognized method, property, or field '{name}' for class '{}'.", o.class.name));
                 };
                 let p = &o.class.props[i];
