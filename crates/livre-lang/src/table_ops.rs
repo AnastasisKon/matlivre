@@ -643,6 +643,9 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], _nargout: usize) -> R
         "stack" => stack(it, a),
         "unstack" => unstack(a),
         "anymissing" => {
+            if a.len() > 1 {
+                return crate::error::rt("Too many input arguments.");
+            }
             let v = crate::builtins::arg(a, 0, "anymissing")?.clone();
             let m = match &v {
                 Value::Table(t) => t.vars.iter().map(|x| it.call_function("ismissing", vec![x.clone()], 1)).collect::<R<Vec<_>>>()?.into_iter().flatten().collect::<Vec<_>>(),

@@ -598,6 +598,36 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
                 }
             }
         }
+        // [xb,yb] = stairs(...): the step outline, one column per series, nothing drawn.
+        "stairs" if nargout >= 2 => {
+            let nums: Vec<Matrix> = args.iter().take_while(|v| !v.is_text()).map(|v| v.to_matrix()).collect::<R<_>>()?;
+            let (x, y) = match nums.as_slice() {
+                [y] => {
+                    let n = if y.rows() == 1 { y.numel() } else { y.rows() };
+                    (Matrix::col((1..=n).map(|k| k as f64).collect()), y.clone())
+                }
+                [x, y, ..] => (x.clone(), y.clone()),
+                _ => return rt("Not enough input arguments."),
+            };
+            let y = if y.rows() == 1 { y.transpose() } else { y };
+            let x = if x.rows() == 1 { x.transpose() } else { x };
+            let (n, m) = (y.rows(), y.cols());
+            let len = if n == 0 { 0 } else { 2 * n - 1 };
+            let mut xb = Matrix::zeros(len, m);
+            let mut yb = Matrix::zeros(len, m);
+            for j in 0..m {
+                let xj = if x.cols() == m { j } else { 0 };
+                for i in 0..n {
+                    xb.set(2 * i, j, x.get(i, xj));
+                    yb.set(2 * i, j, y.get(i, j));
+                    if i + 1 < n {
+                        xb.set(2 * i + 1, j, x.get(i + 1, xj));
+                        yb.set(2 * i + 1, j, y.get(i, j));
+                    }
+                }
+            }
+            Ok(Some(vec![Value::Num(xb), Value::Num(yb)]))
+        }
         "plot" | "scatter" | "bar" | "stairs" | "area" | "stem" => {
             let kind = match name {
                 "plot" => SeriesKind::Line,

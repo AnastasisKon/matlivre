@@ -1444,7 +1444,18 @@ impl Interpreter {
             (None, Some(n)) => match self.get_var(n) { Some(v) => v, None => return rt(format!("Unrecognized function or variable '{n}'.")) },
             _ => unreachable!(),
         };
-        ops::binary(op, lv, rv).map(Some)
+        let out = ops::binary(op, lv, rv);
+        self.flush_op_warnings(op);
+        out.map(Some)
+    }
+
+    /// Prints the warnings an operator raised (only the matrix divisions raise any).
+    fn flush_op_warnings(&mut self, op: BinOp) {
+        if matches!(op, BinOp::MatLeftDiv | BinOp::MatDiv | BinOp::MatPow) {
+            for w in ops::take_warnings() {
+                crate::builtins_funfun::warn(self, w);
+            }
+        }
     }
 
     pub(crate) fn binary(&mut self, op: BinOp, l: Value, r: Value) -> R<Value> {
@@ -1493,7 +1504,9 @@ impl Interpreter {
             let cls = if let Value::Object(o) = &l { o.class.name.clone() } else if let Value::Object(o) = &r { o.class.name.clone() } else { String::new() };
             return rt(format!("Undefined function '{name}' for input arguments of type '{cls}'."));
         }
-        ops::binary(op, &l, &r)
+        let out = ops::binary(op, &l, &r);
+        self.flush_op_warnings(op);
+        out
     }
 
     /// Evaluates an expression that may yield several values (function outputs, `c{:}`,
@@ -2111,7 +2124,7 @@ impl Interpreter {
     }
 
     fn call_user(&mut self, f: &Rc<Function>, args: Vec<Value>, nargout: usize) -> R<Vec<Value>> {
-        if nargout <= 1 {
+        if nargout <= 1 && f.args.is_empty() {
             if let Some(r) = self.try_jit_call(f, &args)? {
                 return Ok(vec![r]);
             }
@@ -2120,6 +2133,17 @@ impl Interpreter {
     }
 
     fn call_user_with(&mut self, f: &Rc<Function>, args: Vec<Value>, nargout: usize, preset: Option<(String, Value)>) -> R<Vec<Value>> {
+        let mut args = args;
+        // With an arguments block, the name-value structure's parameter takes the trailing
+        // Name,Value pairs, which are bound after the positional arguments.
+        let nv_param = f.params.last().filter(|p| f.args.iter().any(|d| &d.name == *p && d.field.is_some())).cloned();
+        let mut nv_args = Vec::new();
+        if nv_param.is_some() {
+            let npos = f.params.len() - 1;
+            if args.len() > npos {
+                nv_args = args.split_off(npos);
+            }
+        }
         let has_varargin = f.params.last().map(|p| p == "varargin").unwrap_or(false);
         let fixed = if has_varargin { f.params.len() - 1 } else { f.params.len() };
         if args.len() > fixed && !has_varargin {
@@ -2149,10 +2173,15 @@ impl Interpreter {
             let rest: Vec<Value> = it.collect();
             vars.insert("varargin".into(), Value::Cell(CellArray::row(rest)));
         }
+        let nargin = nargin + nv_args.len();
         vars.insert("nargin".into(), Value::num(nargin as f64));
         vars.insert("nargout".into(), Value::num(nargout as f64));
         self.frames.push(Frame { vars, globals: HashSet::new(), func: Some(f.name.clone()) });
-        let r = self.exec_block(&f.body);
+        let r = if f.args.is_empty() { Ok(()) } else { self.check_arguments(f, nv_param.as_deref(), nargin - nv_args.len(), nv_args) };
+        let r = match r {
+            Ok(()) => self.exec_block(&f.body),
+            Err(e) => Err(e),
+        };
         let frame = self.frames.pop().unwrap();
         self.depth -= 1;
         if let Err(e) = r {
@@ -2300,6 +2329,136 @@ impl Interpreter {
 
     /// Calls user function `f` as native code when every argument is a real double scalar
     /// and it compiles. Returns None to interpret.
+    /// Applies a function's `arguments` declarations in its fresh workspace: defaults of
+    /// missing inputs, the name-value structure, class conversion, size and validators.
+    fn check_arguments(&mut self, f: &Function, nv_param: Option<&str>, npos: usize, nv: Vec<Value>) -> R<()> {
+        let positional: Vec<&String> = f.params.iter().filter(|p| Some(p.as_str()) != nv_param && p.as_str() != "varargin").collect();
+        let decl = |p: &str| f.args.iter().find(|d| d.name == p && d.field.is_none());
+        let required = positional.iter().rposition(|p| decl(p).is_some_and(|d| d.default.is_none())).map_or(0, |i| i + 1);
+        if npos < required {
+            return rt(format!("Invalid argument list. Function requires {} more input(s).", required - npos));
+        }
+        for (i, p) in positional.iter().enumerate() {
+            let Some(d) = decl(p) else { continue };
+            let v = if i < npos {
+                self.get_var(p).cloned().unwrap_or_else(Value::empty)
+            } else {
+                match &d.default {
+                    Some(e) => self.eval(e)?,
+                    None => continue,
+                }
+            };
+            let v = self.validate_arg(d, v, &format!("Invalid argument at position {}. ", i + 1))?;
+            self.set_var(p, v);
+        }
+        let Some(nvp) = nv_param else { return Ok(()) };
+        let fields: Vec<&crate::ast::ArgDecl> = f.args.iter().filter(|d| d.name == nvp && d.field.is_some()).collect();
+        if nv.len() % 2 == 1 {
+            return rt(format!("Invalid argument at position {}. Make sure name-value arguments include both the name and the value.", npos + nv.len()));
+        }
+        let field_name = |d: &crate::ast::ArgDecl| d.field.clone().unwrap_or_default();
+        let mut given: Vec<Option<Value>> = vec![None; fields.len()];
+        for (k, pair) in nv.chunks(2).enumerate() {
+            let Ok(name) = pair[0].text() else {
+                return rt(format!("Invalid argument at position {}. Function requires {} positional input(s).", npos + 2 * k + 1, npos));
+            };
+            let hit = fields.iter().position(|d| field_name(d).eq_ignore_ascii_case(&name)).or_else(|| {
+                let low = name.to_lowercase();
+                let partial: Vec<usize> = fields.iter().enumerate().filter(|(_, d)| !low.is_empty() && field_name(d).to_lowercase().starts_with(&low)).map(|(i, _)| i).collect();
+                if partial.len() == 1 { Some(partial[0]) } else { None }
+            });
+            let Some(j) = hit else {
+                let names: Vec<String> = fields.iter().map(|d| format!("'{}'", field_name(d))).collect();
+                let hint = if names.len() == 1 { format!("Use {}.", names[0]) } else { format!("Use one of these names:\n    {}", names.join("\n    ")) };
+                return rt(format!("Invalid argument name '{name}'. {hint}"));
+            };
+            given[j] = Some(pair[1].clone());
+        }
+        let mut s = StructArray::scalar();
+        for (d, g) in fields.iter().zip(given) {
+            let field = field_name(d);
+            let v = match g {
+                Some(v) => v,
+                None => match &d.default {
+                    Some(e) => self.eval(e)?,
+                    None => continue,
+                },
+            };
+            let v = self.validate_arg(d, v, &format!("Invalid value for '{field}' argument. "))?;
+            s.set(&field, v);
+        }
+        self.set_var(nvp, Value::Struct(s));
+        Ok(())
+    }
+
+    /// One declared argument's class conversion, size check (with scalar expansion) and
+    /// validators; errors start with `prefix`.
+    fn validate_arg(&mut self, d: &crate::ast::ArgDecl, v: Value, prefix: &str) -> R<Value> {
+        let mut v = v;
+        if let Some(cls) = &d.class {
+            let is = match &v {
+                Value::Object(o) => o.class.is_a(cls),
+                _ => &v.class_name() == cls,
+            };
+            if !is {
+                let convertible = !matches!(cls.as_str(), "cell" | "struct" | "function_handle" | "table");
+                let converted = if convertible { self.call_function(cls, vec![v.clone()], 1).ok().and_then(|r| r.into_iter().next()) } else { None };
+                match converted {
+                    Some(c) => v = c,
+                    None if convertible => return rt(format!("{prefix}Value must be of type {cls} or be convertible to {cls}.")),
+                    None => return rt(format!("{prefix}Value must be of type {cls}.")),
+                }
+            }
+        }
+        if let Some(spec) = &d.dims {
+            let mut vd = v.dims();
+            while vd.len() < spec.len() {
+                vd.push(1);
+            }
+            let fits = vd.len() == spec.len() && spec.iter().zip(&vd).all(|(s, &n)| s.is_none_or(|s| s == n));
+            // A vector takes the declared orientation: a column for `(1,:)` becomes a row.
+            let n: usize = vd.iter().product();
+            let is_vector = vd.iter().filter(|&&k| k != 1).count() <= 1;
+            let vec_spec = spec.len() == 2 && (spec[0] == Some(1) || spec[1] == Some(1));
+            if !fits && n > 1 && is_vector && vec_spec {
+                let along = if spec[0] == Some(1) { spec[1] } else { spec[0] };
+                if along.is_none_or(|k| k == n) {
+                    let shape = if spec[0] == Some(1) { [1.0, n as f64] } else { [n as f64, 1.0] };
+                    let a = vec![v.clone(), Value::num(shape[0]), Value::num(shape[1])];
+                    v = self.call_function("reshape", a, 1)?.remove(0);
+                    vd = v.dims();
+                }
+            }
+            let fits = vd.len() == spec.len() && spec.iter().zip(&vd).all(|(s, &n)| s.is_none_or(|s| s == n));
+            if !fits {
+                if vd.iter().product::<usize>() == 1 {
+                    // A scalar expands to the declared size (`:` taken as 1).
+                    let mut a = vec![v.clone()];
+                    a.extend(spec.iter().map(|s| Value::num(s.unwrap_or(1) as f64)));
+                    v = self.call_function("repmat", a, 1)?.remove(0);
+                } else {
+                    return rt(format!("{prefix}{}", size_message(spec)));
+                }
+            }
+        }
+        for e in &d.validators {
+            let r = match e {
+                Expr::Ident(n) if self.get_var(n).is_none() => self.call_function(n, vec![v.clone()], 0).map(|_| ()),
+                _ => {
+                    // The validator sees the converted value under the argument's name.
+                    if d.field.is_none() {
+                        self.set_var(&d.name, v.clone());
+                    }
+                    self.eval_multi(e, 0).map(|_| ())
+                }
+            };
+            if let Err(err) = r {
+                return Err(LangError { message: format!("{prefix}{}", err.message), ..err });
+            }
+        }
+        Ok(v)
+    }
+
     fn try_jit_call(&mut self, f: &Rc<Function>, args: &[Value]) -> R<Option<Value>> {
         use crate::jit::{self as j, Ctx, Runtime, VarType};
         if !self.jit_enabled || args.len() != f.params.len() || f.outputs.len() != 1 {
@@ -2566,5 +2725,18 @@ fn approx_bytes(v: &Value) -> usize {
         Value::Time(t) => t.data.len() * 8,
         Value::Table(t) => t.vars.iter().map(approx_bytes).sum(),
         Value::Sym(s) => s.data.len() * 8,
+    }
+}
+
+/// MATLAB's message for a value whose size does not match a declared `(dims)`.
+fn size_message(spec: &[Option<usize>]) -> String {
+    match spec {
+        [Some(1), Some(1)] => "Value must be a scalar.".into(),
+        [Some(1), Some(n)] | [Some(n), Some(1)] => format!("Value must be a vector with {n} elements."),
+        [Some(1), None] => "Value must be a row vector.".into(),
+        [None, Some(1)] => "Value must be a column vector.".into(),
+        [None, Some(n)] => format!("Value must be a matrix with {n} columns."),
+        [Some(n), None] => format!("Value must be a matrix with {n} rows."),
+        _ => format!("Value must be a matrix of size {}.", spec.iter().map(|s| s.map_or(":".to_string(), |n| n.to_string())).collect::<Vec<_>>().join("-by-")),
     }
 }

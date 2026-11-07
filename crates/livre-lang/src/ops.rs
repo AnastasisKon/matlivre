@@ -308,8 +308,9 @@ pub fn num_binary(op: BinOp, x: &Matrix, y: &Matrix) -> R<Matrix> {
             }
             if y.is_scalar() && y.im.is_none() && x.is_2d() && x.rows() == x.cols() {
                 let p = y.data[0];
-                if p.fract() != 0.0 {
-                    return rt("Matrix power with non-integer exponents is not supported.");
+                if p.fract() != 0.0 || !p.is_finite() {
+                    let v = crate::builtins_matfun::mpower_frac(x, faer::c64::new(p, 0.0))?;
+                    return v.to_matrix();
                 }
                 let base = if p < 0.0 { inv_any(x)? } else { x.clone().with_kind(Kind::Double) };
                 let mut n = p.abs() as u64;
@@ -323,6 +324,12 @@ pub fn num_binary(op: BinOp, x: &Matrix, y: &Matrix) -> R<Matrix> {
                     n >>= 1;
                 }
                 result
+            } else if x.is_scalar() && y.is_2d() && y.rows() == y.cols() && !kind.is_int() {
+                let v = crate::builtins_matfun::scalar_mpower(faer::c64::new(x.data[0], x.im_at(0)), y);
+                return v.to_matrix();
+            } else if y.is_scalar() && x.is_2d() && x.rows() == x.cols() && !kind.is_int() {
+                let v = crate::builtins_matfun::mpower_frac(x, faer::c64::new(y.data[0], y.im_at(0)))?;
+                return v.to_matrix();
             } else {
                 return rt("Incorrect dimensions for raising a matrix to a power. Check that the matrix is square and the power is a scalar. To operate on each element of the matrix individually, use POWER (.^).");
             }
@@ -572,8 +579,29 @@ pub fn inv_any(a: &Matrix) -> R<Matrix> {
     solve_any(a, &identity(n))
 }
 
+thread_local! {
+    /// Warnings raised inside operators, which have no interpreter at hand; the interpreter
+    /// prints them after the operation.
+    static WARNINGS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Warnings raised by operators since the last call.
+pub fn take_warnings() -> Vec<String> {
+    WARNINGS.with(|w| std::mem::take(&mut *w.borrow_mut()))
+}
+
+fn push_warning(msg: &str) {
+    WARNINGS.with(|w| w.borrow_mut().push(msg.to_string()));
+}
+
 /// LU decomposition with partial pivoting. Returns (lu, perm, sign) or an error if singular.
 fn lu(a: &Matrix) -> R<(Matrix, Vec<usize>, f64)> {
+    lu_tol(a, false)
+}
+
+/// LU decomposition; with `allow_singular`, a zero pivot column is left as it is (as LAPACK
+/// does), so the substitution afterwards gives Inf or NaN.
+fn lu_tol(a: &Matrix, allow_singular: bool) -> R<(Matrix, Vec<usize>, f64)> {
     let n = a.rows();
     let mut lu = Matrix::from_dims(a.dims.clone(), a.data.clone());
     let mut perm: Vec<usize> = (0..n).collect();
@@ -589,7 +617,12 @@ fn lu(a: &Matrix) -> R<(Matrix, Vec<usize>, f64)> {
             }
         }
         if best < 1e-300 {
-            return rt("Matrix is singular to working precision.");
+            if !allow_singular {
+                return rt("Matrix is singular to working precision.");
+            }
+            if best == 0.0 {
+                continue;
+            }
         }
         if p != k {
             for c in 0..n {
@@ -648,9 +681,15 @@ pub fn solve(a: &Matrix, b: &Matrix) -> R<Matrix> {
     }
     if a.rows() == a.cols() {
         if a.rows() >= FAER_MIN_ORDER {
-            return faer_solve(a, b);
+            if let Ok(x) = faer_solve(a, b) {
+                return Ok(x);
+            }
+        } else if let Ok((lu, perm, _)) = lu(a) {
+            return Ok(lu_solve(&lu, &perm, b));
         }
-        let (lu, perm, _) = lu(a)?;
+        // A singular matrix gives a warning and the Inf or NaN of the substitution.
+        push_warning("Matrix is singular to working precision.");
+        let (lu, perm, _) = lu_tol(a, true)?;
         Ok(lu_solve(&lu, &perm, b))
     } else {
         let at = a.transpose();

@@ -3868,3 +3868,55 @@ fn cholupdate(a: &[Value], nargout: usize) -> Ret {
     }
     vals(vec![r.val(c), Value::num(0.0)])
 }
+
+// ---- operator support ---------------------------------------------------------------------
+
+/// `[V,D] = eig(A)` for a general square matrix: unit-norm eigenvectors, each complex one
+/// turned so that its largest component is real, as LAPACK returns them.
+pub(crate) fn eig_vd(a: &Matrix) -> R<(Value, Value)> {
+    let m = M::of(a);
+    let (e, mut v) = eig_general(&m)?;
+    let n = m.r;
+    for j in 0..n {
+        if (0..n).all(|i| v.at(i, j).im == 0.0) {
+            continue;
+        }
+        let mut k = 0;
+        for i in 1..n {
+            if abs(v.at(i, j)) > abs(v.at(k, j)) * (1.0 + 1e-12) {
+                k = i;
+            }
+        }
+        let p = v.at(k, j);
+        let rot = dv(re(abs(p)), p);
+        for i in 0..n {
+            *v.rf(i, j) = v.at(i, j) * rot;
+        }
+        v.set(k, j, re(abs(p)));
+    }
+    let cplx = a.is_complex() || e.iter().any(|z| z.im != 0.0) || !v.is_real();
+    Ok((v.val(cplx), M::diag(&e).val(cplx)))
+}
+
+/// `A ^ p` for a square matrix and a non-integer scalar: V * D.^p / V.
+pub(crate) fn mpower_frac(a: &Matrix, p: Z) -> R<Value> {
+    let m = M::of(a);
+    let (e, v) = eig_general(&m)?;
+    let d: Vec<Z> = e.iter().map(|&l| if l == ZERO { ZERO } else { cexp(cln(l) * p) }).collect();
+    let vd = v.mul(&M::diag(&d));
+    // X V = V D^p, so X = (V' \ (V D^p)')'.
+    let x = match lu_solve(&v.ct(), &vd.ct()) {
+        Some(x) => x.ct(),
+        None => M::from_fn(m.r, m.c, |_, _| re(f64::NAN)),
+    };
+    let real = !a.is_complex() && p.im == 0.0 && e.iter().all(|l| l.im == 0.0 && l.re >= 0.0);
+    Ok(if real { x.val(false) } else { x.auto() })
+}
+
+/// `s ^ A` for a scalar and a square matrix: expm(log(s) * A).
+pub(crate) fn scalar_mpower(s: Z, a: &Matrix) -> Value {
+    let m = M::of(a);
+    let x = expm_of(&m.scale(cln(s)));
+    let real = !a.is_complex() && s.im == 0.0 && s.re > 0.0;
+    if real { x.val(false) } else { x.auto() }
+}

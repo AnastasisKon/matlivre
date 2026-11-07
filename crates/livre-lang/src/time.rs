@@ -1129,6 +1129,27 @@ pub fn call(name: &str, args: &[Value], nargout: usize) -> R<Option<Vec<Value>>>
             let mk = |v: Vec<f64>| Value::Time(TimeArray::durations(t.dims.clone(), v, "hh:mm"));
             Ok(Some(vec![mk(off), mk(dst)].into_iter().take(nargout.max(1)).collect()))
         }
+        // Serial date numbers or date text: [N,S] = weekday(D) and weekday(D,'long').
+        "weekday" if matches!(args.first(), Some(v) if !matches!(v, Value::Time(_))) => {
+            let d = match &args[0] {
+                v if v.is_text() || matches!(v, Value::Cell(_) | Value::Str(_)) => crate::builtins_dates::datenum_text(v)?,
+                v => v.to_matrix()?,
+            };
+            let n: Vec<f64> = d.data.iter().map(|&x| if x.is_finite() { ((x.floor() as i64 - 2).rem_euclid(7) + 1) as f64 } else { f64::NAN }).collect();
+            const SHORT: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            const LONG: [&str; 7] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+            let long = args.get(1).is_some_and(|f| f.text().is_ok_and(|t| t.eq_ignore_ascii_case("long")));
+            let names: Vec<String> = n.iter().map(|&k| if k.is_nan() { String::new() } else { (if long { LONG } else { SHORT })[k as usize - 1].to_string() }).collect();
+            let w = names.iter().map(|s| s.len()).max().unwrap_or(0);
+            let mut cm = Matrix::zeros(names.len(), w).with_kind(Kind::Char);
+            for (r, nm) in names.iter().enumerate() {
+                for (c, ch) in format!("{nm:<w$}").chars().enumerate() {
+                    cm.set(r, c, ch as u32 as f64);
+                }
+            }
+            let s = Value::Num(cm);
+            Ok(Some(vec![Value::Num(Matrix::from_dims(d.dims.clone(), n)), s]))
+        }
         "year" | "month" | "day" | "hour" | "minute" | "second" | "weekday" | "quarter" => {
             let t = time_arg(args, name)?;
             if t.kind != TimeKind::DateTime {

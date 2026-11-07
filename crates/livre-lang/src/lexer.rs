@@ -86,7 +86,7 @@ const OPS: [&str; 30] = [
 pub fn tokenize(src: &str) -> Result<Vec<Token>, LangError> {
     // A UTF-8 byte order mark (files saved by Notepad or PowerShell) is not code.
     let src = src.strip_prefix('\u{feff}').unwrap_or(src);
-    Lexer { s: src.as_bytes(), src, i: 0, line: 1, out: Vec::new(), brackets: Vec::new(), after_params: false }.run()
+    Lexer { s: src.as_bytes(), src, i: 0, line: 1, out: Vec::new(), brackets: Vec::new(), after_params: false, in_args: false }.run()
 }
 
 struct Lexer<'a> {
@@ -100,6 +100,8 @@ struct Lexer<'a> {
     /// The last token closed the parameter list of an anonymous function, whose body
     /// follows even after a space inside brackets (`{@(x) x+1, 2}`).
     after_params: bool,
+    /// Inside a function's `arguments` block, where `x double` is a declaration, not a command.
+    in_args: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -214,7 +216,15 @@ impl<'a> Lexer<'a> {
                 }
                 let word = &self.src[start..self.i];
                 if let Some(kw) = keyword(word) {
+                    if kw == Kw::End && self.in_args && self.at_statement_start() && self.brackets.is_empty() {
+                        self.in_args = false;
+                    }
                     self.push(Tok::Kw(kw), space);
+                } else if word == "arguments" && self.at_statement_start() && self.brackets.is_empty() && self.arguments_header() {
+                    self.in_args = true;
+                    self.push(Tok::Ident(word.to_string()), space);
+                } else if self.in_args {
+                    self.push(Tok::Ident(word.to_string()), space);
                 } else {
                     let stmt_start = self.at_statement_start() && self.brackets.is_empty();
                     // syms y(t) and syms f(x, y) declare symbolic functions.
@@ -402,6 +412,14 @@ impl<'a> Lexer<'a> {
             k += 1;
         }
         let c = self.peek(k);
+        // `cd ..` and `cd ../x`: a relative path is a word.
+        if c == b'.' && matches!(self.peek(k + 1), b'.' | b'/' | b'\\') {
+            return true;
+        }
+        // `format +`: a lone operator character ending the statement.
+        if c == b'+' && matches!(self.peek(k + 1), b'\n' | b'\r' | 0 | b';' | b',') {
+            return true;
+        }
         if !(c.is_ascii_alphabetic() || c == b'-') {
             return false;
         }
@@ -418,6 +436,23 @@ impl<'a> Lexer<'a> {
             j += 1;
         }
         !(self.peek(j) == b'=' && self.peek(j + 1) != b'=') && self.peek(j) != b'('
+    }
+
+    /// After the word `arguments`: the rest of the line is blank, a comment, or an attribute
+    /// list such as `(Input)`, so this opens an arguments block.
+    fn arguments_header(&self) -> bool {
+        let mut k = 0;
+        while matches!(self.peek(k), b' ' | b'\t' | b'\r') {
+            k += 1;
+        }
+        match self.peek(k) {
+            b'\n' | 0 | b'%' => true,
+            b'(' => {
+                let rest = &self.src[self.i + k + 1..];
+                ["Input", "Output", "Repeating"].iter().any(|a| rest.trim_start().starts_with(a))
+            }
+            _ => false,
+        }
     }
 
     /// `syms f(x)`: command syntax although a word is followed by a parenthesis.

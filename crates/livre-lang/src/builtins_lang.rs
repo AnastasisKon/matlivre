@@ -15,7 +15,7 @@ pub const NAMES: &[&str] = &[
 ];
 
 /// MATLAB's reserved words, in `iskeyword()` order.
-const KEYWORDS: &[&str] = &[
+pub(crate) const KEYWORDS: &[&str] = &[
     "break", "case", "catch", "classdef", "continue", "else", "elseif", "end", "for", "function", "global", "if", "otherwise", "parfor",
     "persistent", "return", "spmd", "switch", "try", "while",
 ];
@@ -204,7 +204,8 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         }
         "iskeyword" => match a.first() {
             None => one(Value::Cell(CellArray::col(KEYWORDS.iter().map(|k| Value::chars(k)).collect()))),
-            Some(v) => one(Value::bool(KEYWORDS.contains(&v.text()?.as_str()))),
+            // Anything but a single piece of text is not a keyword.
+            Some(v) => one(Value::bool(v.text().is_ok_and(|t| KEYWORDS.contains(&t.as_str())))),
         },
         "isvarname" => {
             let ok = match arg(a, 0, name)? {

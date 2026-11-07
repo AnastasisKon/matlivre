@@ -40,6 +40,7 @@ mod ode_objects;
 mod ode_output;
 mod ops_functions;
 mod optim_plot;
+mod outputs_and_forms;
 mod patterns;
 mod plot_extra;
 mod plot_helpers;

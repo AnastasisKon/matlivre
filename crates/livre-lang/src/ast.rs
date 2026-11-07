@@ -143,6 +143,21 @@ pub struct Function {
     pub params: Vec<String>,
     pub outputs: Vec<String>,
     pub body: Vec<Stmt>,
+    /// Declarations of the input `arguments` blocks, in order.
+    pub args: Vec<ArgDecl>,
+}
+
+/// One line of an `arguments` block: `name(.field) (dims) class {validators} = default`.
+#[derive(Debug)]
+pub struct ArgDecl {
+    pub name: String,
+    /// The name-value field of `opts.Name`.
+    pub field: Option<String>,
+    /// Required size; `None` entries are `:`.
+    pub dims: Option<Vec<Option<usize>>>,
+    pub class: Option<String>,
+    pub validators: Vec<Expr>,
+    pub default: Option<Expr>,
 }
 
 #[derive(Debug, Default)]

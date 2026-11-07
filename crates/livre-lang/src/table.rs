@@ -675,6 +675,11 @@ pub fn call(it_arg_names: &[Option<String>], name: &str, args: &[Value], _nargou
             }
             one(Value::Struct(StructArray { dims: vec![t.nrows, 1], fields: t.names.clone(), elems }))
         }
+        // Any other array: the number of rows or columns, size(A,1) and size(A,2).
+        "height" | "width" if matches!(args.first(), Some(v) if !matches!(v, Value::Table(_))) => {
+            let d = args[0].dims();
+            one(Value::num(if name == "height" { d[0] } else { d.get(1).copied().unwrap_or(1) } as f64))
+        }
         "height" => one(Value::num(table_arg(args, name)?.nrows as f64)),
         "width" => one(Value::num(table_arg(args, name)?.vars.len() as f64)),
         "istable" => one(Value::bool(matches!(args.first(), Some(Value::Table(t)) if !t.is_timetable()))),

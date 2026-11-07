@@ -339,6 +339,13 @@ fn per_elem(t: &TimeArray, f: impl Fn(f64) -> f64) -> Value {
     Value::Num(Matrix::from_dims(t.dims.clone(), (0..t.data.len()).map(|i| f(t.wall(i) / 86_400_000.0 + EPOCH)).collect()))
 }
 
+/// Date numbers of date text, as `datenum(text)` gives them.
+pub fn datenum_text(v: &Value) -> R<Matrix> {
+    let texts = crate::ops::to_str_array(v)?;
+    let vals = texts.data.iter().map(|t| parse_date_text(t.as_deref().unwrap_or(""), None)).collect::<R<Vec<_>>>()?;
+    Ok(Matrix::from_dims(texts.dims.clone(), vals))
+}
+
 pub fn call(_it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Ret {
     if !NAMES.contains(&name) {
         return Ok(None);

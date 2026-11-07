@@ -533,40 +533,71 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
         }
         "strsplit" | "split" => {
             let v = arg(a, 0, name)?;
-            let delims: Vec<String> = match a.get(1) {
-                Some(d) => text_list(d)?.into_iter().map(|t| process_escapes(&t)).collect(),
-                None => vec![" ".into(), "\t".into(), "\n".into()],
+            let has_delims = a.get(1).is_some_and(|d| !(name == "strsplit" && d.text().is_ok_and(|t| t.eq_ignore_ascii_case("CollapseDelimiters")) && a.len() == 3));
+            let mut delims: Vec<String> = match a.get(1) {
+                Some(d) if has_delims => text_list(d)?.into_iter().map(|t| process_escapes(&t)).collect(),
+                _ => vec![" ".into(), "\x0c".into(), "\n".into(), "\r".into(), "\t".into(), "\x0b".into()],
             };
-            let split_one = |s: &str| -> Vec<String> {
+            // Longer delimiters are tried first, so "ab" wins over "a".
+            delims.sort_by_key(|d| std::cmp::Reverse(d.chars().count()));
+            let mut collapse = name == "strsplit";
+            let opts = if has_delims { 2 } else { 1 };
+            let mut k = opts;
+            while k + 1 < a.len() {
+                if a[k].text()?.eq_ignore_ascii_case("CollapseDelimiters") {
+                    collapse = a[k + 1].is_true()?;
+                }
+                k += 2;
+            }
+            if name == "split" && !has_delims {
+                collapse = true;
+            }
+            let split_one = |s: &str| -> (Vec<String>, Vec<String>) {
                 let mut out = Vec::new();
+                let mut found: Vec<String> = Vec::new();
                 let mut cur = String::new();
                 let mut rest = s;
+                let mut after_delim = false;
                 'outer: while !rest.is_empty() {
                     for d in &delims {
                         if !d.is_empty() && rest.starts_with(d.as_str()) {
-                            out.push(std::mem::take(&mut cur));
+                            if collapse && after_delim {
+                                found.last_mut().unwrap().push_str(d);
+                            } else {
+                                out.push(std::mem::take(&mut cur));
+                                found.push(d.clone());
+                            }
+                            after_delim = true;
                             rest = &rest[d.len()..];
                             continue 'outer;
                         }
                     }
+                    after_delim = false;
                     let c = rest.chars().next().unwrap();
                     cur.push(c);
                     rest = &rest[c.len_utf8()..];
                 }
                 out.push(cur);
-                if a.get(1).is_none() {
-                    // Default whitespace splitting collapses runs (strsplit behavior).
-                    out.retain(|x| !x.is_empty());
-                }
-                out
+                (out, found)
             };
             let s = text_list(v)?.into_iter().next().unwrap_or_default();
-            let parts = split_one(&s);
+            let (parts, found) = split_one(&s);
             if name == "split" {
                 // split returns a column string array (or cell for char input).
                 return one(if matches!(v, Value::Str(_)) { Value::Str(StrArray::col(parts)) } else { Value::Cell(CellArray::col(parts.iter().map(|p| Value::chars(p)).collect())) });
             }
-            one(Value::Cell(CellArray::row(parts.iter().map(|p| Value::chars(p)).collect())))
+            let is_str = matches!(v, Value::Str(_));
+            let row = |items: Vec<String>| {
+                if is_str {
+                    let n = items.len();
+                    Value::Str(StrArray::from_dims(vec![1, n], items.into_iter().map(Some).collect()))
+                } else if items.is_empty() {
+                    Value::Cell(CellArray::new(1, 0, vec![]))
+                } else {
+                    Value::Cell(CellArray::row(items.iter().map(|p| Value::chars(p)).collect()))
+                }
+            };
+            Ok(Some(vec![row(parts), row(found)]))
         }
         "strjoin" | "join" => {
             let v = arg(a, 0, name)?;
@@ -604,19 +635,35 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
             }]))
         }
         "strfind" => {
-            let s = arg(a, 0, name)?.text()?;
             let p = arg(a, 1, name)?.text()?;
-            let chars: Vec<char> = s.chars().collect();
             let pc: Vec<char> = p.chars().collect();
-            let mut hits = Vec::new();
-            if !pc.is_empty() && pc.len() <= chars.len() {
-                for i in 0..=chars.len() - pc.len() {
-                    if chars[i..i + pc.len()] == pc[..] {
-                        hits.push((i + 1) as f64);
+            let force_cell = a.len() >= 4 && a[2].text().is_ok_and(|t| t.eq_ignore_ascii_case("ForceCellOutput")) && a[3].is_true()?;
+            let find = |s: &str| {
+                let chars: Vec<char> = s.chars().collect();
+                let mut hits = Vec::new();
+                if !pc.is_empty() && pc.len() <= chars.len() {
+                    for i in 0..=chars.len() - pc.len() {
+                        if chars[i..i + pc.len()] == pc[..] {
+                            hits.push((i + 1) as f64);
+                        }
                     }
                 }
+                Value::Num(if hits.is_empty() { Matrix::new(1, 0, vec![]) } else { Matrix::row(hits) })
+            };
+            match arg(a, 0, name)? {
+                Value::Cell(c) => {
+                    let items = c.data.iter().map(|v| v.text().map(|t| find(&t))).collect::<R<Vec<_>>>()?;
+                    one(Value::Cell(CellArray::from_dims(c.dims.clone(), items)))
+                }
+                Value::Str(sa) if sa.data.len() != 1 => {
+                    let items = sa.data.iter().map(|t| find(t.as_deref().unwrap_or(""))).collect();
+                    one(Value::Cell(CellArray::from_dims(sa.dims.clone(), items)))
+                }
+                v => {
+                    let r = find(&v.text()?);
+                    one(if force_cell { Value::Cell(CellArray::new(1, 1, vec![r])) } else { r })
+                }
             }
-            one(Value::Num(if hits.is_empty() { Matrix::new(1, 0, vec![]) } else { Matrix::row(hits) }))
         }
         "ismissing" => {
             let v = arg(a, 0, name)?;
@@ -629,6 +676,22 @@ pub fn call(it: &mut Interpreter, name: &str, args: &[Value], nargout: usize) ->
             })
         }
         "isspace" | "isletter" | "isstrprop" => {
+            let v0 = arg(a, 0, name)?;
+            if name != "isletter" {
+                let mut sub = |t: &str| -> R<Value> {
+                    let mut b = a.to_vec();
+                    b[0] = Value::chars(t);
+                    Ok(call(it, name, &b, 1)?.and_then(|v| v.into_iter().next()).unwrap_or(Value::empty()))
+                };
+                match v0 {
+                    Value::Str(sa) if sa.data.len() == 1 => return one(sub(sa.data[0].as_deref().unwrap_or(""))?),
+                    Value::Cell(c) if name == "isstrprop" => {
+                        let items = c.data.iter().map(|v| sub(&v.text()?)).collect::<R<Vec<_>>>()?;
+                        return one(Value::Cell(CellArray::from_dims(c.dims.clone(), items)));
+                    }
+                    _ => {}
+                }
+            }
             let m = m_arg(a, 0, name)?;
             let prop = if name == "isstrprop" { arg(a, 1, name)?.text()? } else { name.trim_start_matches("is").to_string() };
             let f = |c: char| match prop.as_str() {

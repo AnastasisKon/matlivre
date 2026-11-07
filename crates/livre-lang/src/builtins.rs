@@ -964,6 +964,33 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
     }
     let a = &args;
 
+    // [F,E] = log2(X): mantissa in [0.5, 1) and exponent, X = F .* 2.^E.
+    if name == "log2" && nargout >= 2 && a.len() == 1 {
+        let m = m_arg(a, 0, name)?;
+        let (f, e): (Vec<f64>, Vec<f64>) = m
+            .data
+            .iter()
+            .map(|&x| {
+                if x == 0.0 || !x.is_finite() {
+                    return (x, 0.0);
+                }
+                let mut e = x.abs().log2().floor() + 1.0;
+                let mut f = x / 2f64.powf(e);
+                // Correct the rounding of log2 near powers of two and in the subnormal range.
+                while f.abs() >= 1.0 {
+                    f /= 2.0;
+                    e += 1.0;
+                }
+                while f.abs() < 0.5 {
+                    f *= 2.0;
+                    e -= 1.0;
+                }
+                (f, e)
+            })
+            .unzip();
+        return Ok(Some(vec![Value::Num(Matrix::from_dims(m.dims.clone(), f)), Value::Num(Matrix::from_dims(m.dims.clone(), e))]));
+    }
+
     // Elementwise math.
     if let Some(Value::Num(m)) = a.first() {
         if a.len() == 1 || matches!(name, "round") && a.len() == 1 {
@@ -1391,7 +1418,12 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             }
         }
         "cast" => {
-            let cls = arg(a, 1, name)?.text()?;
+            // cast(A, 'like', p) takes p's class (and complexity).
+            let cls = if a.len() >= 3 && arg(a, 1, name)?.text().is_ok_and(|t| t.eq_ignore_ascii_case("like")) {
+                arg(a, 2, name)?.class_name()
+            } else {
+                arg(a, 1, name)?.text()?
+            };
             call(it, &cls, vec![arg(a, 0, name)?.clone()], 1)
         }
         "class" => one(Value::chars(&arg(a, 0, name)?.class_name())),
@@ -1494,8 +1526,83 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             one(Value::bool(ok))
         }
         "issorted" => {
-            let m = m_arg(a, 0, name)?;
-            one(Value::bool(m.data.windows(2).all(|w| w[0] <= w[1])))
+            use std::cmp::Ordering;
+            // Elements as comparable keys; missing values (NaN, <missing>) sort after all others
+            // in ascending order and before them in descending order, as sort places them.
+            enum Key {
+                Num(f64),
+                Text(Option<String>),
+            }
+            let v = arg(a, 0, name)?;
+            let (dims, keys): (Vec<usize>, Vec<Key>) = match v {
+                Value::Cell(c) => (c.dims.clone(), c.data.iter().map(|x| x.text().map(|t| Key::Text(Some(t)))).collect::<R<_>>().map_err(|_| LangError::new("Input must be a cell array of character vectors.", 0))?),
+                Value::Str(sa) => (sa.dims.clone(), sa.data.iter().map(|t| Key::Text(t.clone())).collect()),
+                _ => {
+                    let m = m_arg(a, 0, name)?;
+                    (m.dims.clone(), m.data.iter().map(|&x| Key::Num(x)).collect())
+                }
+            };
+            let mut dim = None;
+            let mut dir = "ascend".to_string();
+            let mut missing = "auto".to_string();
+            let mut k = 1;
+            while k < a.len() {
+                match &a[k] {
+                    Value::Num(m) if !a[k].is_text() => dim = Some(m.data.first().copied().unwrap_or(1.0) as usize),
+                    x => {
+                        let t = x.text()?.to_lowercase();
+                        if t == "missingplacement" {
+                            missing = arg(a, k + 1, name)?.text()?.to_lowercase();
+                            k += 1;
+                        } else if t == "comparisonmethod" {
+                            k += 1;
+                        } else {
+                            dir = t;
+                        }
+                    }
+                }
+                k += 1;
+            }
+            let is_missing = |x: &Key| matches!(x, Key::Num(f) if f.is_nan()) || matches!(x, Key::Text(None));
+            let cmp = |x: &Key, y: &Key| match (x, y) {
+                (Key::Num(p), Key::Num(q)) => p.partial_cmp(q).unwrap_or(Ordering::Equal),
+                (Key::Text(Some(p)), Key::Text(Some(q))) => p.as_bytes().cmp(q.as_bytes()),
+                _ => Ordering::Equal,
+            };
+            // Whether `seq` is ordered in direction `desc` (strictly when `strict`).
+            let ordered = |seq: &[&Key], desc: bool, strict: bool| {
+                let last = match missing.as_str() {
+                    "first" => false,
+                    "last" => true,
+                    _ => !desc,
+                };
+                // Missing values must form one run at the right end.
+                let flags: Vec<bool> = seq.iter().map(|x| is_missing(x)).collect();
+                let ok_missing = if last { flags.windows(2).all(|w| !w[0] || w[1]) } else { flags.windows(2).all(|w| w[0] || !w[1]) };
+                let present: Vec<&&Key> = seq.iter().filter(|x| !is_missing(x)).collect();
+                ok_missing
+                    && present.windows(2).all(|w| {
+                        let o = cmp(w[0], w[1]);
+                        let o = if desc { o.reverse() } else { o };
+                        if strict { o == Ordering::Less } else { o != Ordering::Greater }
+                    })
+            };
+            let check = |seq: &[&Key]| match dir.as_str() {
+                "descend" => ordered(seq, true, false),
+                "monotonic" => ordered(seq, false, false) || ordered(seq, true, false),
+                "strictascend" => ordered(seq, false, true),
+                "strictdescend" => ordered(seq, true, true),
+                "strictmonotonic" => ordered(seq, false, true) || ordered(seq, true, true),
+                _ => ordered(seq, false, false),
+            };
+            let (r, c) = (dims[0], keys.len() / dims[0].max(1));
+            let d = dim.unwrap_or(if r == 1 { 2 } else { 1 });
+            let ok = if d == 1 {
+                (0..c).all(|j| check(&(0..r).map(|i| &keys[j * r + i]).collect::<Vec<_>>()))
+            } else {
+                (0..r).all(|i| check(&(0..c).map(|j| &keys[j * r + i]).collect::<Vec<_>>()))
+            };
+            one(Value::bool(ok))
         }
         "isfield" => {
             let Value::Struct(s) = arg(a, 0, name)? else { return one(Value::bool(false)) };
@@ -1773,10 +1880,25 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 Some(d) if !d.is_text() => d.as_usize()?,
                 _ => default_dim(&m.dims),
             };
+            let opt = |n: &str| -> R<Option<String>> {
+                match a.iter().skip(1).position(|v| v.text().is_ok_and(|t| t.eq_ignore_ascii_case(n))) {
+                    Some(k) => Ok(Some(arg(a, k + 2, name)?.text()?.to_lowercase())),
+                    None => Ok(None),
+                }
+            };
+            let missing = opt("MissingPlacement")?.unwrap_or_else(|| "auto".into());
+            let method = opt("ComparisonMethod")?.unwrap_or_else(|| "auto".into());
+            // NaN goes last in ascending order and first in descending order unless placed.
+            let nan_last = match missing.as_str() {
+                "first" => false,
+                "last" => true,
+                _ => !desc,
+            };
+            let by_abs = method == "abs" || method == "auto" && m.is_complex();
             // Values only, of a real vector: an unstable parallel sort gives the same result
             // unless both zeros are present (only a stable sort keeps their order).
             let along = m.dims.get(dim - 1).copied().unwrap_or(1);
-            if nargout <= 1 && !m.is_complex() && along == m.numel() && !m.data.iter().any(|x| *x == 0.0 && x.is_sign_negative()) {
+            if nargout <= 1 && !m.is_complex() && missing == "auto" && method != "abs" && along == m.numel() && !m.data.iter().any(|x| *x == 0.0 && x.is_sign_negative()) {
                 use rayon::slice::ParallelSliceMut;
                 let mut sorted = m;
                 let cmp = |p: &f64, q: &f64| match (p.is_nan(), q.is_nan()) {
@@ -1792,21 +1914,35 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 }
                 return Ok(Some(vec![Value::Num(sorted)]));
             }
-            let key: Vec<f64> = (0..m.numel()).map(|i| if m.is_complex() { C::new(m.data[i], m.im_at(i)).abs() } else { m.data[i] }).collect();
+            // Sort keys: (abs, angle) by magnitude, (real, imag) otherwise.
+            let key: Vec<(f64, f64)> = (0..m.numel())
+                .map(|i| {
+                    let (x, y) = (m.data[i], m.im_at(i));
+                    if x.is_nan() || y.is_nan() {
+                        (f64::NAN, 0.0)
+                    } else if by_abs {
+                        (x.hypot(y), y.atan2(x))
+                    } else {
+                        (x, y)
+                    }
+                })
+                .collect();
             let (_, sl) = slices(&m.dims, dim);
             let mut order = vec![0usize; m.numel()];
             let mut idx = Matrix::filled_dims(m.dims.clone(), 0.0);
             for s in &sl {
-                let mut v: Vec<(f64, usize)> = s.iter().enumerate().map(|(k, &p)| (key[p], k)).collect();
+                let mut v: Vec<((f64, f64), usize)> = s.iter().enumerate().map(|(k, &p)| (key[p], k)).collect();
                 v.sort_by(|p, q| {
-                    let o = match (p.0.is_nan(), q.0.is_nan()) {
-                        (true, true) => std::cmp::Ordering::Equal,
-                        (true, false) => std::cmp::Ordering::Greater,
-                        (false, true) => std::cmp::Ordering::Less,
-                        _ => p.0.partial_cmp(&q.0).unwrap(),
-                    };
-                    // Descending order puts NaN first, as MATLAB does.
-                    if desc { o.reverse() } else { o }
+                    use std::cmp::Ordering::*;
+                    match (p.0 .0.is_nan(), q.0 .0.is_nan()) {
+                        (true, true) => Equal,
+                        (true, false) => if nan_last { Greater } else { Less },
+                        (false, true) => if nan_last { Less } else { Greater },
+                        _ => {
+                            let o = p.0 .0.partial_cmp(&q.0 .0).unwrap().then(p.0 .1.partial_cmp(&q.0 .1).unwrap_or(Equal));
+                            if desc { o.reverse() } else { o }
+                        }
+                    }
                 });
                 for (j, (_, k)) in v.into_iter().enumerate() {
                     order[s[j]] = s[k];
@@ -1816,6 +1952,42 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             let mut sorted = m.gather(&order, m.dims.clone());
             sorted.kind = m.kind;
             Ok(Some(vec![Value::Num(sorted), Value::Num(idx)]))
+        }
+        "sortrows" if matches!(a.first(), Some(Value::Cell(_) | Value::Str(_))) => {
+            // Rows of text, compared column by column in character-code order.
+            let v = &a[0];
+            let (dims, keys): (Vec<usize>, Vec<Option<String>>) = match v {
+                Value::Cell(c) => (c.dims.clone(), c.data.iter().map(|x| x.text().map(Some)).collect::<R<_>>().map_err(|_| LangError::new("Only cell arrays of character vectors are supported by SORTROWS.", 0))?),
+                Value::Str(sa) => (sa.dims.clone(), sa.data.clone()),
+                _ => unreachable!(),
+            };
+            let (r, c) = (dims[0], if dims[0] == 0 { 0 } else { keys.len() / dims[0] });
+            let cols: Vec<(usize, bool)> = match a.get(1) {
+                Some(x) if !x.is_text() => x.to_matrix()?.data.iter().map(|&k| ((k.abs() as usize).saturating_sub(1), k < 0.0)).collect(),
+                _ => (0..c).map(|k| (k, false)).collect(),
+            };
+            let desc_all = a.iter().skip(1).any(|x| x.text().is_ok_and(|t| t.eq_ignore_ascii_case("descend")));
+            let mut order: Vec<usize> = (0..r).collect();
+            order.sort_by(|&x, &y| {
+                for &(k, d) in &cols {
+                    let (p, q) = (&keys[k * r + x], &keys[k * r + y]);
+                    // <missing> sorts last.
+                    let o = match (p, q) {
+                        (Some(p), Some(q)) => p.as_bytes().cmp(q.as_bytes()),
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        _ => std::cmp::Ordering::Equal,
+                    };
+                    let o = if d || desc_all { o.reverse() } else { o };
+                    if o != std::cmp::Ordering::Equal {
+                        return o;
+                    }
+                }
+                std::cmp::Ordering::Equal
+            });
+            let rows = IndexArg::List { ix: order.clone(), dims: vec![order.len(), 1], from_mask: false };
+            let sorted = indexing::index(v, &[rows, IndexArg::All])?;
+            Ok(Some(vec![sorted, Value::Num(Matrix::col(order.iter().map(|&i| (i + 1) as f64).collect()))]))
         }
         "sortrows" => {
             let m = m_arg(a, 0, name)?;
@@ -2143,7 +2315,8 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 return mat(Matrix::col(vals));
             }
             if nargout >= 2 {
-                return rt("Eigenvectors of nonsymmetric matrices are not supported in this version.");
+                let (v, d) = crate::builtins_matfun::eig_vd(&m)?;
+                return Ok(Some(vec![v, d]));
             }
             // Characteristic polynomial (Faddeev–LeVerrier), then its roots.
             let coeffs = char_poly(&Matrix::from_dims(m.dims.clone(), m.data.clone()))?;
@@ -2226,6 +2399,28 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             let n = m_arg(a, 1, name)?;
             mat(broadcast(&x, &n, |v, k| if v < 0.0 && k % 2.0 == 1.0 { -(-v).powf(1.0 / k) } else { v.powf(1.0 / k) })?)
         }
+        // [G,C,D] = gcd(A,B): Bezout coefficients with A.*C + B.*D = G.
+        "gcd" if nargout >= 2 => {
+            let x = m_arg(a, 0, name)?;
+            let y = m_arg(a, 1, name)?;
+            let kind = ops::arith_kind(x.kind, y.kind).unwrap_or(Kind::Double);
+            let ext = |p: f64, q: f64| -> (f64, f64, f64) {
+                let (mut r0, mut r1) = (p.abs(), q.abs());
+                let (mut s0, mut s1) = (1.0, 0.0);
+                let (mut t0, mut t1) = (0.0, 1.0);
+                while r1 != 0.0 {
+                    let k = (r0 / r1).floor();
+                    (r0, r1) = (r1, r0 - k * r1);
+                    (s0, s1) = (s1, s0 - k * s1);
+                    (t0, t1) = (t1, t0 - k * t1);
+                }
+                (r0, if p < 0.0 { -s0 } else { s0 }, if q < 0.0 { -t0 } else { t0 })
+            };
+            let g = broadcast(&x, &y, |p, q| ext(p, q).0)?;
+            let c = broadcast(&x, &y, |p, q| ext(p, q).1)?;
+            let d = broadcast(&x, &y, |p, q| ext(p, q).2)?;
+            Ok(Some(vec![Value::Num(g.cast_to(kind)), Value::Num(c.cast_to(kind)), Value::Num(d.cast_to(kind))]))
+        }
         "mod" | "rem" | "atan2" | "hypot" | "power" | "gcd" | "lcm" | "nchoosek" => {
             let x = m_arg(a, 0, name)?;
             let y = m_arg(a, 1, name)?;
@@ -2296,14 +2491,74 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             let y = m_arg(a, 1, name)?;
             let deg = arg(a, 2, name)?.as_usize()?;
             let n = x.numel();
-            let mut v = Matrix::zeros(n, deg + 1);
+            // With a third output, x is centred and scaled: mu = [mean(x); std(x)].
+            let mu = if nargout >= 3 {
+                let mean = x.data.iter().sum::<f64>() / n as f64;
+                let sd = (x.data.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n as f64 - 1.0)).sqrt();
+                Some((mean, sd))
+            } else {
+                None
+            };
+            let xs: Vec<f64> = x.data.iter().map(|&v| match mu { Some((m, s)) => (v - m) / s, None => v }).collect();
+            let cols = deg + 1;
+            let mut v = vec![0.0; n * cols];
             for i in 0..n {
-                for j in 0..=deg {
-                    v.set(i, j, x.data[i].powi((deg - j) as i32));
+                for j in 0..cols {
+                    v[j * n + i] = xs[i].powi((deg - j) as i32);
                 }
             }
-            let p = ops::solve(&v, &Matrix::col(y.data.clone()))?;
-            mat(Matrix::row(p.data))
+            // Householder QR of the Vandermonde matrix (R's diagonal gets the sign LAPACK gives).
+            let mut qr = v.clone();
+            let mut qy = y.data.clone();
+            for k in 0..cols.min(n) {
+                let norm = (k..n).map(|i| qr[k * n + i].powi(2)).sum::<f64>().sqrt();
+                if norm == 0.0 {
+                    continue;
+                }
+                let alpha = qr[k * n + k];
+                let beta = if alpha >= 0.0 { -norm } else { norm };
+                let mut h: Vec<f64> = (k..n).map(|i| qr[k * n + i]).collect();
+                h[0] -= beta;
+                let hh: f64 = h.iter().map(|t| t * t).sum();
+                if hh == 0.0 {
+                    continue;
+                }
+                for j in k..cols {
+                    let dot: f64 = (k..n).map(|i| h[i - k] * qr[j * n + i]).sum();
+                    for i in k..n {
+                        qr[j * n + i] -= 2.0 * dot / hh * h[i - k];
+                    }
+                }
+                let dot: f64 = (k..n).map(|i| h[i - k] * qy[i]).sum();
+                for i in k..n {
+                    qy[i] -= 2.0 * dot / hh * h[i - k];
+                }
+            }
+            let mut p = vec![0.0; cols];
+            for k in (0..cols.min(n)).rev() {
+                let mut t = qy[k];
+                for j in k + 1..cols {
+                    t -= qr[j * n + k] * p[j];
+                }
+                p[k] = t / qr[k * n + k];
+            }
+            let mut out = vec![Value::Num(Matrix::row(p.clone()))];
+            if nargout >= 2 {
+                let mut r = Matrix::zeros(cols, cols);
+                for j in 0..cols {
+                    for i in 0..=j.min(n.saturating_sub(1)) {
+                        r.set(i, j, qr[j * n + i]);
+                    }
+                }
+                let resid: f64 = (0..n).map(|i| (y.data[i] - (0..cols).map(|j| v[j * n + i] * p[j]).sum::<f64>()).powi(2)).sum::<f64>().sqrt();
+                let df = (n as f64 - cols as f64).max(0.0);
+                let st = StructArray { dims: vec![1, 1], fields: vec!["R".into(), "df".into(), "normr".into()], elems: vec![vec![Value::Num(r), Value::num(df), Value::num(resid)]] };
+                out.push(Value::Struct(st));
+            }
+            if let Some((m, s)) = mu {
+                out.push(Value::Num(Matrix::col(vec![m, s])));
+            }
+            Ok(Some(out))
         }
         "polyval" => {
             let p = m_arg(a, 0, name)?;
@@ -2385,7 +2640,6 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                 inputs.push(a[i].clone());
                 i += 1;
             }
-            let _ = error_handler;
             let Some(first) = inputs.first() else { return rt("Not enough input arguments.") };
             let dims = first.dims();
             let n = nd::numel(&dims);
@@ -2400,7 +2654,21 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                         _ => element(v, k, name == "cellfun"),
                     })
                     .collect::<R<Vec<_>>>()?;
-                let out = it.call_func_value(&f, call_args, nout)?;
+                let out = match it.call_func_value(&f, call_args.clone(), nout) {
+                    Ok(out) => out,
+                    // The handler gets S (identifier, message, index) and the same inputs.
+                    Err(e) if error_handler.is_some() => {
+                        let s = StructArray {
+                            dims: vec![1, 1],
+                            fields: vec!["identifier".into(), "message".into(), "index".into()],
+                            elems: vec![vec![Value::chars(&e.identifier), Value::chars(&e.message), Value::num((k + 1) as f64)]],
+                        };
+                        let mut hargs = vec![Value::Struct(s)];
+                        hargs.extend(call_args);
+                        it.call_func_value(error_handler.as_ref().unwrap(), hargs, nout)?
+                    }
+                    Err(e) => return Err(e),
+                };
                 if out.len() < nout && (uniform || nargout > 0) {
                     if out.is_empty() && nargout == 0 && !uniform {
                         results[0].push(Value::empty());

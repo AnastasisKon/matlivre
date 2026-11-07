@@ -167,11 +167,118 @@ impl Parser {
         while matches!(self.peek(), Tok::CmdArg(_)) {
             self.bump();
         }
+        let mut args = Vec::new();
+        loop {
+            self.skip_newlines();
+            if !self.at_arguments_block() {
+                break;
+            }
+            // Output declarations are parsed but not checked.
+            self.arguments_block(&mut args)?;
+        }
         let body = self.block(&[Kw::End, Kw::Function])?;
         if matches!(self.peek(), Tok::Kw(Kw::End)) {
             self.bump();
         }
-        Ok(Function { name, params, outputs, body })
+        Ok(Function { name, params, outputs, body, args })
+    }
+
+    /// `arguments` alone on its line, or with `(Input)`, `(Output)`, `(Repeating)`.
+    fn at_arguments_block(&self) -> bool {
+        if !matches!(self.peek(), Tok::Ident(n) if n == "arguments") {
+            return false;
+        }
+        match self.peek_at(1) {
+            Tok::Newline | Tok::Sep(_) | Tok::Eof => true,
+            Tok::Op("(") => matches!(self.peek_at(2), Tok::Ident(a) if matches!(a.as_str(), "Input" | "Output" | "Repeating")),
+            _ => false,
+        }
+    }
+
+    /// Parses one `arguments ... end` block; input declarations go to `out`. Returns whether
+    /// the block declared inputs.
+    fn arguments_block(&mut self, out: &mut Vec<ArgDecl>) -> PResult<bool> {
+        self.bump(); // arguments
+        let mut input = true;
+        let mut repeating = false;
+        if self.eat_op("(") {
+            while !self.is_op(")") {
+                match self.bump() {
+                    Tok::Ident(a) if a == "Output" => input = false,
+                    Tok::Ident(a) if a == "Repeating" => repeating = true,
+                    Tok::Ident(_) | Tok::Sep(false) => {}
+                    _ => return Err(self.unexpected("argument block attribute")),
+                }
+            }
+            self.bump();
+        }
+        if repeating {
+            return Err(LangError::new("Repeating arguments blocks are not supported in this version.", self.line()));
+        }
+        loop {
+            self.skip_newlines();
+            match self.peek().clone() {
+                Tok::Kw(Kw::End) => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => return Err(LangError::new("An arguments block must end with 'end'.", self.line())),
+                Tok::Ident(name) => {
+                    self.bump();
+                    let field = if self.eat_op(".") {
+                        match self.bump() {
+                            Tok::Ident(f) => Some(f),
+                            _ => return Err(self.unexpected("field name")),
+                        }
+                    } else {
+                        None
+                    };
+                    let mut dims = None;
+                    if self.eat_op("(") {
+                        let mut d = Vec::new();
+                        while !self.is_op(")") {
+                            match self.bump() {
+                                Tok::Num(n) => d.push(Some(n as usize)),
+                                Tok::Op(":") => d.push(None),
+                                Tok::Sep(false) => {}
+                                _ => return Err(self.unexpected("dimension")),
+                            }
+                        }
+                        self.bump();
+                        dims = Some(d);
+                    }
+                    let mut class = None;
+                    if let Tok::Ident(c) = self.peek().clone() {
+                        self.bump();
+                        let mut c = c;
+                        while self.is_op(".") && matches!(self.peek_at(1), Tok::Ident(_)) {
+                            self.bump();
+                            if let Tok::Ident(p) = self.bump() {
+                                c = format!("{c}.{p}");
+                            }
+                        }
+                        class = Some(c);
+                    }
+                    let mut validators = Vec::new();
+                    if self.eat_op("{") {
+                        while !self.is_op("}") {
+                            if matches!(self.peek(), Tok::Sep(_)) {
+                                self.bump();
+                                continue;
+                            }
+                            validators.push(self.expr()?);
+                        }
+                        self.bump();
+                    }
+                    let default = if self.eat_op("=") { Some(self.expr()?) } else { None };
+                    if input {
+                        out.push(ArgDecl { name, field, dims, class, validators, default });
+                    }
+                }
+                _ => return Err(self.unexpected("argument declaration")),
+            }
+        }
+        Ok(input)
     }
 
     /// Statements until one of `stops` (not consumed) or end of input.

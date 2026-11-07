@@ -382,6 +382,43 @@ fn map_texts(v: &Value, mut f: impl FnMut(&str) -> String) -> R<Value> {
     })
 }
 
+/// matlab.lang.makeValidName for a name that is not valid: whitespace dropped with the next
+/// letter capitalised, other invalid characters replaced as `style` says, `prefix` in front of
+/// a name that does not start with a letter or that is a keyword.
+fn valid_name(s: &str, style: &str, prefix: &str) -> String {
+    if crate::builtins_lang::KEYWORDS.contains(&s) {
+        let mut c = s.chars();
+        let first: String = c.next().map(|f| f.to_uppercase().collect()).unwrap_or_default();
+        return format!("{prefix}{first}{}", c.as_str());
+    }
+    let mut out = String::new();
+    let mut cap = false;
+    for ch in s.trim_start().chars() {
+        if ch.is_whitespace() {
+            cap = true;
+            continue;
+        }
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            if cap {
+                out.extend(ch.to_uppercase());
+            } else {
+                out.push(ch);
+            }
+        } else {
+            match style {
+                "delete" => {}
+                "hex" => out.push_str(&format!("0x{:X}", ch as u32)),
+                _ => out.push('_'),
+            }
+        }
+        cap = false;
+    }
+    if !out.starts_with(|c: char| c.is_ascii_alphabetic()) {
+        out = format!("{prefix}{out}");
+    }
+    out.chars().take(63).collect()
+}
+
 fn make_unique(a: &[Value]) -> Ret {
     let v = arg(a, 0, "matlab.lang.makeUniqueStrings")?;
     let items = texts(v)?;
@@ -400,8 +437,14 @@ fn make_unique(a: &[Value]) -> Ret {
         used.push(name.clone());
         out.push(name);
     }
+    let changed: Vec<f64> = items.iter().zip(&out).map(|(p, q)| (p != q) as u8 as f64).collect();
     let mut it = out.into_iter();
-    one(map_texts(v, |_| it.next().unwrap_or_default())?)
+    let made = map_texts(v, |_| it.next().unwrap_or_default())?;
+    let dims = match &made {
+        Value::Num(_) => vec![1, 1],
+        other => other.dims(),
+    };
+    Ok(Some(vec![made, Value::Num(Matrix::from_dims(dims, changed).with_kind(Kind::Logical))]))
 }
 
 // ---- inputParser ---------------------------------------------------------------------------
@@ -814,7 +857,24 @@ pub fn call(it: &mut Interpreter, name: &str, a: &[Value], nargout: usize) -> Re
         "matlivre_mexception_method" => me_method(it, a),
         "matlab.lang.makeValidName" => {
             let v = arg(a, 0, name)?;
-            let made = map_texts(v, |s| if crate::builtins_lang::is_varname(s) { s.to_string() } else { crate::builtins_lang::genvarname(s, &[]) })?;
+            let (mut style, mut prefix) = ("underscore".to_string(), "x".to_string());
+            let mut k = 1;
+            while k + 1 < a.len() {
+                let key = a[k].text()?;
+                if key.eq_ignore_ascii_case("ReplacementStyle") {
+                    style = a[k + 1].text()?.to_lowercase();
+                    if !matches!(style.as_str(), "underscore" | "delete" | "hex") {
+                        return rt("Expected ReplacementStyle to match one of these values:\n\n'underscore', 'delete', 'hex'");
+                    }
+                } else if key.eq_ignore_ascii_case("Prefix") {
+                    prefix = a[k + 1].text()?;
+                    if !crate::builtins_lang::is_varname(&prefix) {
+                        return rt("Invalid value for 'Prefix'. It must be a valid variable name.");
+                    }
+                }
+                k += 2;
+            }
+            let made = map_texts(v, |s| if crate::builtins_lang::is_varname(s) { s.to_string() } else { valid_name(s, &style, &prefix) })?;
             let changed: Vec<f64> = texts(v)?.iter().map(|s| if crate::builtins_lang::is_varname(s) { 0.0 } else { 1.0 }).collect();
             let dims = match v {
                 Value::Num(_) => vec![1, 1],
