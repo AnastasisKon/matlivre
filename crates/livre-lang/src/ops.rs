@@ -480,6 +480,79 @@ thread_local! {
     static LU_BUF: std::cell::Cell<Vec<f64>> = const { std::cell::Cell::new(Vec::new()) };
 }
 
+/// Smallest order and largest density (nonzeros / n^2) for which a sparse square `a` is solved
+/// with the sparse LU instead of the dense one.
+const SPARSE_MIN_ORDER: usize = 100;
+const SPARSE_MAX_DENSITY: f64 = 0.1;
+
+/// `a \ b` for a square matrix flagged sparse, through a sparse LU with Markowitz pivoting
+/// (`sparse_lu`). Returns `None` when the matrix is not sparse enough, holds non-finite values,
+/// is (numerically) singular, or the result fails a residual check; the caller then takes the
+/// dense path, which also produces MATLAB's singularity warnings.
+fn sparse_solve(a: &Matrix, b: &Matrix) -> Option<Matrix> {
+    use crate::sparse_lu::LuFactor;
+    let (n, k) = (a.rows(), b.cols());
+    let max_nnz = (SPARSE_MAX_DENSITY * (n * n) as f64) as usize;
+    let (mut ptr, mut idx, mut val) = (Vec::with_capacity(n + 1), Vec::new(), Vec::new());
+    ptr.push(0usize);
+    for col in a.data.chunks_exact(n) {
+        for (i, &v) in col.iter().enumerate() {
+            if v != 0.0 {
+                if !v.is_finite() {
+                    return None;
+                }
+                idx.push(i as u32);
+                val.push(v);
+            }
+        }
+        if val.len() > max_nnz {
+            return None;
+        }
+        ptr.push(val.len());
+    }
+    if b.data.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
+    let lu = LuFactor::factorize_csc(n, &ptr, &idx, &val).ok()?;
+    let anorm = (0..n).map(|j| val[ptr[j]..ptr[j + 1]].iter().map(|v| v.abs()).sum::<f64>()).fold(0.0, f64::max);
+    let mut out = vec![0.0; n * k];
+    let (mut s1, mut s2, mut r) = (Vec::new(), Vec::new(), vec![0.0; n]);
+    for c in 0..k {
+        let rhs = &b.data[c * n..(c + 1) * n];
+        let bnorm = rhs.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+        lu.ftran_into(rhs, &mut s1, &mut s2, None);
+        let mut x = s2.clone();
+        // One step of iterative refinement at most; a residual still large afterwards means the
+        // factors are not trustworthy and the dense solver takes over.
+        for pass in 0..2 {
+            r.copy_from_slice(rhs);
+            for j in 0..n {
+                let xj = x[j];
+                if xj != 0.0 {
+                    for e in ptr[j]..ptr[j + 1] {
+                        r[idx[e] as usize] -= val[e] * xj;
+                    }
+                }
+            }
+            let rnorm = r.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+            let xnorm = x.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+            if !(rnorm <= 1e-10 * (anorm * xnorm + bnorm)) {
+                if pass == 1 || !rnorm.is_finite() {
+                    return None;
+                }
+                lu.ftran_into(&r, &mut s1, &mut s2, None);
+                for (xi, di) in x.iter_mut().zip(&s2) {
+                    *xi += di;
+                }
+            } else {
+                break;
+            }
+        }
+        out[c * n..(c + 1) * n].copy_from_slice(&x);
+    }
+    Some(Matrix::new(n, k, out))
+}
+
 /// Threads for blocked products: one per physical core. Two hyperthreads sharing a core
 /// contend for the same FMA units and caches, so using them makes timings worse and erratic.
 fn gemm_par() -> faer::Par {
@@ -695,6 +768,11 @@ pub fn solve(a: &Matrix, b: &Matrix) -> R<Matrix> {
         return rt("Matrix dimensions must agree.");
     }
     if a.rows() == a.cols() {
+        if a.sparse && a.rows() >= SPARSE_MIN_ORDER {
+            if let Some(x) = sparse_solve(a, b) {
+                return Ok(x);
+            }
+        }
         if a.rows() >= FAER_MIN_ORDER {
             if let Ok(x) = faer_solve(a, b) {
                 return Ok(x);

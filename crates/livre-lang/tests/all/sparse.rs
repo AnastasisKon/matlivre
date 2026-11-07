@@ -103,3 +103,33 @@ fn iterative_solvers_report_like_matlab() {
     );
     assert_eq!(out[6], "   1\n");
 }
+
+/// `A\b` on sparse matrices of order 100 and up goes through the sparse LU; results (recorded
+/// from MATLAB R2023b) must match, including the singular case that falls back to the dense path.
+#[test]
+fn sparse_solve_matches_matlab() {
+    let src = concat!(
+        "n = 200; e = ones(n,1); A = spdiags([-e 2*e -e], -1:1, n, n); x0 = (1:n)'; x = A \\ (A*x0);\n",
+        "fprintf('T1 %d %.10g\\n', norm(x - x0) < 1e-6, sum(x));\n",
+        "m = 12; I = speye(m); T = spdiags([-ones(m,1) 2*ones(m,1) -ones(m,1)], -1:1, m, m); P = kron(I,T)+kron(T,I);\n",
+        "F = [ones(m*m,1) (1:m*m)']; X = P \\ F;\n",
+        "fprintf('T2 %d %.10g %.10g %d\\n', norm(P*X - F, 'fro') < 1e-8, sum(X(:,1)), sum(X(:,2)), issparse(X));\n",
+        "n = 150; Q = sparse(1:n, [n 1:n-1], 1:n) + sparse(1:n-1, 2:n, 0.5, n, n);\n",
+        "y = Q \\ ones(n,1); fprintf('T3 %d %.10g\\n', norm(Q*y - ones(n,1)) < 1e-8, sum(y));\n",
+        "n = 120; B = spdiags([-e(1:n) 2*e(1:n) -e(1:n)], -1:1, n, n); B(7,:) = 0;\n",
+        "z = B \\ ones(n,1); fprintf('T4 %d %d\\n', any(isinf(z)) || any(isnan(z)), numel(z));\n",
+        "n = 130; D = speye(n) * 1e-14 + sparse(1:n-1, 2:n, 1e-14, n, n); u = D \\ ones(n,1); fprintf('T5 %d %.6g\\n', norm(D*u - ones(n,1)) < 1e-6, sum(u));\n",
+    );
+    let out: Vec<String> = shown(src).into_iter().map(|s| s.trim_end().to_string()).collect();
+    assert_eq!(
+        out,
+        [
+            "T1 1 20100",
+            "T2 1 984.7456035 71394.05625 0",
+            "T3 1 5.243594236",
+            "Warning: Matrix is singular to working precision.",
+            "T4 1 120",
+            "T5 1 6.5e+15",
+        ]
+    );
+}

@@ -109,6 +109,31 @@ between runs. The suite is small and favours MatLivre's native loop compilation;
 measure toolbox breadth or plotting. Details and the per-case Octave comparison are in
 [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
 
+### Sparse matrices and large vectorized operations
+
+[`benchmarks/bench_sparse.m`](benchmarks/bench_sparse.m) runs in MATLAB R2023b and MatLivre (best
+of 3, checksums agree). This is where MatLivre is behind: sparse matrices are stored densely, so
+sparse operations cost O(n^2) instead of O(nonzeros), and sizes are limited by memory
+(MATLAB solves a 1,000,000-unknown tridiagonal system in 23 ms; MatLivre cannot hold it).
+
+| Case | MATLAB (ms) | MatLivre (ms) | MatLivre vs MATLAB |
+|---|---:|---:|---|
+| sparse tridiagonal solve, n = 3,000 | 0.07 | 7.0 | 95x slower |
+| 2-D Poisson solve, 2,500 unknowns | 1.69 | 12.7 | 7.5x slower |
+| 200 sparse matrix-vector products, n = 3,000 | 2.10 | 709 | 338x slower |
+| `pcg` on the Poisson matrix | 3.02 | 699 | 232x slower |
+| elementwise math, 1e7 elements | 139.8 | 252.8 | 1.8x slower |
+| `cumsum`, 1e7 elements | 45.6 | 233.3 | 5.1x slower |
+| `find` on a logical mask, 1e7 | 25.4 | 126.9 | 5.0x slower |
+| broadcast arithmetic, 2000 x 2000 | 10.2 | 125.2 | 12x slower |
+| row and column reductions, 2000 x 2000 | 8.2 | 98.5 | 12x slower |
+| `sort`, 4e6 elements | 66.7 | 39.0 | 1.7x faster |
+| `M*M`, 2000 x 2000 | 126.2 | 93.2 | 1.4x faster |
+
+Square sparse systems of order 100 and up are solved with a sparse LU (Markowitz pivoting, taken
+from the SolverLivre project) with a residual check and a fallback to the dense solver; before
+that, the tridiagonal case took 176 ms.
+
 ### Why it is fast
 
 - **Native code for loops and functions.** `for`/`while` loops and user functions over scalars,
