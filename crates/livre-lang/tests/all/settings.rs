@@ -120,3 +120,27 @@ fn validators() {
         ["ok\n", "Value must be numeric.\n"]
     );
 }
+
+#[test]
+fn personal_values_persist_between_sessions() {
+    let file = std::env::temp_dir().join(format!("matlivre_settings_test_{}.mat", std::process::id()));
+    let _ = std::fs::remove_file(&file);
+    let run = |src: &str| {
+        let mut it = livre_lang::Interpreter::new();
+        it.set_settings_file(file.clone());
+        let _ = it.run_source(src);
+        it.take_outputs()
+            .into_iter()
+            .filter_map(|o| match o.kind {
+                livre_lang::OutputKind::Value { text, .. } => Some(text),
+                livre_lang::OutputKind::Error(e) => Some(format!("Error: {e}")),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    run("s = settings; g = addGroup(s, 'mytool'); addSetting(g, 'Level', 'PersonalValue', 3); s.matlab.fonts.codefont.Size.PersonalValue = 14;");
+    assert_eq!(run("s = settings; v = s.mytool.Level.PersonalValue, z = s.matlab.fonts.codefont.Size.ActiveValue"), ["v = 3", "z = 14"]);
+    run("s = settings; clearPersonalValue(s.matlab.fonts.codefont.Size); removeGroup(s, 'mytool');");
+    assert_eq!(run("s = settings; h = hasGroup(s, 'mytool'), z = s.matlab.fonts.codefont.Size.ActiveValue"), ["h = logical\n   0", "z = 10"]);
+    let _ = std::fs::remove_file(&file);
+}

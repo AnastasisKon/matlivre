@@ -1146,11 +1146,32 @@ fn makehgtform(a: &[Value]) -> Ret {
 fn viewmtx(a: &[Value]) -> Ret {
     let az = arg(a, 0, "viewmtx")?.scalar()?.to_radians();
     let el = arg(a, 1, "viewmtx")?.scalar()?.to_radians();
-    if a.get(2).map(|v| v.scalar()).transpose()?.unwrap_or(0.0) != 0.0 {
-        return rt("Perspective view matrices (a nonzero view angle) are not supported in this version.");
-    }
     let (sa, ca, se, ce) = (az.sin(), az.cos(), el.sin(), el.cos());
-    one(mat4([[ca, sa, 0.0, 0.0], [-se * sa, se * ca, ce, 0.0], [ce * sa, -ce * ca, se, 0.0], [0.0, 0.0, 0.0, 1.0]]))
+    let r = [[ca, sa, 0.0], [-se * sa, se * ca, ce], [ce * sa, -ce * ca, se]];
+    let phi = a.get(2).map(|v| v.scalar()).transpose()?.unwrap_or(0.0);
+    if phi == 0.0 {
+        return one(mat4([[r[0][0], r[0][1], r[0][2], 0.0], [r[1][0], r[1][1], r[1][2], 0.0], [r[2][0], r[2][1], r[2][2], 0.0], [0.0, 0.0, 0.0, 1.0]]));
+    }
+    // Perspective: looking at xc (by default the unit cube's center moved half its diagonal
+    // toward the viewer), from the distance at which a unit square subtends phi.
+    let xc = match a.get(3) {
+        Some(v) => {
+            let m = v.to_matrix()?;
+            if m.numel() != 3 {
+                return rt("Target point must be a 3-element vector.");
+            }
+            [m.data[0], m.data[1], m.data[2]]
+        }
+        None => {
+            let h = 3f64.sqrt() / 2.0;
+            [0.5 + h * r[2][0], 0.5 + h * r[2][1], 0.5 + h * r[2][2]]
+        }
+    };
+    let k = (phi.to_radians() / 2.0).tan() / std::f64::consts::FRAC_1_SQRT_2;
+    let dot = |row: &[f64; 3]| row[0] * xc[0] + row[1] * xc[1] + row[2] * xc[2];
+    let row = |i: usize| [r[i][0], r[i][1], r[i][2], -dot(&r[i])];
+    let z = dot(&r[2]);
+    one(mat4([row(0), row(1), row(2), [-k * r[2][0], -k * r[2][1], -k * r[2][2], 1.0 + k * z]]))
 }
 
 const GREEK: &[&str] = &[

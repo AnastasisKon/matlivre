@@ -12,6 +12,7 @@ fn run(path: std::path::PathBuf, src: String) -> i32 {
     let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
     let full = path.canonicalize().map(|p| p.display().to_string().trim_start_matches(r"\\?\").to_string()).unwrap_or_default();
     it.set_script(&stem, &full);
+    it.enable_persistent_settings();
     it.set_output_sink(|outs| {
         use std::io::Write;
         let mut so = std::io::stdout().lock();

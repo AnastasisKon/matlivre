@@ -837,6 +837,18 @@ impl Interpreter {
         out
     }
 
+    /// Saves settings' personal values (and the groups and settings added) between sessions,
+    /// next to the preferences file, as MATLAB does.
+    pub fn enable_persistent_settings(&mut self) {
+        let file = crate::io_more::pref_path().with_file_name("matlivresettings.mat");
+        self.settings.persist_to(file);
+    }
+
+    /// Persists settings to `file` instead of the default next to the preferences.
+    pub fn set_settings_file(&mut self, file: std::path::PathBuf) {
+        self.settings.persist_to(file);
+    }
+
     /// Names the script being run, for error stacks (`Error in name (line n)`).
     pub fn set_script(&mut self, name: &str, path: &str) {
         self.script_name = name.to_string();

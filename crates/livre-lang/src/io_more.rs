@@ -81,7 +81,7 @@ fn texts(v: &Value) -> R<Vec<String>> {
 
 // ---- preferences -------------------------------------------------------------------------------
 
-fn pref_path() -> std::path::PathBuf {
+pub(crate) fn pref_path() -> std::path::PathBuf {
     if let Ok(d) = std::env::var("MATLIVRE_PREFDIR") {
         return std::path::PathBuf::from(d).join("matlivreprefs.mat");
     }

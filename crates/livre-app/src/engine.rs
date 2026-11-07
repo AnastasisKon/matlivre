@@ -77,6 +77,7 @@ pub fn install_exporter(it: &mut Interpreter, ctx: egui::Context) {
 fn engine_main(rx: Receiver<Command>, tx: Sender<Event>, cancel: Arc<AtomicBool>, ctx: egui::Context) {
     let mut it = Interpreter::new();
     it.set_cancel_flag(cancel);
+    it.enable_persistent_settings();
     let current = Rc::new(Cell::new(0u64));
     {
         let tx = tx.clone();

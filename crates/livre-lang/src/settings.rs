@@ -3,8 +3,9 @@
 //! (`ActiveValue`, `TemporaryValue`, `PersonalValue`, `InstallationValue`, `FactoryValue` and the
 //! `has*Value` / `clear*Value` methods) and the `matlab.settings.mustBe*Scalar` validators.
 //!
-//! The tree starts with a few of MATLAB's product groups (`matlab.fonts.codefont`, …). Personal
-//! values last for the session: they are not saved between runs as MATLAB saves them.
+//! The tree starts with a few of MATLAB's product groups (`matlab.fonts.codefont`, …). With
+//! persistence on (the app and matlivre-cli turn it on), personal values and the groups and
+//! settings added are saved next to the preferences and come back in the next session.
 
 use crate::builtins::{arg, none, one, Ret};
 use crate::class::{ClassDef, Object};
@@ -52,11 +53,15 @@ struct Node {
 pub struct Tree {
     nodes: Vec<Node>,
     objects: HashMap<usize, Value>,
+    /// Nodes below this index were added by the user (the rest are the built-in tree).
+    builtin: usize,
+    /// Where personal values are saved, when persistence is on.
+    file: Option<std::path::PathBuf>,
 }
 
 impl Default for Tree {
     fn default() -> Self {
-        let mut t = Tree { nodes: vec![Node { name: String::new(), parent: None, kind: Kind2::Group(Vec::new()), hidden: false }], objects: HashMap::new() };
+        let mut t = Tree { nodes: vec![Node { name: String::new(), parent: None, kind: Kind2::Group(Vec::new()), hidden: false }], objects: HashMap::new(), builtin: 0, file: None };
         let m = t.add(0, "matlab", None);
         for g in ["codeanalyzer", "appdesigner", "commandwindow", "keyboard", "editor", "colors", "toolboxpathcache"] {
             t.add(m, g, None);
@@ -75,7 +80,94 @@ impl Default for Tree {
         for g in ["windows", "matfile", "randomnumbers"] {
             t.add(general, g, None);
         }
+        t.builtin = t.nodes.len();
         t
+    }
+}
+
+impl Tree {
+    /// Turns persistence on with the settings file `file`, loading what it holds.
+    pub fn persist_to(&mut self, file: std::path::PathBuf) {
+        if file.exists() {
+            let _ = self.load(&file);
+        }
+        self.file = Some(file);
+    }
+
+    /// The node at `path` (dot-separated) under the root.
+    fn find(&self, path: &str) -> Option<usize> {
+        path.split('.').try_fold(0, |g, part| self.child(g, part))
+    }
+
+    fn load(&mut self, file: &std::path::Path) -> R<()> {
+        let vars = crate::builtins_data::read_mat(&file.display().to_string())?;
+        let get = |n: &str| vars.iter().find(|(k, _)| k == n).and_then(|(_, v)| v.clone());
+        let (Some(Value::Cell(kinds)), Some(Value::Cell(paths)), Some(hidden), Some(Value::Cell(values)), Some(has)) = (get("kinds"), get("paths"), get("hidden"), get("values"), get("hasvalue")) else {
+            return Ok(());
+        };
+        let (hidden, has) = (hidden.to_matrix()?.data, has.to_matrix()?.data);
+        for k in 0..kinds.data.len() {
+            let kind = kinds.data[k].text()?;
+            let path = paths.data[k].text()?;
+            let value = if has.get(k).copied().unwrap_or(0.0) != 0.0 { values.data.get(k).cloned() } else { None };
+            let (parent, name) = match path.rsplit_once('.') {
+                Some((p, n)) => (self.find(p), n.to_string()),
+                None => (Some(0), path.clone()),
+            };
+            let Some(parent) = parent else { continue };
+            let id = match self.child(parent, &name) {
+                Some(id) => id,
+                None if kind == "group" => self.add(parent, &name, None),
+                None if kind == "setting" => self.add(parent, &name, Some([None, None, None, None])),
+                None => continue,
+            };
+            if kind != "value" {
+                self.nodes[id].hidden = hidden.get(k).copied().unwrap_or(0.0) != 0.0;
+            }
+            if let (Some(v), false) = (value, self.is_group(id)) {
+                self.values_mut(id)[1] = Some(v);
+            }
+        }
+        Ok(())
+    }
+
+    /// Saves the groups and settings added and every personal value (when persistence is on).
+    fn save(&self) {
+        let Some(file) = &self.file else { return };
+        let (mut kinds, mut paths, mut hidden, mut values, mut has) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let mut todo = vec![0usize];
+        while let Some(g) = todo.pop() {
+            for &c in self.children(g) {
+                let personal = if self.is_group(c) { None } else { self.values(c)[1].clone() };
+                let kind = match (c >= self.builtin, self.is_group(c)) {
+                    (true, true) => "group",
+                    (true, false) => "setting",
+                    (false, false) if personal.is_some() => "value",
+                    _ => "",
+                };
+                if !kind.is_empty() {
+                    kinds.push(Value::chars(kind));
+                    paths.push(Value::chars(&self.path(c)));
+                    hidden.push(if self.nodes[c].hidden { 1.0 } else { 0.0 });
+                    has.push(if personal.is_some() { 1.0 } else { 0.0 });
+                    values.push(personal.unwrap_or_else(Value::empty));
+                }
+                if self.is_group(c) {
+                    todo.push(c);
+                }
+            }
+        }
+        // Parents come before their children (the loader creates them in order).
+        let n = kinds.len();
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by_key(|&k| paths[k].text().map(|p| p.matches('.').count()).unwrap_or(0));
+        let pick = |v: &Vec<Value>| Value::Cell(CellArray::from_dims(vec![n, 1], order.iter().map(|&k| v[k].clone()).collect()));
+        let col = |v: &Vec<f64>| Value::Num(Matrix::col(order.iter().map(|&k| v[k]).collect()));
+        if let Some(dir) = file.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let vars = vec![("kinds".to_string(), pick(&kinds)), ("paths".to_string(), pick(&paths)), ("hidden".to_string(), col(&hidden)), ("values".to_string(), pick(&values)), ("hasvalue".to_string(), col(&has))];
+        let _ = crate::builtins_data::write_mat(&file.display().to_string(), &vars, false);
     }
 }
 
@@ -255,6 +347,9 @@ pub fn set_member(it: &mut Interpreter, v: &Value, name: &str, value: Value) -> 
     };
     validate(it, n, &value)?;
     it.settings.values_mut(n)[l] = Some(value);
+    if l == 1 {
+        it.settings.save();
+    }
     Ok(())
 }
 
@@ -320,6 +415,7 @@ fn new_child(it: &mut Interpreter, g: usize, a: &[Value], setting: bool) -> R<Va
         it.settings.add(g, &name, None)
     };
     it.settings.nodes[id].hidden = hidden;
+    it.settings.save();
     Ok(object(it, id))
 }
 
@@ -330,6 +426,7 @@ fn remove_child(it: &mut Interpreter, g: usize, name: &str, setting: bool) -> R<
             if let Kind2::Group(ch) = &mut it.settings.nodes[g].kind {
                 ch.retain(|&x| x != c);
             }
+            it.settings.save();
             Ok(())
         }
         _ => rt(format!("Settings group '{}' does not contain {} '{name}'.", t.path(g), if setting { "setting" } else { "settings group" })),
@@ -386,6 +483,9 @@ fn method(it: &mut Interpreter, a: &[Value]) -> Ret {
         _ if m.starts_with("clear") => {
             let l = level_index(&m[5..]).expect("level");
             it.settings.values_mut(n)[l] = None;
+            if l == 1 {
+                it.settings.save();
+            }
             out(Vec::new())
         }
         _ => rt(format!("Unknown settings method '{m}'.")),
