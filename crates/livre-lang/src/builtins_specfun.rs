@@ -2074,6 +2074,19 @@ fn lcm(a: f64, b: f64) -> f64 {
     a / x * b
 }
 
+/// The 14-character rats field of one value, as `format rat` shows it; a value whose
+/// fraction does not fit shows as its rounded whole number.
+pub(crate) fn rat_field(v: f64) -> String {
+    let text = rats_builtin(&[Value::num(v)]).ok().and_then(|t| t.text().ok()).unwrap_or_default();
+    if text.contains('*') {
+        let s = int_text(v.round());
+        let len: usize = 13;
+        let left = len.saturating_sub(s.len()) / 2;
+        return format!(" {}{}{}", " ".repeat(left), s, " ".repeat(len.saturating_sub(s.len() + left)));
+    }
+    text
+}
+
 fn rats_builtin(a: &[Value]) -> R<Value> {
     let x = match a.first() {
         Some(Value::Num(m)) if m.kind.is_float() => m.clone(),

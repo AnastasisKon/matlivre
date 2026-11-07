@@ -2794,8 +2794,12 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             none()
         }
         "format" => {
-            let mode = a.first().map(|v| v.text()).transpose()?.unwrap_or_default();
-            it.format = if mode.eq_ignore_ascii_case("long") { NumFormat::Long } else { NumFormat::Short };
+            let words = a.iter().map(|v| v.text()).collect::<R<Vec<_>>>()?.join(" ");
+            match NumFormat::parse(&words) {
+                Some(Some(f)) => it.format = f,
+                Some(None) => {}
+                None => return rt(format!("Unknown format: {words}")),
+            }
             none()
         }
         "disp" => {

@@ -9,6 +9,36 @@ pub enum NumFormat {
     #[default]
     Short,
     Long,
+    ShortE,
+    LongE,
+    ShortG,
+    LongG,
+    Bank,
+    Rat,
+    Hex,
+    Plus,
+}
+
+impl NumFormat {
+    /// The mode `format` sets from its words (`'long g'`, `"longG"`, `'+'`); `None` for the
+    /// spacing modes (`compact`, `loose`), which leave the numeric format alone.
+    pub fn parse(words: &str) -> Option<Option<NumFormat>> {
+        let w: String = words.split_whitespace().collect::<String>().to_lowercase();
+        Some(Some(match w.as_str() {
+            "" | "short" | "default" => NumFormat::Short,
+            "long" => NumFormat::Long,
+            "shorte" | "shorteng" => NumFormat::ShortE,
+            "longe" | "longeng" => NumFormat::LongE,
+            "shortg" => NumFormat::ShortG,
+            "longg" => NumFormat::LongG,
+            "bank" => NumFormat::Bank,
+            "rat" | "rational" => NumFormat::Rat,
+            "hex" => NumFormat::Hex,
+            "+" | "plus" => NumFormat::Plus,
+            "compact" | "loose" => return Some(None),
+            _ => return None,
+        }))
+    }
 }
 
 fn is_int(v: f64) -> bool {
@@ -108,6 +138,7 @@ pub fn fmt_scalar(v: f64, f: NumFormat) -> String {
     match f {
         NumFormat::Short => fmt_short_scalar(v),
         NumFormat::Long => fmt_long_scalar(v),
+        _ => extra_scalar(&Matrix::scalar(v), 0, f),
     }
 }
 
@@ -116,6 +147,7 @@ pub fn fmt_elem(m: &Matrix, i: usize, f: NumFormat) -> String {
     match m.kind {
         Kind::Int(_) | Kind::Logical => format!("{}", m.data[i] as i64),
         Kind::Char => char::from_u32(m.data[i] as u32).map(String::from).unwrap_or_default(),
+        _ if is_extra(f) => extra_scalar(m, i, f),
         _ if m.is_complex() => fmt_complex(m.data[i], m.im_at(i), f),
         Kind::Single if f == NumFormat::Long => {
             if is_int(m.data[i]) { format!("{}", m.data[i] as i64) } else { format!("{:.7}", m.data[i]) }
@@ -175,8 +207,11 @@ fn page_body(m: &Matrix, page: usize, rows: usize, cols: usize, f: NumFormat) ->
         }
         _ => {}
     }
+    if is_extra(f) && !m.is_complex() {
+        return extra_body(m, page, rows, cols, f);
+    }
     if m.is_complex() {
-        let cells: Vec<String> = (0..rows * cols).map(|k| fmt_complex(m.data[page + k], m.im_at(page + k), f)).collect();
+        let cells: Vec<String> = (0..rows * cols).map(|k| if is_extra(f) { extra_scalar(m, page + k, f) } else { fmt_complex(m.data[page + k], m.im_at(page + k), f) }).collect();
         let w = cells.iter().map(|s| s.len()).max().unwrap_or(1) + 3;
         for r in 0..rows {
             for c in 0..cols {
@@ -557,6 +592,10 @@ pub fn disp_value(v: &Value, f: NumFormat) -> String {
             if m.is_scalar() && (m.kind == Kind::Logical || m.kind.is_int()) {
                 return format!("   {}", fmt_elem(m, 0, f));
             }
+            // The extra formats pad a scalar as one row of a matrix.
+            if is_extra(f) && m.is_scalar() && !m.is_complex() {
+                return matrix_body(m, f, "ans").trim_end_matches('\n').to_string();
+            }
             // A non-integer scalar is right-aligned the way MATLAB pads it (exponent forms wider).
             if m.is_scalar() && !m.is_complex() && m.kind != Kind::Char {
                 let text = fmt_elem(m, 0, f);
@@ -594,4 +633,116 @@ pub fn disp_value(v: &Value, f: NumFormat) -> String {
         Value::Table(t) => t.body(f),
         Value::Sym(s) => s.disp(),
     }
+}
+
+// ---- format short e / long e / short g / long g / bank / rat / hex / + ----------------------
+
+/// Whether `f` is one of the modes beyond `short` and `long`.
+fn is_extra(f: NumFormat) -> bool {
+    !matches!(f, NumFormat::Short | NumFormat::Long)
+}
+
+/// IEEE bits of a value in hex, as `format hex` and `num2hex` show them.
+fn hex_text(v: f64, single: bool) -> String {
+    // MATLAB's NaN has the sign bit set.
+    if v.is_nan() {
+        return if single { "ffc00000".into() } else { "fff8000000000000".into() };
+    }
+    if single {
+        format!("{:08x}", (v as f32).to_bits())
+    } else {
+        format!("{:016x}", v.to_bits())
+    }
+}
+
+/// One real value in an extra mode, without padding.
+fn extra_text(v: f64, f: NumFormat, single: bool) -> String {
+    match f {
+        NumFormat::Hex => return hex_text(v, single),
+        NumFormat::Plus => return if v > 0.0 || v.is_nan() { "+" } else if v < 0.0 { "-" } else { " " }.into(),
+        NumFormat::Rat => return crate::builtins_specfun::rat_field(v).trim().to_string(),
+        NumFormat::Bank => return special(v).unwrap_or_else(|| format!("{v:.2}")),
+        _ => {}
+    }
+    if let Some(s) = special(v) {
+        return s;
+    }
+    match f {
+        NumFormat::ShortE => fmt_exp(v, 4),
+        NumFormat::LongE => fmt_exp(v, if single { 7 } else { 15 }),
+        NumFormat::ShortG => fmt_g(v, 5),
+        _ => fmt_g(v, if single { 7 } else { 15 }),
+    }
+}
+
+/// A scalar in an extra mode, as `x = ...` shows it.
+fn extra_scalar(m: &Matrix, i: usize, f: NumFormat) -> String {
+    let single = m.kind == Kind::Single;
+    let (re, im) = (m.data[i], m.im_at(i));
+    // Whole numbers stay whole in the e and g modes.
+    let whole = |x: f64| matches!(f, NumFormat::ShortE | NumFormat::LongE | NumFormat::ShortG | NumFormat::LongG) && is_int(x) && x.abs() < 1e9;
+    let part = |x: f64| if whole(x) && !m.is_complex() { format!("{}", x as i64) } else { extra_text(x, f, single) };
+    if !m.is_complex() {
+        return part(re);
+    }
+    let sign = if im < 0.0 || (im == 0.0 && im.is_sign_negative()) { '-' } else { '+' };
+    match f {
+        // bank shows the real part only.
+        NumFormat::Bank => part(re),
+        NumFormat::Plus => part(re),
+        NumFormat::Hex => format!("{}   {}i", hex_text(re, single), hex_text(im, single)),
+        NumFormat::ShortG => format!("{} {sign} {:>10}i", part(re), extra_text(im.abs(), f, single)),
+        NumFormat::LongG => format!("{} {sign} {:>21}i", part(re), extra_text(im.abs(), f, single)),
+        _ => format!("{} {sign} {}i", part(re), extra_text(im.abs(), f, single)),
+    }
+}
+
+/// Rows of one 2-D page of a real double or single matrix in an extra mode.
+fn extra_body(m: &Matrix, page: usize, rows: usize, cols: usize, f: NumFormat) -> String {
+    let single = m.kind == Kind::Single;
+    let at = |r: usize, c: usize| page + c * rows + r;
+    let data = &m.data[page..page + rows * cols];
+    let mut out = String::new();
+    if f == NumFormat::Plus {
+        for r in 0..rows {
+            out.push_str(&(0..cols).map(|c| extra_text(m.data[at(r, c)], f, single)).collect::<String>());
+            out.push('\n');
+        }
+        return out;
+    }
+    // Whole numbers use the integer layout in the e and g modes.
+    let e_or_g = matches!(f, NumFormat::ShortE | NumFormat::LongE | NumFormat::ShortG | NumFormat::LongG);
+    let max_abs = data.iter().filter(|v| v.is_finite()).fold(0.0f64, |a, &v| a.max(v.abs()));
+    if e_or_g && data.iter().all(|&v| is_int(v) || !v.is_finite()) && max_abs < 1e9 {
+        return page_body(m, page, rows, cols, NumFormat::Short);
+    }
+    let w = match f {
+        NumFormat::ShortE | NumFormat::ShortG => 13,
+        NumFormat::Bank => 14,
+        NumFormat::Rat => 15,
+        NumFormat::Hex => if single { 11 } else { 19 },
+        _ => 26,
+    };
+    for r in 0..rows {
+        for c in 0..cols {
+            let v = m.data[at(r, c)];
+            if f == NumFormat::Rat {
+                let field = crate::builtins_specfun::rat_field(v);
+                if !field.contains('/') {
+                    // Whole numbers end just before the column of the slashes.
+                    out.push_str(&format!("{:>8}       ", field.trim()));
+                } else {
+                    // Fractions keep the rats alignment on the slash.
+                    out.push(' ');
+                    out.push_str(&field);
+                }
+            } else if f == NumFormat::Bank && v == 0.0 {
+                out.push_str(&format!("{:>w$}", "0"));
+            } else {
+                out.push_str(&format!("{:>w$}", extra_text(v, f, single)));
+            }
+        }
+        out.push('\n');
+    }
+    out
 }
