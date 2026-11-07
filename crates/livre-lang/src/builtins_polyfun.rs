@@ -945,6 +945,15 @@ fn interp1(it: &mut Interpreter, a: &[Value]) -> Ret {
     let mut re_out = Vec::with_capacity(nq * ncols);
     let mut im_out = Vec::with_capacity(nq * ncols);
     for c in 0..ncols {
+        if nq >= crate::ops::PAR_MIN {
+            // Independent queries: split them across threads.
+            use rayon::prelude::*;
+            re_out.par_extend(xq.data.par_iter().map(|&q| value(&re, c, q)));
+            if let Some(ip) = &imi {
+                im_out.par_extend(xq.data.par_iter().map(|&q| value(ip, c, q)));
+            }
+            continue;
+        }
         for &q in &xq.data {
             re_out.push(value(&re, c, q));
             if let Some(ip) = &imi {

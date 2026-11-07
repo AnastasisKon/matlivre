@@ -17,3 +17,12 @@ m = containers.Map('KeyType', 'double', 'ValueType', 'double'); for k = [5 3 9 1
 fprintf('map %d %s %d %d\n', m.Count, mat2str(cell2mat(keys(m))), m(3), m.isKey(9)); remove(m, 3); fprintf('map2 %d %d\n', m.Count, m.isKey(3));
 s = containers.Map(); s('b') = 1; s('a') = 2; s('c') = 3; s('a') = 20; fprintf('smap %d %s %d\n', s.Count, strjoin(keys(s), ','), s('a'));
 z = sin(1:400); c2 = conv(z, cos(1:300), 'same'); fprintf('convsame %.8g %d\n', sum(c2), numel(c2));
+n2 = 160; B = reshape(mod((1:n2*n2)*7919 + 13*(1:n2*n2).^2, 1013), n2, n2) / 1013; [L, U, P] = lu(B);
+fprintf('lu160 %d %d\n', norm(P*B - L*U) < 1e-9, norm(B*(B\ones(n2,1)) - ones(n2,1)) < 1e-9); [L, U, p] = lu(B, 'vector'); fprintf('lu160v %d\n', norm(B(p, :) - L*U) < 1e-9);
+V = reshape(1:2*3*4*5, 2, 3, 4, 5); W = permute(V, [3 1 4 2]); fprintf('permute %d %d %d %s\n', W(2, 1, 3, 2), W(4, 2, 5, 3), numel(W), mat2str(size(W)));
+T = reshape(1:50*70, 50, 70)'; fprintf('transpose %d %d %d\n', T(70, 50), T(3, 1), sum(T(:, 5)));
+Q = A(2:2:60, [1 5 70 33]); fprintf('submatrix %.8g %d\n', sum(Q(:)), size(Q, 1)); R3 = reshape(1:60, 3, 4, 5); S3 = R3(2:3, [1 4], 2:4); fprintf('sub3 %d %s\n', sum(S3(:)), mat2str(size(S3)));
+xi = interp1(linspace(0, 1, 50), mod(1:50, 7), linspace(0, 1, 100000)); fprintf('interp1 %.8g\n', sum(xi));
+z = mod((1:200000) * 7919, 10007); [ss, ii] = sort(z); fprintf('sortidx %d %d %d\n', sum(ii(1:100)), ss(5000), ii(150000)); [ss, ii] = sort(z, 'descend'); fprintf('sortdesc %d %d\n', sum(ii(1:100)), ii(777));
+[u, ia, ic] = unique(z); fprintf('unique2 %d %d %d\n', numel(u), sum(ia), sum(ic)); [u, ia] = unique(z, 'stable'); fprintf('unique3 %d %d\n', numel(u), sum(ia));
+fprintf('median %.8g %.8g %.8g %.8g\n', median(z), median(z(1:199999)), median(A(:)), median(A(:, 1:3)));

@@ -300,16 +300,23 @@ impl Matrix {
     /// `.'` (non-conjugate) transpose of a 2-D array.
     pub fn transpose(&self) -> Matrix {
         let (rows, cols) = (self.rows(), self.cols());
-        let mut out = Vec::with_capacity(self.data.len());
-        let mut out_im = self.im.as_ref().map(|_| Vec::with_capacity(self.data.len()));
-        for r in 0..rows {
-            for c in 0..cols {
-                out.push(self.data[c * rows + r]);
-                if let (Some(o), Some(im)) = (out_im.as_mut(), self.im.as_ref()) {
-                    o.push(im[c * rows + r]);
+        // Tiles of 32 x 32 keep both the reads and the writes inside the cache.
+        let tiled = |src: &[f64]| -> Vec<f64> {
+            let mut out = vec![0.0; src.len()];
+            const B: usize = 32;
+            for cb in (0..cols).step_by(B) {
+                for rb in (0..rows).step_by(B) {
+                    for c in cb..(cb + B).min(cols) {
+                        for r in rb..(rb + B).min(rows) {
+                            out[r * cols + c] = src[c * rows + r];
+                        }
+                    }
                 }
             }
-        }
+            out
+        };
+        let out = tiled(&self.data);
+        let out_im = self.im.as_ref().map(|im| tiled(im));
         Matrix { dims: vec![cols, rows], data: out, im: out_im, kind: self.kind, sparse: self.sparse }
     }
 

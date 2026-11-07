@@ -301,8 +301,18 @@ fn median_of(v: &[f64]) -> f64 {
         return f64::NAN;
     }
     let mut s = v.to_vec();
-    s.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let n = s.len();
+    if n >= 64 {
+        // Only the middle element(s) are needed: selection instead of a full sort.
+        let (lower, mid, _) = s.select_nth_unstable_by(n / 2, |a, b| a.partial_cmp(b).unwrap());
+        let mid = *mid;
+        if n % 2 == 1 {
+            return mid;
+        }
+        let below = lower.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        return (below + mid) / 2.0;
+    }
+    s.sort_by(|a, b| a.partial_cmp(b).unwrap());
     if n % 2 == 1 { s[n / 2] } else { (s[n / 2 - 1] + s[n / 2]) / 2.0 }
 }
 
@@ -2104,7 +2114,7 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
             let mut idx = Matrix::filled_dims(m.dims.clone(), 0.0);
             for s in &sl {
                 let mut v: Vec<((f64, f64), usize)> = s.iter().enumerate().map(|(k, &p)| (key[p], k)).collect();
-                v.sort_by(|p, q| {
+                let by = |p: &((f64, f64), usize), q: &((f64, f64), usize)| {
                     use std::cmp::Ordering::*;
                     match (p.0 .0.is_nan(), q.0 .0.is_nan()) {
                         (true, true) => Equal,
@@ -2115,7 +2125,13 @@ fn call_dense(it: &mut Interpreter, name: &str, args: Vec<Value>, nargout: usize
                             if desc { o.reverse() } else { o }
                         }
                     }
-                });
+                };
+                if v.len() >= ops::PAR_MIN {
+                    use rayon::slice::ParallelSliceMut;
+                    v.par_sort_by(by);
+                } else {
+                    v.sort_by(by);
+                }
                 for (j, (_, k)) in v.into_iter().enumerate() {
                     order[s[j]] = s[k];
                     idx.data[s[j]] = (k + 1) as f64;

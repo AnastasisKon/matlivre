@@ -109,16 +109,19 @@ fn product_positions(d: &[usize], lists: &[Vec<usize>]) -> Vec<usize> {
     if total == 0 {
         return out;
     }
-    let mut counter = vec![0usize; lists.len()];
+    let n = lists.len();
+    let mut counter = vec![0usize; n];
     loop {
-        let mut off = 0;
-        for (k, c) in counter.iter().enumerate() {
-            off += lists[k][*c] * st[k];
+        // The offset of this combination of the outer subscripts, then one run along dimension 1.
+        let mut base = 0;
+        for k in 1..n {
+            base += lists[k][counter[k]] * st[k];
         }
-        out.push(off);
-        let mut k = 0;
+        let s0 = st[0];
+        out.extend(lists[0].iter().map(|&i| base + i * s0));
+        let mut k = 1;
         loop {
-            if k == counter.len() {
+            if k == n {
                 return out;
             }
             counter[k] += 1;
@@ -516,24 +519,56 @@ pub fn permute<T: Clone>(d: &[usize], data: &[T], order: &[usize]) -> R<(Dims, V
         return rt("ORDER must have at least N elements for an N-D array.");
     }
     let new: Dims = order.iter().map(|&o| src[o]).collect();
-    let ss = strides(&src);
-    let ns = strides(&new);
     let total = numel(&src);
-    let mut out: Vec<Option<T>> = vec![None; total];
-    for lin in 0..total {
-        let mut rem = lin;
-        let mut subs = vec![0; n];
-        for k in (0..n).rev() {
-            subs[k] = rem / ss[k];
-            rem %= ss[k];
-        }
-        let mut off = 0;
-        for (j, &o) in order.iter().enumerate() {
-            off += subs[o] * ns[j];
-        }
-        out[off] = Some(data[lin].clone());
+    if total == 0 {
+        return Ok((normalize(new), Vec::new()));
     }
-    Ok((normalize(new), out.into_iter().map(|x| x.unwrap()).collect()))
+    // 2-D transpose: tiles keep both the reads and the writes inside the cache.
+    if n == 2 && order == [1, 0] {
+        let (r, c) = (src[0], src[1]);
+        let mut out: Vec<T> = data.to_vec();
+        const B: usize = 32;
+        for jb in (0..c).step_by(B) {
+            for ib in (0..r).step_by(B) {
+                for j in jb..(jb + B).min(c) {
+                    for i in ib..(ib + B).min(r) {
+                        out[j + i * c] = data[i + j * r].clone();
+                    }
+                }
+            }
+        }
+        return Ok((normalize(new), out));
+    }
+    // General case: walk the result in order; the source offset follows the counters.
+    let ss = strides(&src);
+    let step: Vec<usize> = order.iter().map(|&o| ss[o]).collect();
+    let mut out: Vec<T> = Vec::with_capacity(total);
+    let mut counter = vec![0usize; n];
+    let mut base = 0usize;
+    let (len0, step0) = (new[0], step[0]);
+    while out.len() < total {
+        let mut off = base;
+        for _ in 0..len0 {
+            out.push(data[off].clone());
+            off += step0;
+        }
+        // Advance the counters of dimensions 1.. and the base offset with them.
+        let mut k = 1;
+        while k < n {
+            counter[k] += 1;
+            base += step[k];
+            if counter[k] < new[k] {
+                break;
+            }
+            base -= step[k] * new[k];
+            counter[k] = 0;
+            k += 1;
+        }
+        if k >= n {
+            break;
+        }
+    }
+    Ok((normalize(new), out))
 }
 
 /// 2-D transpose for any element type.

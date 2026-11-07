@@ -555,6 +555,9 @@ fn rot_cols(a: &mut M, i: usize, k: usize, c: f64, s: Z, r0: usize, r1: usize) {
 fn lu_packed(a: &M) -> (M, Vec<usize>) {
     let (m, n) = (a.r, a.c);
     if m * n >= 1024 && a.is_real() {
+        if m * n >= 16384 && !a.has_nonfinite() {
+            return lu_packed_faer(a);
+        }
         return lu_packed_real(a);
     }
     let mut f = a.clone();
@@ -604,6 +607,19 @@ fn lu_packed(a: &M) -> (M, Vec<usize>) {
         }
     }
     (f, p)
+}
+
+/// `lu_packed` for large real matrices through faer's blocked LU with partial pivoting.
+fn lu_packed_faer(a: &M) -> (M, Vec<usize>) {
+    use faer::dyn_stack::{MemBuffer, MemStack};
+    use faer::linalg::lu::partial_pivoting::factor;
+    let (m, n) = (a.r, a.c);
+    let mut f: Vec<f64> = a.d.iter().map(|z| z.re).collect();
+    let (mut fwd, mut bwd) = (vec![0usize; m], vec![0usize; m]);
+    let par = faer::Par::Seq;
+    let mut buf = MemBuffer::new(factor::lu_in_place_scratch::<usize, f64>(m, n, par, Default::default()));
+    factor::lu_in_place(faer::MatMut::from_column_major_slice_mut(&mut f, m, n), &mut fwd, &mut bwd, par, MemStack::new(&mut buf), Default::default());
+    (M { r: m, c: n, d: f.into_iter().map(|x| Z::new(x, 0.0)).collect() }, fwd)
 }
 
 /// `lu_packed` for a real matrix: the same steps on the real parts, with each column update a
