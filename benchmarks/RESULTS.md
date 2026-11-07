@@ -14,21 +14,21 @@ against each other: **all 12 checksums agree across MATLAB, Octave, Scilab and M
 
 | Case | MATLAB (ms) | Octave (ms) | Scilab (ms) | MatLivre (ms) | vs MATLAB | vs Octave | vs Scilab |
 |---|---:|---:|---:|---:|---|---|---|
-| scalar_loop (2M iterations) | 4.57 | 2,267.82 | 1,662.67 | 2.71 | 1.7x faster | 837x faster | 614x faster |
-| while_branch (Collatz, 2.9M steps) | 79.62 | 11,231.69 | 70,510.38 | 14.49 | 5.5x faster | 775x faster | 4,867x faster |
+| scalar_loop (2M iterations) | 4.57 | 2,267.82 | 1,662.67 | 2.71 | 1.7x faster | 836x faster | 613x faster |
+| while_branch (Collatz, 2.9M steps) | 79.62 | 11,231.69 | 70,510.38 | 14.36 | 5.5x faster | 782x faster | 4,909x faster |
 | fib_recursive (fib(20)) | 0.96 | 123.42 | 70.68 | 0.06 | 15.8x faster | 2,023x faster | 1,159x faster |
-| array_growth (100k appends) | 6.83 | 377.48 | 211.68 | 1.22 | 5.6x faster | 310x faster | 174x faster |
-| indexed_assign (1M writes) | 2.93 | 1,996.90 | 879.51 | 2.37 | 1.2x faster | 843x faster | 371x faster |
-| vector_math (2M elements) | 107.40 | 92.81 | 180.59 | 49.40 | 2.2x faster | 1.9x faster | 3.7x faster |
+| array_growth (100k appends) | 6.83 | 377.48 | 211.68 | 1.18 | 5.8x faster | 321x faster | 180x faster |
+| indexed_assign (1M writes) | 2.93 | 1,996.90 | 879.51 | 2.40 | 1.2x faster | 834x faster | 367x faster |
+| vector_math (2M elements) | 107.40 | 92.81 | 180.59 | 12.50 | 8.6x faster | 7.4x faster | 14.4x faster |
 | matmul_300 | 0.68 | 0.55 | 0.19 | 0.33 | 2.1x faster | 1.7x faster | 1.8x slower |
-| linsolve_300 | 0.53 | 1.54 | 0.48 | 0.57 | 1.1x slower | 2.7x faster | 1.2x slower |
-| sort_1e6 | 59.09 | 14.82 | 185.38 | 8.54 | 6.9x faster | 1.7x faster | 21.7x faster |
-| string_build (20k appends) | 207.04 | 249.86 | 491.80 | 34.92 | 5.9x faster | 7.2x faster | 14.1x faster |
+| linsolve_300 | 0.53 | 1.54 | 0.48 | 0.59 | 1.1x slower | 2.6x faster | 1.2x slower |
+| sort_1e6 | 59.09 | 14.82 | 185.38 | 7.95 | 7.4x faster | 1.9x faster | 23.3x faster |
+| string_build (20k appends) | 207.04 | 249.86 | 491.80 | 35.42 | 5.8x faster | 7.1x faster | 13.9x faster |
 | struct_fields (500k updates) | 144.11 | 4,309.09 | 1,841.38 | 0.65 | 222x faster | 6,629x faster | 2,833x faster |
-| cell_ops (100k writes + reads) | 21.54 | 561.40 | 349.36 | 7.50 | 2.9x faster | 74.9x faster | 46.6x faster |
+| cell_ops (100k writes + reads) | 21.54 | 561.40 | 349.36 | 6.71 | 3.2x faster | 83.6x faster | 52.0x faster |
 
-Geometric mean over the 12 cases: MatLivre is **4.7x faster than MATLAB, 72x faster than Octave
-and 71x faster than Scilab**. MatLivre is faster than MATLAB in 11 of 12 cases (behind in
+Geometric mean over the 12 cases: MatLivre is **5.3x faster than MATLAB, 81x faster than Octave
+and 80x faster than Scilab**. MatLivre is faster than MATLAB in 11 of 12 cases (behind in
 `linsolve_300`), than Octave in all 12 and than Scilab in 10 (behind in `matmul_300` and
 `linsolve_300`; Scilab ships Intel oneMKL).
 
