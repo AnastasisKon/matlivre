@@ -1,16 +1,36 @@
 #!/usr/bin/env bash
 # Builds MatLivre on macOS and packs it as dist/MatLivre.app.
-# Usage: ./build-mac.sh [fast]   (default: release; "fast" builds quicker, slightly slower binary)
+# Usage: ./build-mac.sh [fast] [--universal] [--dmg]
+#   fast         quicker build with a slightly slower binary (default: release)
+#   --universal  one app for Apple Silicon and Intel (needs both Rust targets)
+#   --dmg        also create dist/MatLivre-<version>-macOS.dmg (drag MatLivre to Applications)
 set -euo pipefail
 cd "$(dirname "$0")"
 command -v cargo >/dev/null || { echo "cargo not found. Install Rust from https://rustup.rs"; exit 1; }
-profile=release; flag=--release
-[ "${1:-}" = fast ] && { profile=fast; flag="--profile fast"; }
-cargo build $flag -p livre-app -p livre-lang
+profile=release; flag=--release; universal=0; dmg=0
+for a in "$@"; do
+  case "$a" in
+    fast) profile=fast; flag="--profile fast" ;;
+    --universal) universal=1 ;;
+    --dmg) dmg=1 ;;
+    *) echo "unknown option $a"; exit 1 ;;
+  esac
+done
+if [ $universal = 1 ]; then
+  rustup target add aarch64-apple-darwin x86_64-apple-darwin
+  for t in aarch64-apple-darwin x86_64-apple-darwin; do cargo build $flag --target $t -p livre-app -p livre-lang; done
+  out=target/universal/$profile; mkdir -p "$out"
+  for b in matlivre matlivre-cli; do
+    lipo -create -output "$out/$b" target/aarch64-apple-darwin/$profile/$b target/x86_64-apple-darwin/$profile/$b
+  done
+else
+  cargo build $flag -p livre-app -p livre-lang
+  out=target/$profile
+fi
 app=dist/MatLivre.app
 rm -rf "$app" && mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-cp "target/$profile/matlivre" "$app/Contents/MacOS/matlivre"
-[ -f "target/$profile/matlivre-cli" ] && cp "target/$profile/matlivre-cli" "$app/Contents/MacOS/matlivre-cli"
+cp "$out/matlivre" "$app/Contents/MacOS/matlivre"
+[ -f "$out/matlivre-cli" ] && cp "$out/matlivre-cli" "$app/Contents/MacOS/matlivre-cli"
 version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
 # App icon from the bundled PNG.
 icons=$(mktemp -d)/matlivre.iconset; mkdir -p "$icons"
@@ -45,3 +65,11 @@ PLIST
 codesign --force --deep --sign - "$app" 2>/dev/null || true
 echo "Command line: $app/Contents/MacOS/matlivre-cli script.m"
 echo "Built $app  (run: open $app, or $app/Contents/MacOS/matlivre file.mlx)"
+if [ $dmg = 1 ]; then
+  d=dist/MatLivre-$version-macOS.dmg
+  stage=$(mktemp -d)
+  cp -R "$app" "$stage/"; ln -s /Applications "$stage/Applications"
+  rm -f "$d"
+  hdiutil create -volname "MatLivre" -srcfolder "$stage" -ov -format UDZO "$d" >/dev/null
+  echo "Built $d"
+fi
